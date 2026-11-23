@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-KX76XF8R');</script>
+<!-- End Google Tag Manager -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ingeniería de datos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Cómo viaja un dato desde la base de una aplicación hasta el tablero que lee la gerencia: ingesta, formatos, ETL y ELT, data warehouse, lakehouse, Spark, Kafka, orquestación, dbt, calidad y linaje, con laboratorios donde se ve cada pipeline funcionar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400;1,8..60,600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KX76XF8R"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<div class="wrap" data-page="index">
+<header class="topbar"><a class="brand" href="index.html">Ingeniería de <b>datos</b></a><span class="eyebrow">Curso visual e interactivo · Datos e inteligencia artificial</span><a class="al-sitio" href="https://aaramirez.github.io/">← Todos los cursos</a></header>
+<div class="layout">
+<nav class="toc" id="toc" aria-label="Ruta de aprendizaje"></nav>
+<main>
+
+<header class="hero">
+  <span class="eyebrow">Curso visual e interactivo · Datos e inteligencia artificial</span>
+  <h1>El dato del tablero salió de algún lado</h1>
+  <p class="lede">Detrás de cada cifra de un tablero hay un camino: una base transaccional, una ingesta, transformaciones, un almacén y pruebas que alguien tuvo que construir y mantener. Este curso recorre ese camino pieza por pieza y muestra los patrones con los que se arman las plataformas de datos de hoy.</p>
+</header>
+
+<section>
+  <h2>Cómo usar este curso</h2>
+  <div class="prose">
+    <p><b>Estado.</b> El curso está en preparación. La <a href="temario.html">tabla de contenido</a> ya tiene los 12 capítulos con sus secciones y sus laboratorios, y está en revisión.</p>
+    <p><b>Para quién es.</b> Para quien mueve y prepara datos o quiere empezar a hacerlo: desarrolladores, analistas que se cansaron de copiar hojas de cálculo y equipos de sistemas que heredan un pipeline. Conviene saber SQL (está en Bases de datos) y algo de Python (está en Programación en Python).</p>
+    <p><b>Cómo está hecho.</b> Un mismo ejemplo recorre el curso: los pedidos, clientes y pagos de una tienda en línea ficticia, que viajan desde su base de datos hasta un tablero de ventas. Cada capítulo agrega una pieza a esa plataforma, y los laboratorios corren en la página: pipelines que se arman con bloques, consultas que se miden y trabajos distribuidos animados.</p>
+  </div>
+</section>
+
+<details class="stage" id="temario" open><summary><h2><span class="pn">Empieza aquí</span> Tabla de contenido</h2></summary>
+  <div class="mods">
+    <a class="mod" href="temario.html"><span class="n">≡</span><b>Tabla de contenido</b><p>Cada capítulo con sus secciones y sus laboratorios.</p></a>
+  </div>
+</details>
+
+<details class="stage" id="parte-1" open><summary><h2><span class="pn">Parte 1</span> De dónde vienen los datos</h2><span class="cuenta" data-etapa-cuenta="1"></span></summary>
+  <div class="mods">
+    <div class="mod soon" data-id="el-trabajo-de-los-datos"><span class="n">01</span><b>El trabajo de los datos: de las fuentes al tablero</b><p>El viaje de un dato, las piezas de una plataforma y los oficios que la sostienen.</p></div>
+    <div class="mod soon" data-id="fuentes-e-ingesta"><span class="n">02</span><b>Fuentes e ingesta</b><p>Bases transaccionales, APIs, archivos y eventos: cómo traer los datos sin tumbar el origen.</p></div>
+    <div class="mod soon" data-id="formatos"><span class="n">03</span><b>Formatos: CSV, JSON, Parquet y Avro</b><p>Guardar por filas o por columnas cambia el tamaño, la velocidad y lo que cuesta cada consulta.</p></div>
+  </div>
+</details>
+
+<details class="stage" id="parte-2" open><summary><h2><span class="pn">Parte 2</span> Mover y guardar</h2><span class="cuenta" data-etapa-cuenta="2"></span></summary>
+  <div class="mods">
+    <div class="mod soon" data-id="etl-y-elt"><span class="n">04</span><b>ETL y ELT, por lotes o en streaming</b><p>Transformar antes o después de cargar, y procesar cada noche o en cuanto llega el dato.</p></div>
+    <div class="mod soon" data-id="data-warehouse"><span class="n">05</span><b>Data warehouse y modelado dimensional</b><p>Hechos y dimensiones, estrella y copo de nieve, y qué hacer cuando un cliente se muda.</p></div>
+    <div class="mod soon" data-id="data-lake-y-lakehouse"><span class="n">06</span><b>Data lake, lakehouse y arquitectura medallón</b><p>Guardar todo barato, no convertirlo en un pantano y sumar transacciones con Delta e Iceberg.</p></div>
+  </div>
+</details>
+
+<details class="stage" id="parte-3" open><summary><h2><span class="pn">Parte 3</span> Procesar a escala</h2><span class="cuenta" data-etapa-cuenta="3"></span></summary>
+  <div class="mods">
+    <div class="mod soon" data-id="procesamiento-distribuido"><span class="n">07</span><b>Procesamiento distribuido: de MapReduce a Spark</b><p>Repartir el trabajo entre muchas máquinas, y por qué el *shuffle* es lo que cuesta.</p></div>
+    <div class="mod soon" data-id="streaming"><span class="n">08</span><b>Streaming: Kafka como plataforma de datos</b><p>Eventos que no paran, ventanas de tiempo y las arquitecturas Lambda y Kappa.</p></div>
+  </div>
+</details>
+
+<details class="stage" id="parte-4" open><summary><h2><span class="pn">Parte 4</span> Operar la plataforma</h2><span class="cuenta" data-etapa-cuenta="4"></span></summary>
+  <div class="mods">
+    <div class="mod soon" data-id="orquestacion"><span class="n">09</span><b>Orquestación: Airflow y Dagster</b><p>Grafos de dependencias, horarios, reintentos y cómo reanudar un pipeline que falló a medias.</p></div>
+    <div class="mod soon" data-id="transformacion-con-dbt"><span class="n">10</span><b>Transformación con dbt y pruebas de datos</b><p>Transformaciones en SQL versionadas como código, con pruebas que detienen un dato malo.</p></div>
+    <div class="mod soon" data-id="calidad-linaje-y-gobierno"><span class="n">11</span><b>Calidad, linaje y gobierno de datos</b><p>Saber si un dato es confiable, de dónde viene y quién responde por él; data mesh.</p></div>
+    <div class="mod soon" data-id="patrones-de-plataformas"><span class="n">12</span><b>Patrones de plataformas de datos</b><p>El catálogo de patrones del curso, cuándo usar cada uno y la plataforma completa de la tienda.</p></div>
+  </div>
+</details>
+
+
+
+<nav class="pager" id="pager" aria-label="Capítulo anterior y siguiente"></nav>
+</main>
+</div>
+<footer><span>Curso abierto de aaramirez.github.io.</span><span>Sitio publicado: <a href="https://github.com/aaramirez/ingenieria-de-datos" target="_blank" rel="noopener">github.com/aaramirez/ingenieria-de-datos</a></span></footer>
+</div>
+<script src="assets/lab.js"></script>
+</body>
+</html>
