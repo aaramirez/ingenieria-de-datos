@@ -8,7 +8,7 @@ Este repositorio solo tiene el sitio generado. El curso está en preparación: l
 
 | # | Capítulo |
 |---|---|
-| 01 | El trabajo de los datos: de las fuentes al tablero |
+| 01 | El ciclo de vida del dato: de su creación a su destrucción |
 | 02 | Fuentes e ingesta |
 | 03 | Formatos: CSV, JSON, Parquet y Avro |
 | 04 | ETL y ELT, por lotes o en streaming |
@@ -18,5 +18,7 @@ Este repositorio solo tiene el sitio generado. El curso está en preparación: l
 | 08 | Streaming: Kafka como plataforma de datos |
 | 09 | Orquestación: Airflow y Dagster |
 | 10 | Transformación con dbt y pruebas de datos |
-| 11 | Calidad, linaje y gobierno de datos |
-| 12 | Patrones de plataformas de datos |
+| 11 | Retención, archivo y borrado |
+| 12 | Calidad, linaje y gobierno de datos |
+| 13 | Patrones de plataformas de datos |
+| 14 | Prompts para generar pipelines de producción |
