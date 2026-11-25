@@ -4,7 +4,7 @@ Cómo viaja un dato desde la base de una aplicación hasta el tablero que lee la
 
 **Ver en línea:** https://aaramirez.github.io/ingenieria-de-datos/
 
-Este repositorio solo tiene el sitio generado. El curso está en preparación: la tabla de contenido ya está publicada para revisión.
+Este repositorio solo tiene el sitio generado. Curso completo: 14 capítulos con laboratorios interactivos, diagramas y prácticas.
 
 | # | Capítulo |
 |---|---|

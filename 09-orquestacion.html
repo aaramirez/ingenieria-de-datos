@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="es">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-KX76XF8R');</script>
+<!-- End Google Tag Manager -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Orquestación · Ingeniería de datos · Ingeniería de datos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Cómo viaja un dato desde la base de una aplicación hasta el tablero que lee la gerencia: ingesta, formatos, ETL y ELT, data warehouse, lakehouse, Spark, Kafka, orquestación, dbt, calidad y linaje, con laboratorios donde se ve cada pipeline funcionar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400;1,8..60,600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KX76XF8R"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<div class="wrap" data-page="orquestacion">
+<header class="topbar"><a class="brand" href="index.html">Ingeniería de <b>datos</b></a><span class="eyebrow">Curso visual e interactivo · Datos e inteligencia artificial</span><a class="al-sitio" href="https://aaramirez.github.io/">← Todos los cursos</a></header>
+<div class="layout">
+<nav class="toc" id="toc" aria-label="Ruta de aprendizaje"></nav>
+<main>
+<header class="page-head"><span class="num">CAPÍTULO 09 DE 14</span><h1>Orquestación: Airflow y Dagster</h1><p class="lede">Un pipeline que corre solo de noche necesita a alguien que lo despierte, lo vigile y lo levante cuando se cae. Este capítulo pasa del `cron` al orquestador: el DAG de dependencias, Airflow con sus horarios y reprocesos, Dagster con sus activos, los reintentos y alertas, y cómo reanudar un pipeline desde el paso que falló.</p></header>
+<section><div class="prose"><p>Un martes a las 8:40, Elena Vargas abrió el tablero para el comité y vio las ventas del domingo. Faltaba el lunes entero. Natalia Herrera revisó el servidor: el script de extracción, programado a las 2:00, había tardado más de lo normal porque la base de la tienda estaba haciendo un respaldo. El de transformación, programado a las 2:30, arrancó igual, con la mitad de los pedidos, y terminó sin errores. El de publicación, a las 3:00, publicó esa mitad. Nadie se enteró hasta que Elena preguntó por qué el lunes había vendido la mitad que el domingo.</p><p>Ningún script falló. Falló la forma de encadenarlos: tres horarios con media hora de margen, apostando a que cada uno termina antes que empiece el siguiente. Este capítulo reemplaza esa apuesta por un <b>orquestador</b>, la pieza que corre los pasos de un pipeline en el orden de sus dependencias, los reintenta, avisa cuando algo sale mal y sabe por dónde seguir.</p></div></section>
+<section><h2>De <code>cron</code> al orquestador: por qué hace falta</h2><div class="prose"><p><b>cron</b> es el programador de tareas de los sistemas tipo Unix (en Windows, el equivalente es el Programador de tareas). Cada línea de su tabla dice «a esta hora, corre este comando»: <code>0 2 * * *</code> significa «todos los días a las 2:00». Es simple, viene instalado y sirve perfectamente para un script suelto.</p><p>El problema empieza cuando los scripts dependen unos de otros. cron no sabe que la transformación necesita la extracción: solo sabe la hora. Tampoco reintenta, no guarda un historial que se pueda consultar, no avisa a nadie y no sabe recalcular el mes pasado.</p></div><div class="analogia"><b>Imagínalo así</b><p>cron es un despertador: suena a la hora, pase lo que pase. Un orquestador es la torre de control de un aeropuerto: un avión despega cuando la pista está libre y el anterior ya salió, no cuando lo dice un horario impreso; si hay tormenta, lo retiene y vuelve a intentar; y en la pantalla se ve qué vuelo salió, cuál se atrasó y por qué.</p></div><div class="prose"><p>Un <b>orquestador</b> (<i>orchestrator</i>) de datos resuelve seis preguntas que cron deja sin responder:</p><ul><li><b>Dependencias</b>: cada paso empieza cuando terminaron bien los que necesita, no a una hora fija.</li><li><b>Reintentos</b>: si un paso falla por algo pasajero (un corte de red, una base ocupada), lo vuelve a intentar.</li><li><b>Historial</b>: qué corrió, cuándo, cuánto tardó y con qué resultado, por corrida y por paso.</li><li><b>Reprocesos</b>: recalcular un período pasado sin escribir un script nuevo.</li><li><b>Alertas</b>: si algo falla, avisa a quien corresponde, con el error.</li><li><b>Tiempos máximos</b>: si un paso se cuelga, lo corta.</li></ul></div><figure class="fig fig-comparacion" id="09-diagrama-1"><div class="lienzo"><svg viewBox="0 0 900 430" style="min-width:720px" role="img" aria-label="Comparación entre cron y un orquestador. A la izquierda, cron lanza tres scripts a horas fijas, 2:00, 2:30 y 3:00, apostando a que el anterior terminó. A la derecha, el orquestador lanza cada tarea cuando terminaron las que necesita. Debajo, una tabla con seis preguntas: dependencias, reintentos, historial, reprocesar el pasado, alertas y tiempos máximos; cron no responde ninguna y el orquestador responde todas">
+<defs>
+<marker id="c9d1-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+</defs>
+<rect x="10" y="10" width="430" height="190" rx="12" class="caja"/>
+<text x="26" y="36" class="t t-b">cron: por la hora</text>
+<text x="26" y="54" class="t t-s t-m">cada línea es independiente; nadie sabe del resto</text>
+<text x="30" y="92" class="t t-s t-mono">0 2 * * *</text><rect x="120" y="76" width="140" height="26" rx="6" class="c-enl"/><text x="190" y="94" class="t t-s" text-anchor="middle">extraer.py</text>
+<text x="30" y="132" class="t t-s t-mono">30 2 * * *</text><rect x="120" y="116" width="140" height="26" rx="6" class="c-tra"/><text x="190" y="134" class="t t-s" text-anchor="middle">transformar.py</text>
+<text x="30" y="172" class="t t-s t-mono">0 3 * * *</text><rect x="120" y="156" width="140" height="26" rx="6" class="c-apl"/><text x="190" y="174" class="t t-s" text-anchor="middle">publicar.py</text>
+<text x="280" y="98" class="t t-s k-warm">¿y si tarda 40 min?</text>
+<text x="280" y="138" class="t t-s k-warm">corre igual, con</text>
+<text x="280" y="154" class="t t-s k-warm">datos a medias</text>
+
+<rect x="460" y="10" width="430" height="190" rx="12" class="caja"/>
+<text x="476" y="36" class="t t-b">Orquestador: por las dependencias</text>
+<text x="476" y="54" class="t t-s t-m">la hora dispara el DAG; cada tarea espera a las suyas</text>
+<rect x="480" y="76" width="120" height="26" rx="6" class="c-enl"/><text x="540" y="94" class="t t-s" text-anchor="middle">extraer</text>
+<rect x="620" y="116" width="120" height="26" rx="6" class="c-tra"/><text x="680" y="134" class="t t-s" text-anchor="middle">transformar</text>
+<rect x="760" y="156" width="120" height="26" rx="6" class="c-apl"/><text x="820" y="174" class="t t-s" text-anchor="middle">publicar</text>
+<path d="M600 89 C 615 89, 610 129, 618 129" class="ln" style="fill:none" marker-end="url(#c9d1-m)"/>
+<path d="M740 129 C 755 129, 750 169, 758 169" class="ln" style="fill:none" marker-end="url(#c9d1-m)"/>
+<text x="480" y="140" class="t t-s" style="fill:var(--good)">empieza cuando</text>
+<text x="480" y="156" class="t t-s" style="fill:var(--good)">la anterior terminó bien</text>
+
+
+<rect x="10" y="216" width="880" height="204" rx="12" class="caja"/>
+<text x="30" y="244" class="t t-xs t-b t-m">PREGUNTA</text><text x="420" y="244" class="t t-xs t-b t-m">CRON</text><text x="560" y="244" class="t t-xs t-b t-m">ORQUESTADOR</text>
+<line x1="20" y1="252" x2="880" y2="252" class="ln"/>
+<text x="30" y="274" class="t t-s">¿Qué espera a qué?</text><text x="420" y="274" class="t t-s k-warm">horarios con margen</text><text x="560" y="274" class="t t-s">el DAG de dependencias</text>
+<text x="30" y="298" class="t t-s">Falló por un corte de red: ¿se reintenta?</text><text x="420" y="298" class="t t-s k-warm">no</text><text x="560" y="298" class="t t-s">N reintentos con espera creciente</text>
+<text x="30" y="322" class="t t-s">¿Qué corrió anoche y cuánto tardó?</text><text x="420" y="322" class="t t-s k-warm">buscar en logs</text><text x="560" y="322" class="t t-s">historial por corrida y por tarea</text>
+<text x="30" y="346" class="t t-s">Hay que recalcular octubre</text><text x="420" y="346" class="t t-s k-warm">a mano, día por día</text><text x="560" y="346" class="t t-s">backfill: una corrida por día</text>
+<text x="30" y="370" class="t t-s">¿Quién se entera si falla?</text><text x="420" y="370" class="t t-s k-warm">nadie</text><text x="560" y="370" class="t t-s">alerta al dueño, con el error</text>
+<text x="30" y="394" class="t t-s">Se colgó: ¿cuándo se corta?</text><text x="420" y="394" class="t t-s k-warm">nunca</text><text x="560" y="394" class="t t-s">tiempo máximo por tarea y por corrida</text>
+</svg></div><figcaption><b>cron frente a un orquestador.</b> Arriba a la izquierda, cron lanza tres scripts a horas fijas (verde, ingesta; morado, transformación; rosa, consumo) y en rojo la pregunta que no puede responder: ¿y si el primero tarda 40 minutos? Arriba a la derecha, el orquestador lanza cada paso cuando el anterior terminó bien. La tabla de abajo recorre las seis preguntas: en rojo lo que cron no hace, a la derecha cómo lo resuelve el orquestador.</figcaption></figure><div class="prose"><p>Los orquestadores no hacen el trabajo pesado: no transforman datos ni los mueven. Le dicen a DuckDB, a Spark, a dbt o a un script de Python qué correr y cuándo, y anotan qué pasó. En el mapa de la plataforma del capítulo 01, la orquestación es parte de la franja transversal de operación, debajo de todas las piezas.</p></div></section>
+<section><h2>El DAG: tareas y dependencias</h2><div class="prose"><p>Un pipeline orquestado se describe como un <b>grafo dirigido acíclico</b> (<i>Directed Acyclic Graph</i>, DAG): un conjunto de <b>tareas</b> (<i>tasks</i>) unidas por flechas que dicen qué depende de qué.</p><ul><li><b>Grafo</b>: nodos (las tareas) y aristas (las dependencias).</li><li><b>Dirigido</b>: cada flecha va en un sentido: <code>stg_pedidos → fct_ventas</code> significa que <code>fct_ventas</code> necesita a <code>stg_pedidos</code>.</li><li><b>Acíclico</b>: no hay ciclos. Si A necesita a B y B necesita a A, nadie puede empezar.</li></ul><p>El DAG de ventas de Tienda Ejemplo tiene nueve tareas en cuatro niveles: tres extracciones (pedidos con su detalle, clientes y pagos), tres limpiezas (las tablas <code>stg_</code> de <i>staging</i>, la capa de preparación), dos modelos (<code>fct_ventas</code> y <code>dim_clientes</code>: las <code>fact_ventas</code> y <code>dim_cliente</code> del capítulo 05, con los nombres de la convención de dbt que explica el capítulo 10 y que el curso usa desde aquí) y la publicación del tablero.</p><p>Con el DAG, el orquestador calcula un <b>orden topológico</b> (<i>topological order</i>): una secuencia en la que cada tarea aparece después de todas las que necesita. Y descubre algo gratis: las tareas que no dependen entre sí pueden correr en paralelo. Las tres extracciones no se necesitan unas a otras, así que arrancan juntas.</p><p>Para que el DAG funcione, cada tarea tiene que cumplir tres reglas que ya aparecieron en el curso. Debe ser <b>idempotente</b> (capítulo 04): correrla dos veces deja el mismo resultado. Debe recibir como parámetro el período que procesa, en lugar de calcular «ayer» con el reloj. Y debe escribir su resultado antes de terminar, para que la siguiente lo lea de ahí y no de la memoria.</p></div></section>
+<section><h2>Airflow: operadores, horarios y <i>backfill</i></h2><div class="prose"><p><b>Apache Airflow</b> nació en Airbnb en 2014, pasó a la Fundación Apache y es, a noviembre de 2026, el orquestador de datos más usado. Su versión 3, publicada en 2025, renovó la interfaz y la forma en que los trabajadores se comunican con el resto del sistema. Un DAG de Airflow es un archivo de Python:</p><div class="code-copia"><pre><code>from datetime import datetime
+from airflow.sdk import dag, task
+
+@dag(schedule="0 2 * * *", start_date=datetime(2026, 1, 1), catchup=False,
+     max_active_runs=2, default_args={"retries": 2})
+def ventas_diarias():
+
+    @task
+    def extraer_pedidos(ds=None):       # ds = la fecha lógica de la corrida, por ejemplo "2026-10-15"
+        ...
+
+    @task
+    def construir_fct_ventas(ds=None):
+        ...
+
+    @task
+    def publicar_tablero(ds=None):
+        ...
+
+    extraer_pedidos() &gt;&gt; construir_fct_ventas() &gt;&gt; publicar_tablero()
+
+ventas_diarias()</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>Las piezas que importan:</p><ul><li><b>Operadores</b> (<i>operators</i>): plantillas de tareas. <code>@task</code> envuelve una función de Python; hay operadores para correr un comando, una consulta SQL, un trabajo de Spark o un modelo de dbt, y <b>sensores</b> (<i>sensors</i>), que esperan a que algo exista (un archivo, una partición) antes de seguir.</li><li><b>Horario</b> (<i>schedule</i>): cuándo se crea una corrida, en la sintaxis de cron o con expresiones como <code>@daily</code>.</li><li><b>Fecha lógica</b> (<i>logical date</i>): cada corrida tiene una fecha que la identifica, y la tarea la recibe como parámetro (<code>ds</code>). Con un horario cron, en Airflow 3 esa fecha es el momento programado del disparo: la corrida del 15 de octubre a las 2:00 recibe <code>2026-10-15</code> y calcula a partir de ella el día que procesa, el 14. Lo importante es que la fecha viene de la corrida y no del reloj: si la corrida se repite una semana después, sigue procesando el 14.</li><li><b>Dependencias</b>: el operador <code>&gt;&gt;</code> dice qué va después de qué.</li></ul></div><figure class="fig fig-flujo" id="09-diagrama-3"><div class="lienzo"><svg viewBox="0 0 900 430" style="min-width:720px" role="img" aria-label="Diagrama de secuencia de una corrida programada en Airflow, con cinco participantes: la carpeta de DAGs, el planificador, la base de metadatos, el ejecutor con sus trabajadores y la interfaz web. Uno, el procesador lee los archivos de DAG; dos, a las 2:00 el planificador crea la corrida del día anterior; tres, anota en la base qué tareas están listas; cuatro, el ejecutor las manda a los trabajadores; cinco, cada trabajador corre su tarea y reporta el estado; seis, la interfaz web lee el estado de la base">
+<defs>
+<marker id="c9d3-o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+<marker id="c9d3-t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-tra"/></marker>
+<marker id="c9d3-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-apl"/></marker>
+</defs>
+
+<rect x="20" y="16" width="140" height="50" rx="8" class="caja"/><text x="90" y="38" class="t t-s t-b" text-anchor="middle">Carpeta de DAGs</text><text x="90" y="55" class="t t-s t-mono t-m" text-anchor="middle">ventas_diarias.py</text>
+<rect x="190" y="16" width="140" height="50" rx="8" class="caja" style="stroke-dasharray:5 4"/><text x="260" y="38" class="t t-s t-b" text-anchor="middle">Planificador</text><text x="260" y="55" class="t t-s t-m" text-anchor="middle">scheduler</text>
+<rect x="360" y="16" width="140" height="50" rx="8" class="c-red"/><text x="430" y="38" class="t t-s t-b k-red" text-anchor="middle">Base de metadatos</text><text x="430" y="55" class="t t-s" text-anchor="middle">PostgreSQL</text>
+<rect x="530" y="16" width="170" height="50" rx="8" class="c-tra"/><text x="615" y="38" class="t t-s t-b k-tra" text-anchor="middle">Ejecutor y trabajadores</text><text x="615" y="55" class="t t-s" text-anchor="middle">corren el código</text>
+<rect x="730" y="16" width="150" height="50" rx="8" class="c-apl"/><text x="805" y="38" class="t t-s t-b k-apl" text-anchor="middle">Interfaz web y API</text><text x="805" y="55" class="t t-s" text-anchor="middle">lo que ve Natalia</text>
+<line x1="90" y1="66" x2="90" y2="400" class="vida"/>
+<line x1="260" y1="66" x2="260" y2="400" class="vida"/>
+<line x1="430" y1="66" x2="430" y2="400" class="vida"/>
+<line x1="615" y1="66" x2="615" y2="400" class="vida"/>
+<line x1="805" y1="66" x2="805" y2="400" class="vida"/>
+
+<line x1="90" y1="100" x2="256" y2="100" class="ln" marker-end="url(#c9d3-o)"/><text x="100" y="92" class="t t-s">① lee y analiza los DAG</text>
+<line x1="260" y1="140" x2="426" y2="140" class="ln" marker-end="url(#c9d3-o)"/><text x="270" y="132" class="t t-s">② 2:00: crea la corrida (procesa el 14-oct)</text>
+<line x1="260" y1="185" x2="426" y2="185" class="ln" marker-end="url(#c9d3-o)"/><text x="270" y="177" class="t t-s">③ marca listas las extracciones</text>
+<line x1="260" y1="230" x2="611" y2="230" class="ln s-tra" marker-end="url(#c9d3-t)"/><text x="270" y="222" class="t t-s">④ las envía a la cola del ejecutor</text>
+<line x1="615" y1="280" x2="434" y2="280" class="ln s-tra" marker-end="url(#c9d3-t)"/><text x="625" y="272" class="t t-s">⑤ corre y reporta: éxito, falla, reintento</text>
+<line x1="430" y1="330" x2="801" y2="330" class="ln s-apl" marker-end="url(#c9d3-a)"/><text x="440" y="322" class="t t-s">⑥ muestra el estado de cada tarea, registros y duración</text>
+<text x="270" y="372" class="t t-s t-m">③ a ⑤ se repiten: al terminar una tarea, el planificador marca lista la siguiente.</text>
+<text x="20" y="420" class="t t-s t-m">Los componentes se coordinan a través del estado guardado en la base de metadatos (en Airflow 3, los trabajadores lo reportan por la API).</text>
+</svg></div><figcaption><b>Una corrida programada en Airflow.</b> Cinco participantes arriba: la carpeta de DAGs, el planificador (borde punteado, operación), la base de metadatos (azul), el ejecutor con sus trabajadores (morado) y la interfaz web (rosa). El tiempo corre hacia abajo. ① Se leen los archivos de DAG. ② A las 2:00 el planificador crea en la base la corrida que procesa el 14 de octubre. ③ Marca listas las tareas sin dependencias pendientes. ④ Las envía al ejecutor. ⑤ Un trabajador corre cada tarea y reporta su estado. ⑥ La interfaz muestra estados, registros y duraciones. Los pasos ③ a ⑤ se repiten hasta terminar el DAG.</figcaption></figure><div class="prose"><h3><i>Backfill</i>: recalcular el pasado</h3><p>Un <b>backfill</b> (<i>reproceso histórico</i>) es correr el DAG para fechas pasadas. Hace falta más seguido de lo que parece: cuando se corrige una regla de negocio, cuando se agrega una columna que hay que llenar hacia atrás, o cuando un DAG nuevo debe llenar los meses anteriores a su primer día.</p><p>Como cada corrida procesa su fecha lógica, recalcular octubre es pedir 31 corridas, una por día. En Airflow 3 se pide con <code>airflow backfill create --dag-id ventas_diarias --from-date 2026-10-01 --to-date 2026-10-31</code>, o desde la interfaz. El parámetro <code>catchup</code> decide si, al activar un DAG con <code>start_date</code> en el pasado, el orquestador crea solo todas las corridas pendientes; casi siempre conviene dejarlo en <code>False</code> y pedir el backfill a propósito.</p></div><div class="lab" id="09-lab-2"><div class="lab-title"><span class="tag">Laboratorio</span><h3><i>Backfill</i>: recalcula un mes de ventas</h3></div><p class="hint">Pulsa «Recalcular octubre» y mira cómo el orquestador crea 31 ejecuciones, una por día, y las reparte según cuántas permites a la vez. Sube el paralelismo y mira el tiempo total y la carga sobre el almacén. Después haz que el 21 de octubre falle, con y sin «cada día espera al anterior», y compara qué días quedan listos.</p><style>
+[id="09-lab-2"] .c9l2-rot{font:700 .72rem var(--f-display);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+[id="09-lab-2"] .c9l2-g{display:grid;gap:4px}
+[id="09-lab-2"] .c9l2-cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+[id="09-lab-2"] .c9l2-dsem{font:700 .66rem var(--f-display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:center}
+[id="09-lab-2"] .c9l2-d{border:2px solid var(--line);border-radius:7px;min-height:44px;padding:3px 4px;display:grid;align-content:space-between;background:var(--paper);font:700 .8rem var(--f-mono);color:var(--ink);position:relative;overflow:hidden}
+[id="09-lab-2"] .c9l2-d small{font:600 .6rem var(--f-display);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+[id="09-lab-2"] .c9l2-d.cola{border-style:dashed}
+[id="09-lab-2"] .c9l2-d.run{border-color:var(--accent);background:var(--accent-soft)}
+[id="09-lab-2"] .c9l2-d.ok{border-color:var(--good);background:var(--good-soft)}
+[id="09-lab-2"] .c9l2-d.fail{border-color:var(--warm);background:var(--warm-soft)}
+[id="09-lab-2"] .c9l2-d.bloq{border-color:var(--warm);border-style:dotted;opacity:.75}
+[id="09-lab-2"] .c9l2-d.desc{border-color:var(--c-tra)}
+[id="09-lab-2"] .c9l2-d .barra{position:absolute;left:0;bottom:0;height:3px;background:var(--accent)}
+[id="09-lab-2"] .c9l2-tarjetas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr));gap:8px}
+[id="09-lab-2"] .c9l2-t{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--card);display:grid;gap:2px}
+[id="09-lab-2"] .c9l2-t b{font:700 1.15rem var(--f-mono);color:var(--ink)}
+[id="09-lab-2"] .c9l2-t span{font:600 .72rem var(--f-display);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+[id="09-lab-2"] .c9l2-t.mal b{color:var(--warm)}
+</style>
+<div class="ctls">
+  <label class="ctl">Ejecuciones a la vez (max_active_runs) <output id="c9l2-co">2</output><input type="range" id="c9l2-c" min="1" max="8" step="1" value="2" aria-label="Ejecuciones a la vez"></label>
+</div>
+<div class="c9l2-g"><span class="c9l2-rot">Opciones del backfill</span>
+<div class="btns" role="group" aria-label="Opciones del backfill">
+  <button type="button" id="c9l2-dep" aria-pressed="false">Cada día espera al anterior (depends_on_past)</button>
+  <button type="button" id="c9l2-mal" aria-pressed="false">El 21 de octubre falla</button>
+</div></div>
+<div class="btns"><button type="button" class="primary" id="c9l2-run">Recalcular octubre</button></div>
+<div class="c9l2-cal" id="c9l2-cal" aria-label="Calendario de octubre de 2026 con el estado de cada ejecución"></div>
+<div class="legend"><span><i style="background:var(--good)"></i>terminó</span><span><i style="background:var(--accent)"></i>corriendo</span><span><i style="background:var(--warm)"></i>falló o bloqueado</span><span><i style="border:2px solid var(--c-tra)"></i>semana de descuentos (más pedidos)</span></div>
+<div class="c9l2-tarjetas">
+  <div class="c9l2-t"><span>Tiempo total</span><b id="c9l2-k1">—</b></div>
+  <div class="c9l2-t" id="c9l2-t2"><span>Consultas a la vez en el almacén</span><b id="c9l2-k2">—</b></div>
+  <div class="c9l2-t"><span>Días listos</span><b id="c9l2-k3">—</b></div>
+</div>
+<div class="readout texto" id="c9l2-out" aria-live="polite">Pulsa «Recalcular octubre»: el orquestador crea una ejecución por cada día, del 1 al 31.</div></div><div class="prose"><p>Dos opciones del laboratorio son parámetros reales de Airflow: <code>max_active_runs</code> limita cuántas corridas del mismo DAG pueden ir a la vez, y <code>depends_on_past</code> hace que una tarea no corra si la misma tarea del día anterior no terminó bien. La segunda solo tiene sentido cuando un día necesita el resultado del anterior, como un saldo acumulado; si cada día es independiente, solo frena todo por un día malo.</p></div></section>
+<section><h2>Dagster: activos de datos en lugar de tareas</h2><div class="prose"><p>Airflow piensa en verbos: tareas que hay que hacer en orden. <b>Dagster</b>, un orquestador de código abierto publicado en 2019, propone pensar en sustantivos: los <b>activos de datos</b> (<i>data assets</i>), las tablas, archivos o modelos que deben existir.</p></div><div class="analogia"><b>Imagínalo así</b><p>Una lista de tareas dice «comprar harina, amasar, hornear». Un inventario dice «debe haber pan del día; el pan sale de la masa; la masa, de la harina», y anota cuándo se horneó el último pan. Con la lista, sabes qué hiciste. Con el inventario, además sabes qué está fresco y qué hay que rehacer cuando llega harina nueva.</p></div><div class="prose"><p>En Dagster, cada activo es una función de Python decorada con <code>@asset</code> que produce una tabla; sus dependencias se declaran con los nombres de otros activos. El orquestador arma el grafo solo y, para cada activo, sabe cuándo se <b>materializó</b> (<i>materialized</i>, se calculó y se guardó) por última vez, con qué código y si quedó desactualizado respecto de lo que lo alimenta.</p></div><figure class="fig fig-comparacion" id="09-diagrama-4"><div class="lienzo"><svg viewBox="0 0 900 360" style="min-width:720px" role="img" aria-label="La misma plataforma vista de dos maneras. A la izquierda, centrada en tareas como en Airflow: verbos encadenados, extraer, transformar, publicar, y las tablas quedan implícitas. A la derecha, centrada en activos como en Dagster: sustantivos, las tablas pedidos crudos, fct_ventas, ventas_diarias por partición y tablero, cada una con su código, sus dependencias, cuándo se materializó y si está al día">
+<defs>
+<marker id="c9d4-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+</defs>
+<rect x="10" y="10" width="420" height="340" rx="12" class="caja"/>
+<text x="26" y="36" class="t t-b">Centrado en tareas (Airflow)</text>
+<text x="26" y="54" class="t t-s t-m">la pregunta es «¿qué hay que hacer y en qué orden?»</text>
+<rect x="40" y="84" width="160" height="40" rx="8" class="c-tra"/><text x="120" y="109" class="t t-s t-mono" text-anchor="middle">extraer_pedidos()</text>
+<rect x="240" y="144" width="160" height="40" rx="8" class="c-tra"/><text x="320" y="169" class="t t-s t-mono" text-anchor="middle">construir_ventas()</text>
+<rect x="40" y="204" width="160" height="40" rx="8" class="c-tra"/><text x="120" y="229" class="t t-s t-mono" text-anchor="middle">refrescar_tablero()</text>
+<path d="M200 104 C 230 104, 220 164, 238 164" class="ln" style="fill:none" marker-end="url(#c9d4-m)"/>
+<path d="M240 174 C 210 174, 220 224, 202 224" class="ln" style="fill:none" marker-end="url(#c9d4-m)"/>
+<text x="26" y="286" class="t t-s">Verbos. Las tablas existen, pero el orquestador</text>
+<text x="26" y="304" class="t t-s">no las conoce: sabe que una tarea terminó,</text>
+<text x="26" y="322" class="t t-s">no si la tabla que escribe está al día.</text>
+
+<rect x="470" y="10" width="420" height="340" rx="12" class="caja"/>
+<text x="486" y="36" class="t t-b">Centrado en activos (Dagster)</text>
+<text x="486" y="54" class="t t-s t-m">la pregunta es «¿qué tablas deben existir y de qué dependen?»</text>
+<rect x="500" y="84" width="160" height="52" rx="8" class="c-red"/><text x="510" y="104" class="t t-s t-b k-red">pedidos_crudos</text><text x="510" y="124" class="t t-s t-m">materializado 02:06</text>
+<rect x="700" y="84" width="170" height="52" rx="8" class="c-red"/><text x="710" y="104" class="t t-s t-b k-red">ventas_diarias</text><text x="710" y="124" class="t t-s t-m">31 particiones · 1 vieja</text>
+<rect x="500" y="170" width="160" height="52" rx="8" class="c-red"/><text x="510" y="190" class="t t-s t-b k-red">fct_ventas</text><text x="510" y="210" class="t t-s t-m">materializado 02:15</text>
+<rect x="700" y="170" width="170" height="52" rx="8" class="c-apl"/><text x="710" y="190" class="t t-s t-b k-apl">tablero</text><text x="710" y="210" class="t t-s k-warm">desactualizado</text>
+<line x1="580" y1="136" x2="580" y2="168" class="ln" marker-end="url(#c9d4-m)"/>
+<path d="M660 196 C 680 196, 680 120, 698 120" class="ln" style="fill:none" marker-end="url(#c9d4-m)"/>
+<line x1="785" y1="136" x2="785" y2="168" class="ln" marker-end="url(#c9d4-m)"/>
+<text x="486" y="268" class="t t-s">Sustantivos. Cada activo es una función que produce</text>
+<text x="486" y="286" class="t t-s">una tabla; sus dependencias salen de sus parámetros,</text>
+<text x="486" y="304" class="t t-s">y el orquestador sabe cuándo se materializó cada una</text>
+<text x="486" y="322" class="t t-s">y cuál quedó vieja respecto de sus fuentes.</text>
+</svg></div><figcaption><b>Tareas frente a activos.</b> A la izquierda, el DAG de tareas, en morado: verbos encadenados (extraer, construir, refrescar); las tablas existen pero el orquestador no las ve. A la derecha, el grafo de activos: tablas en azul y el tablero en rosa, cada una con cuándo se materializó; <code>ventas_diarias</code> tiene 31 particiones, una de ellas vieja, y el tablero aparece en rojo como desactualizado.</figcaption></figure><div class="prose"><p>La diferencia se nota en las preguntas que el orquestador puede responder. Con tareas: «¿terminó la tarea <code>construir_ventas</code> de anoche?». Con activos: «¿la tabla <code>fct_ventas</code> está al día con los pedidos de ayer?, ¿qué tablas hay que recalcular si cambio esta?». Dagster también tiene <b>particiones</b> (<i>partitions</i>), por día o por cualquier clave, que son la forma natural de hacer backfills: se pide materializar las particiones de octubre.</p><p>Las dos visiones convergen: Airflow agregó desde su versión 2.4 la posibilidad de disparar DAGs cuando se actualiza un conjunto de datos, y en Airflow 3 los llama activos (<i>assets</i>); Prefect, Kestra y otros orquestadores del mercado tienen sus propias variantes. La herramienta importa menos que la idea: un orquestador que sabe qué tablas produce cada paso puede decir qué está viejo.</p></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Activos con particiones en Dagster</h3></div><p>Vas a declarar dos activos en Dagster, las ventas por día (con una partición por día de octubre) y la cifra de octubre, y a materializarlos desde la terminal, sin abrir la interfaz web. Usa la carpeta <code>datos-tienda</code> con su entorno virtual activado. La instalación de Dagster trae muchas dependencias y puede tardar unos minutos:</p><div class="cmds"><div class="cmd-panel" data-so="win mac linux"><div class="cmd-l"><code>pip install dagster duckdb</code><button type="button" class="copiar">Copiar</button></div></div></div><p>Guarda esto como <code>activos.py</code> en <code>datos-tienda</code>:</p><div class="code-copia"><pre><code>"""Los mismos pasos como activos de Dagster: cada función es una tabla, no una tarea."""
+import duckdb
+import dagster as dg
+
+DIAS = dg.DailyPartitionsDefinition(start_date="2026-10-01", end_date="2026-11-01")
+
+def base():
+    con = duckdb.connect("analitica.duckdb")
+    con.sql("INSTALL sqlite; LOAD sqlite; ATTACH IF NOT EXISTS 'tienda.db' AS t (TYPE sqlite, READ_ONLY)")
+    return con
+
+@dg.asset(partitions_def=DIAS, backfill_policy=dg.BackfillPolicy.single_run())
+def ventas_diarias(context: dg.AssetExecutionContext) -&gt; None:
+    """Ventas netas por día: reescribe solo los días pedidos (idempotente)."""
+    desde, hasta = (f"{t:%Y-%m-%d}" for t in context.partition_time_window)
+    con = base()
+    con.sql("CREATE TABLE IF NOT EXISTS ventas_diarias (dia DATE, ventas DECIMAL(12,2), pedidos INT)")
+    con.sql(f"DELETE FROM ventas_diarias WHERE dia &gt;= DATE '{desde}' AND dia &lt; DATE '{hasta}'")
+    con.sql(f"""INSERT INTO ventas_diarias
+        SELECT CAST(substr(p.creado_en, 1, 10) AS DATE), SUM(d.cantidad * d.precio_unitario),
+               COUNT(DISTINCT p.pedido_id)
+        FROM t.pedidos p JOIN t.detalle_pedido d USING (pedido_id)
+        WHERE p.creado_en &gt;= '{desde}' AND p.creado_en &lt; '{hasta}'
+          AND p.estado IN ('pagado', 'enviado', 'entregado')
+        GROUP BY 1""")
+    context.log.info(f"días reescritos: desde {desde} hasta antes de {hasta}")
+
+@dg.asset(deps=[ventas_diarias])
+def ventas_octubre(context: dg.AssetExecutionContext) -&gt; None:
+    """La cifra del tablero, a partir de las particiones diarias."""
+    total, dias = base().sql("SELECT SUM(ventas), COUNT(*) FROM ventas_diarias").fetchall()[0]
+    context.log.info(f"ventas netas de octubre: {total} con {dias} días cargados")
+
+defs = dg.Definitions(assets=[ventas_diarias, ventas_octubre])</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>Materializa un solo día, después todo octubre de una vez y al final la cifra:</p><div class="cmds"><div class="cmd-panel" data-so="win mac linux"><div class="cmd-l"><code>dagster asset materialize -f activos.py --select ventas_diarias --partition 2026-10-14</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dagster asset materialize -f activos.py --select ventas_diarias --partition-range 2026-10-01...2026-10-31</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dagster asset materialize -f activos.py --select ventas_octubre</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>En la salida de cada comando, busca la línea <code>días reescritos</code> y la final <code>RUN_SUCCESS</code>.</span></li><li><span>En la salida del último, busca <code>ventas netas de octubre</code>.</span></li><li><span>Vuelve a correr el segundo comando y después el tercero.</span></li></ol><p><b>Qué observar:</b> el primer comando escribe solo el 14 de octubre; el segundo, un backfill de 31 particiones en una sola corrida; el tercero lee la tabla y muestra 782785.77 con 31 días cargados, la cifra del tablero del capítulo 01. Al repetir el backfill, la cifra no cambia y siguen siendo 31 días, no 32: el activo borra y reescribe sus días, es idempotente. Verás avisos en amarillo (por ejemplo, que el comando tiene un reemplazo más nuevo o que la opción de backfill está en beta): no afectan el resultado. Si quieres ver el grafo, <code>dagster dev -f activos.py</code> abre la interfaz en <code>http://localhost:3000</code>; deténla con Ctrl+C al terminar.</p></div></section>
+<section><h2>Reintentos, alertas y tiempos máximos</h2><div class="prose"><p>Un pipeline falla por dos tipos de causas, y cada una se trata distinto.</p><ul><li><b>Fallas pasajeras</b> (<i>transient failures</i>): un corte de red, la base ocupada por un respaldo, un servicio que respondió con un error temporal. Al reintentar, casi siempre funcionan.</li><li><b>Fallas permanentes</b>: un error en el código, una columna que cambió de nombre en el origen, un dato que rompe una regla. Reintentar diez veces da diez veces el mismo error.</li></ul><p>Para las pasajeras, se configuran <b>reintentos</b> (<i>retries</i>) con una <b>espera exponencial</b> (<i>exponential backoff</i>): esperar 30 segundos antes del primer reintento, un minuto antes del segundo, dos antes del tercero. La espera creciente le da tiempo al sistema caído para recuperarse y evita que cien tareas lo golpeen a la vez. En Airflow son los parámetros <code>retries</code>, <code>retry_delay</code> y <code>retry_exponential_backoff</code>; en Dagster, una política de reintentos (<code>RetryPolicy</code>) por activo.</p><p>Para las permanentes, los reintentos solo retrasan la noticia. Por eso se combinan con <b>alertas</b> (<i>alerts</i>): cuando una tarea agota sus reintentos, el orquestador avisa por correo o por el chat del equipo, con el nombre de la tarea, la fecha que procesaba y el error. Una buena alerta llega a quien puede arreglar el problema, una sola vez y con lo necesario para empezar; un canal con cien alertas diarias que nadie lee es igual a no tener alertas.</p><p>Y para lo que se cuelga, un <b>tiempo máximo</b> (<i>timeout</i>): si la extracción normalmente tarda seis minutos, que se corte a los treinta (<code>execution_timeout</code> en Airflow). Una tarea colgada es peor que una fallida, porque no avisa y bloquea a las que dependen de ella. A esto se suma la pregunta de negocio: si el tablero tiene que estar listo a las 8:00, el orquestador puede avisar a las 7:00 si todavía no terminó, aunque nada haya fallado.</p></div></section>
+<section><h2>Reanudar desde el paso que falló</h2><div class="prose"><p>Cuando una tarea falla después de sus reintentos, el orquestador marca como <b>omitidas por dependencia</b> (<i>upstream failed</i>) a todas las que dependen de ella, directa o indirectamente, y deja terminar las ramas que no dependen. El tablero no se publica con datos a medias: conserva la cifra de ayer, atrasada pero correcta.</p></div><figure class="fig fig-esquema" id="09-diagrama-2"><div class="lienzo"><svg viewBox="0 0 900 370" style="min-width:720px" role="img" aria-label="El DAG del pipeline de ventas de Tienda Ejemplo en la corrida del 14 de octubre: tres extracciones, tres limpiezas, fct_ventas y dim_clientes, y el tablero. fct_ventas falló tras dos reintentos; tablero_ventas no corrió porque depende de ella; dim_clientes y las ramas que no dependen de la falla terminaron bien. Abajo, lo que se vuelve a ejecutar al reanudar: solo fct_ventas y tablero_ventas">
+<defs>
+<marker id="c9d2-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+</defs>
+<text x="20" y="24" class="t t-xs t-b t-m">EXTRAER</text><text x="220" y="24" class="t t-xs t-b t-m">LIMPIAR (STAGING)</text><text x="440" y="24" class="t t-xs t-b t-m">MODELAR</text><text x="680" y="24" class="t t-xs t-b t-m">PUBLICAR</text>
+<g class="t t-s">
+<rect x="20" y="40" width="160" height="44" rx="8" style="fill:var(--good-soft);stroke:var(--good)"/><text x="30" y="60" class="t t-s t-b">extraer_pedidos</text><text x="30" y="76" class="t t-s t-m">éxito · 6 min</text>
+<rect x="20" y="110" width="160" height="44" rx="8" style="fill:var(--good-soft);stroke:var(--good)"/><text x="30" y="130" class="t t-s t-b">extraer_clientes</text><text x="30" y="146" class="t t-s t-m">éxito · 2 min</text>
+<rect x="20" y="180" width="160" height="44" rx="8" style="fill:var(--good-soft);stroke:var(--good)"/><text x="30" y="200" class="t t-s t-b">extraer_pagos</text><text x="30" y="216" class="t t-s t-m">éxito al 2.º intento</text>
+<rect x="220" y="40" width="160" height="44" rx="8" style="fill:var(--good-soft);stroke:var(--good)"/><text x="230" y="60" class="t t-s t-b">stg_pedidos</text><text x="230" y="76" class="t t-s t-m">éxito · 3 min</text>
+<rect x="220" y="110" width="160" height="44" rx="8" style="fill:var(--good-soft);stroke:var(--good)"/><text x="230" y="130" class="t t-s t-b">stg_clientes</text><text x="230" y="146" class="t t-s t-m">éxito · 1 min</text>
+<rect x="220" y="180" width="160" height="44" rx="8" style="fill:var(--good-soft);stroke:var(--good)"/><text x="230" y="200" class="t t-s t-b">stg_pagos</text><text x="230" y="216" class="t t-s t-m">éxito · 2 min</text>
+<rect x="440" y="62" width="180" height="50" rx="8" style="fill:var(--warm-soft);stroke:var(--warm);stroke-width:2.5"/><text x="450" y="84" class="t t-s t-b">fct_ventas</text><text x="450" y="102" class="t t-s k-warm">falló tras 3 intentos</text>
+<rect x="440" y="156" width="180" height="44" rx="8" style="fill:var(--good-soft);stroke:var(--good)"/><text x="450" y="176" class="t t-s t-b">dim_clientes</text><text x="450" y="192" class="t t-s t-m">éxito · 2 min</text>
+<rect x="680" y="108" width="190" height="50" rx="8" class="caja" style="stroke:var(--warm);stroke-dasharray:3 3"/><text x="690" y="130" class="t t-s t-b">tablero_ventas</text><text x="690" y="148" class="t t-s k-warm">no corrió: falló una dependencia</text>
+</g>
+<line x1="180" y1="62" x2="218" y2="62" class="ln" marker-end="url(#c9d2-m)"/>
+<line x1="180" y1="132" x2="218" y2="132" class="ln" marker-end="url(#c9d2-m)"/>
+<line x1="180" y1="202" x2="218" y2="202" class="ln" marker-end="url(#c9d2-m)"/>
+<path d="M380 62 C 410 62, 410 80, 438 80" class="ln" style="fill:none" marker-end="url(#c9d2-m)"/>
+<path d="M380 202 C 410 202, 410 96, 438 96" class="ln" style="fill:none" marker-end="url(#c9d2-m)"/>
+<path d="M380 132 C 410 132, 410 178, 438 178" class="ln" style="fill:none" marker-end="url(#c9d2-m)"/>
+<path d="M620 87 C 650 87, 650 126, 678 126" class="ln s-warm" style="fill:none" marker-end="url(#c9d2-m)"/>
+<path d="M620 178 C 650 178, 650 140, 678 140" class="ln" style="fill:none" marker-end="url(#c9d2-m)"/>
+
+<rect x="20" y="250" width="860" height="106" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="36" y="274" class="t t-xs t-b t-m">AL REANUDAR, DESPUÉS DE CORREGIR LA CAUSA</text>
+<text x="36" y="298" class="t t-s">Se reutilizan las 7 tareas que terminaron bien (sus tablas ya están escritas).</text>
+<text x="36" y="320" class="t t-s">Se vuelven a ejecutar solo <tspan class="t-b k-warm">fct_ventas</tspan> y lo que depende de ella, <tspan class="t-b">tablero_ventas</tspan>: 9 minutos en lugar de 29.</text>
+<text x="36" y="342" class="t t-s t-m">Funciona porque cada tarea es idempotente y escribe su resultado antes de que empiece la siguiente.</text>
+</svg></div><figcaption><b>La corrida del 14 de octubre, con una falla.</b> Las tareas en verde terminaron bien; <code>extraer_pagos</code> necesitó un reintento. <code>fct_ventas</code>, en rojo, falló después de tres intentos, y <code>tablero_ventas</code>, con borde rojo punteado, no corrió porque depende de ella. <code>dim_clientes</code> sí terminó: su rama no depende de la falla. La franja de abajo dice qué pasa al reanudar después de corregir la causa: se reutilizan las siete tareas terminadas y solo se vuelven a ejecutar <code>fct_ventas</code> y el tablero, nueve minutos en lugar de veintinueve.</figcaption></figure><div class="prose"><p>Después de corregir la causa, hay dos opciones: correr todo de nuevo o <b>reanudar</b> (<i>resume</i>), es decir, volver a ejecutar solo lo que falló y lo que depende de ello. Reanudar es más rápido, más barato y no vuelve a cargar la base de Diego. Funciona solo si se cumplen las reglas del DAG: cada tarea es idempotente y escribió su resultado antes de terminar, así que lo que ya está hecho se puede reutilizar sin miedo. En Airflow se hace limpiando (<i>clear</i>) la tarea fallida con la opción de incluir las que dependen de ella; en Dagster, volviendo a lanzar la corrida desde lo que falló.</p></div><div class="lab" id="09-lab-1"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Un DAG que falla y se reanuda</h3></div><p class="hint">Este es el DAG de ventas de la tienda. Rompe una tarea (una vez para una falla pasajera, dos para una permanente), elige cuántos reintentos tiene cada tarea y pulsa «Correr el DAG». Mira qué tareas terminan, cuáles no corren por depender de la que falló y cuántos minutos de cómputo se gastaron. Después compara «Corregir y reanudar» con «Corregir y correr todo de nuevo».</p><style>
+[id="09-lab-1"] .c9l1-rot{font:700 .72rem var(--f-display);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+[id="09-lab-1"] .c9l1-g{display:grid;gap:4px}
+[id="09-lab-1"] .c9l1-lienzo{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+[id="09-lab-1"] .c9l1-lienzo svg{display:block;width:100%;min-width:600px;height:auto}
+[id="09-lab-1"] svg text{font-family:var(--f-display);fill:var(--ink);pointer-events:none}
+[id="09-lab-1"] svg .c9l1-m{fill:var(--muted)}
+[id="09-lab-1"] svg .c9l1-arista{stroke:var(--line);stroke-width:1.6;fill:none}
+[id="09-lab-1"] svg g.c9l1-n{cursor:pointer}
+[id="09-lab-1"] svg g.c9l1-n:focus{outline:none}
+[id="09-lab-1"] svg g.c9l1-n:focus rect{stroke-width:3}
+[id="09-lab-1"] svg g.c9l1-n rect{fill:var(--paper);stroke:var(--line);stroke-width:1.6}
+[id="09-lab-1"] svg g.pend rect{fill:var(--paper);stroke:var(--line)}
+[id="09-lab-1"] svg g.run rect{fill:var(--accent-soft);stroke:var(--accent)}
+[id="09-lab-1"] svg g.ok rect{fill:var(--good-soft);stroke:var(--good)}
+[id="09-lab-1"] svg g.retry rect{fill:var(--warm-soft);stroke:var(--warm);stroke-dasharray:4 3}
+[id="09-lab-1"] svg g.fail rect{fill:var(--warm-soft);stroke:var(--warm);stroke-width:2.4}
+[id="09-lab-1"] svg g.up rect{fill:var(--paper);stroke:var(--warm);stroke-dasharray:2 3}
+[id="09-lab-1"] svg g.reuse rect{fill:var(--good-soft);stroke:var(--good);opacity:.55}
+[id="09-lab-1"] .c9l1-tarjetas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr));gap:8px}
+[id="09-lab-1"] .c9l1-t{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--card);display:grid;gap:2px}
+[id="09-lab-1"] .c9l1-t b{font:700 1.15rem var(--f-mono);color:var(--ink)}
+[id="09-lab-1"] .c9l1-t span{font:600 .72rem var(--f-display);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+</style>
+<p class="hint">Pulsa (o elige con Tab y Enter) una tarea para romperla: la primera vez falla una sola vez y se recupera al reintentar; la segunda, falla siempre; la tercera, la arregla.</p>
+<div class="ctls">
+  <label class="ctl">Reintentos por tarea <output id="c9l1-ro">1</output><input type="range" id="c9l1-r" min="0" max="3" step="1" value="1" aria-label="Reintentos por tarea"></label>
+</div>
+<div class="btns"><button type="button" class="primary" id="c9l1-run">Correr el DAG</button><button type="button" id="c9l1-res" disabled>Corregir y reanudar</button><button type="button" id="c9l1-todo" disabled>Corregir y correr todo de nuevo</button></div>
+<div class="c9l1-lienzo"><svg id="c9l1-svg" viewBox="0 0 660 290" role="group" aria-label="DAG del pipeline de ventas: extracciones a la izquierda, limpieza, modelos y el tablero a la derecha"></svg></div>
+<div class="legend"><span><i style="background:var(--good)"></i>éxito</span><span><i style="background:var(--accent)"></i>corriendo</span><span><i style="background:var(--warm)"></i>falló o reintenta</span><span><i style="border:1px dashed var(--warm)"></i>no corre: falló algo de lo que depende</span><span><i style="background:var(--good);opacity:.5"></i>reutilizada en la reanudación</span></div>
+<div class="c9l1-tarjetas">
+  <div class="c9l1-t"><span>Tareas ejecutadas en esta corrida</span><b id="c9l1-k1">0</b></div>
+  <div class="c9l1-t"><span>Intentos fallidos</span><b id="c9l1-k2">0</b></div>
+  <div class="c9l1-t"><span>Minutos de cómputo de esta corrida</span><b id="c9l1-k3">0</b></div>
+</div>
+<div class="readout texto" id="c9l1-out" aria-live="polite">Rompe una tarea y pulsa «Correr el DAG».</div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Un orquestador mínimo: reintentos, estado y reanudación</h3></div><p>Vas a correr un orquestador de 70 líneas, escrito solo con la biblioteca estándar de Python, que tiene lo esencial de Airflow y Dagster: un DAG, el orden topológico, reintentos con espera exponencial, un archivo de estado y la opción de reanudar. Sus tareas copian las tablas de <code>tienda.db</code> a otra base, <code>analitica.db</code>, y construyen las ventas mensuales. No hace falta el entorno virtual. Guarda esto como <code>orquestador.py</code> en <code>datos-tienda</code>:</p><div class="code-copia"><pre><code>"""Un orquestador mínimo: DAG, orden topológico, reintentos, estado y reanudación.
+
+Uso:
+  python orquestador.py                         corre el DAG completo
+  python orquestador.py --romper fct_ventas     esa tarea falla siempre
+  python orquestador.py --intermitente copiar_pagos   falla solo el primer intento
+  python orquestador.py --reanudar              salta lo que ya terminó bien
+"""
+import json, sqlite3, sys, time
+from graphlib import TopologicalSorter
+from pathlib import Path
+
+ESTADO = Path("estado.json")
+REINTENTOS, ESPERA = 2, 0.5          # segundos; se duplica en cada reintento
+args = sys.argv[1:]
+romper = args[args.index("--romper") + 1] if "--romper" in args else None
+intermitente = args[args.index("--intermitente") + 1] if "--intermitente" in args else None
+
+def sql(consulta):
+    con = sqlite3.connect("tienda.db")
+    con.execute("ATTACH 'analitica.db' AS a")
+    for sentencia in consulta.split(";"):
+        con.execute(sentencia)
+    con.commit()
+    con.close()
+
+def copiar(tabla):  # idempotente: borra y vuelve a crear la copia completa
+    return lambda: sql(f"DROP TABLE IF EXISTS a.{tabla}; CREATE TABLE a.{tabla} AS SELECT * FROM main.{tabla}")
+
+TAREAS = {
+    "copiar_pedidos": ([], copiar("pedidos")),
+    "copiar_detalle": ([], copiar("detalle_pedido")),
+    "copiar_pagos": ([], copiar("pagos")),
+    "fct_ventas": (["copiar_pedidos", "copiar_detalle", "copiar_pagos"], lambda: sql("""
+        DROP TABLE IF EXISTS a.fct_ventas;
+        CREATE TABLE a.fct_ventas AS
+        SELECT p.pedido_id, substr(p.creado_en, 1, 7) AS mes, d.cantidad * d.precio_unitario AS venta
+        FROM a.pedidos p JOIN a.detalle_pedido d USING (pedido_id)
+        WHERE p.estado IN ('pagado', 'enviado', 'entregado')""")),
+    "ventas_mensuales": (["fct_ventas"], lambda: sql("""
+        DROP TABLE IF EXISTS a.ventas_mensuales;
+        CREATE TABLE a.ventas_mensuales AS
+        SELECT mes, ROUND(SUM(venta), 2) AS ventas_netas, COUNT(DISTINCT pedido_id) AS pedidos
+        FROM a.fct_ventas GROUP BY mes""")),
+}
+
+estado = json.loads(ESTADO.read_text()) if ESTADO.exists() and "--reanudar" in args else {}
+orden = list(TopologicalSorter({t: deps for t, (deps, _) in TAREAS.items()}).static_order())
+print("orden:", " → ".join(orden))
+for tarea in orden:
+    deps, funcion = TAREAS[tarea]
+    if estado.get(tarea) == "ok":
+        print(f"  {tarea:17} ya estaba hecha: se reutiliza")
+        continue
+    if any(estado.get(d) != "ok" for d in deps):
+        estado[tarea] = "omitida"
+        print(f"  {tarea:17} OMITIDA: falló algo de lo que depende")
+        continue
+    for intento in range(REINTENTOS + 1):
+        try:
+            if tarea == romper or (tarea == intermitente and intento == 0):
+                raise RuntimeError("se perdió la conexión con la base")
+            inicio = time.perf_counter()
+            funcion()
+            estado[tarea] = "ok"
+            print(f"  {tarea:17} ok en {time.perf_counter() - inicio:.2f} s (intento {intento + 1})")
+            break
+        except Exception as error:
+            espera = ESPERA * 2 ** intento
+            if intento &lt; REINTENTOS:
+                print(f"  {tarea:17} falló ({error}); reintento en {espera:.1f} s")
+                time.sleep(espera)
+            else:
+                estado[tarea] = "falló"
+                print(f"  {tarea:17} FALLÓ tras {REINTENTOS + 1} intentos: aviso al equipo de datos")
+ESTADO.write_text(json.dumps(estado, indent=2))
+if estado.get("ventas_mensuales") == "ok":
+    con = sqlite3.connect("analitica.db")
+    print("ventas netas 2026-10:", con.execute(
+        "SELECT ventas_netas, pedidos FROM ventas_mensuales WHERE mes = '2026-10'").fetchone())</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>Primero, una noche mala: <code>copiar_pagos</code> falla una vez y <code>fct_ventas</code> falla siempre. Después, la causa «se corrige» y se reanuda dos veces:</p><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python orquestador.py --romper fct_ventas --intermitente copiar_pagos</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python orquestador.py --reanudar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python orquestador.py --reanudar</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 orquestador.py --romper fct_ventas --intermitente copiar_pagos</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 orquestador.py --reanudar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 orquestador.py --reanudar</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>En la primera corrida, sigue a <code>copiar_pagos</code> y a <code>fct_ventas</code>: cuántos intentos y cuánto espera entre ellos.</span></li><li><span>Abre <code>estado.json</code> y mira qué quedó anotado.</span></li><li><span>Compara la segunda corrida con la tercera.</span></li></ol><p><b>Qué observar:</b> <code>copiar_pagos</code> falla, espera medio segundo y termina en el segundo intento, sin que nadie intervenga. <code>fct_ventas</code> falla tres veces, con esperas de 0,5 y 1 segundo, y <code>ventas_mensuales</code> queda omitida: no se publica nada a medias. La segunda corrida reutiliza las tres copias y ejecuta solo <code>fct_ventas</code> y <code>ventas_mensuales</code>, que dan US$ 782.785,77 y 8.376 pedidos en octubre. La tercera no ejecuta nada: todo ya estaba hecho. Un orquestador real agrega horarios, paralelismo, una interfaz y alertas, pero la mecánica es esta.</p></div><div class="caso"><b>Un caso real</b><p><b>El backfill que tumbó la base.</b> Un equipo de datos de una empresa de suscripciones corrigió una regla de facturación y lanzó un backfill de dos años de su DAG diario, con el paralelismo por defecto del orquestador. Decenas de corridas arrancaron a la vez, cada una con su extracción contra la base de producción, que se puso lenta para los clientes durante una hora hasta que alguien pausó el DAG. La corrección fue doble: un <b>grupo de recursos</b> (<i>pool</i>) que limita a dos las extracciones simultáneas contra esa base, sin importar cuántas corridas haya, y la regla de lanzar los backfills largos de noche y en tramos de un mes. Es un tropiezo tan común que la documentación de los orquestadores dedica secciones enteras a limitar la concurrencia.</p></div><div class="ml"><b>En la práctica</b><p><b>El martes siguiente.</b> Natalia pasó los tres scripts a un DAG de Airflow con nueve tareas, programado a las 2:00, con dos reintentos con espera exponencial, un tiempo máximo de 30 minutos por tarea y un grupo de recursos que deja una sola extracción a la vez contra la base de Diego. Si a las 7:00 el tablero no está publicado, el orquestador escribe en el canal del equipo con la tarea y el error. A las tres semanas, un respaldo de la base volvió a atrasar la extracción: la transformación esperó, la extracción terminó al segundo intento y el tablero estuvo listo a las 4:10. Elena no se enteró, que era exactamente la idea. El DAG quedó en el repositorio, revisado como cualquier código, y en el capítulo 10 sus transformaciones pasan a dbt.</p></div></section>
+<section><h2>La idea clave</h2><div class="prose"><p>Un pipeline es un grafo de dependencias, no una lista de horarios. El orquestador lo corre en orden topológico, en paralelo donde puede, con reintentos y espera exponencial para las fallas pasajeras, alertas y tiempos máximos para las permanentes, y un historial de cada corrida. Si cada tarea es idempotente, recibe su fecha como parámetro y escribe su resultado, el pipeline se puede reprocesar hacia atrás con un backfill y reanudar desde el paso que falló sin repetir lo que ya estaba bien. Airflow lo piensa como tareas; Dagster, como las tablas que esas tareas producen.</p></div></section>
+<section><h2>Pruébate</h2><div class="quiz"><h3>Pruébate</h3><details><summary>¿Por qué la transformación del caso del martes terminó sin errores y aun así publicó un dato malo?</summary><p>Porque cron la lanzó a su hora sin saber que la extracción no había terminado: leyó la mitad de los pedidos y la procesó bien. El problema no era un error de código, sino la falta de dependencias.</p></details><details><summary>En un DAG, ¿qué tareas pueden correr al mismo tiempo?</summary><p>Las que no dependen entre sí, directa ni indirectamente, como las tres extracciones del DAG de ventas.</p></details><details><summary>¿Por qué una tarea de un DAG debe recibir la fecha que procesa como parámetro y no calcular «ayer»?</summary><p>Para que un reintento, una reanudación o un backfill procesen el período correcto: si la corrida del 14 se repite el 20, «ayer» sería el 19.</p></details><details><summary>¿Qué diferencia hay entre una falla pasajera y una permanente, y qué conviene configurar para cada una?</summary><p>La pasajera (corte de red, base ocupada) se resuelve sola al reintentar: reintentos con espera exponencial. La permanente (error de código, cambio en el origen) se repite siempre: alertas a quien puede corregirla, y un tiempo máximo si la tarea se cuelga.</p></details><details><summary>¿Qué condición tienen que cumplir las tareas para que reanudar desde la que falló sea seguro?</summary><p>Ser idempotentes y haber escrito su resultado al terminar, de modo que lo ya hecho se pueda reutilizar y lo que se repite deje el mismo resultado.</p></details><details><summary>¿Qué sabe un orquestador basado en activos que uno basado en tareas no sabe?</summary><p>Qué tablas produce cada paso, cuándo se materializó cada una y cuáles quedaron desactualizadas respecto de sus fuentes, además de qué hay que recalcular si una cambia.</p></details></div></section>
+<section><h2>Para investigar</h2><div class="investiga"><h3>Para investigar</h3><p class="hint">Estas preguntas no se responden en el capítulo: búscalas por tu cuenta.</p><ol><li>¿Qué significan los cinco campos de una línea de cron, como <code>0 2 * * 1-5</code>?<small>Pista: busca «crontab syntax».</small></li><li>¿Qué tipos de ejecutores tiene Airflow (local, Celery, Kubernetes) y en qué se diferencian?<small>Pista: busca «Airflow executors».</small></li><li>¿Por qué se suele agregar un componente aleatorio (<i>jitter</i>) a la espera exponencial de los reintentos?<small>Pista: busca «exponential backoff and jitter».</small></li><li>¿Qué es un sensor en modo <i>reschedule</i> y por qué ocupa menos recursos que uno que espera activamente?</li><li>¿Qué algoritmo usa el módulo <code>graphlib</code> de Python para el orden topológico y cómo detecta un ciclo?<small>Pista: busca «Kahn's algorithm».</small></li></ol></div></section>
+<section><h2>Para saber más</h2><div class="vids"><span>Para saber más</span><a class="vid" href="https://airflow.apache.org/docs/apache-airflow/stable/core-concepts/index.html" target="_blank" rel="noopener">Airflow: conceptos centrales <small>documentación oficial, en inglés</small></a><a class="vid" href="https://docs.dagster.io/guides/build/assets" target="_blank" rel="noopener">Dagster: activos <small>documentación oficial, en inglés</small></a><a class="vid" href="https://airflow.apache.org/docs/apache-airflow/stable/core-concepts/backfill.html" target="_blank" rel="noopener">Airflow: backfill <small>documentación oficial, en inglés</small></a><a class="vid" href="https://docs.python.org/es/3/library/graphlib.html" target="_blank" rel="noopener">graphlib: orden topológico en Python <small>documentación de Python, en español</small></a></div></section>
+<label class="got"><input type="checkbox" id="got"> Lo tengo claro</label>
+<nav class="pager" id="pager" aria-label="Capítulo anterior y siguiente"></nav>
+</main>
+</div>
+<footer><span>Curso abierto de aaramirez.github.io.</span><span>Sitio publicado: <a href="https://github.com/aaramirez/ingenieria-de-datos" target="_blank" rel="noopener">github.com/aaramirez/ingenieria-de-datos</a></span></footer>
+</div>
+<script src="assets/lab.js"></script>
+<script>
+(function(){
+  const raiz=document.querySelector('[id="09-lab-2"]');
+  const {$}=window.Lab;
+  const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const LIMITE=4; // consultas pesadas que aguanta el almacén sin que se pongan lentos los tableros
+  // pedidos por día de octubre de 2026 (aprox.: más los fines de semana, +60 % del 19 al 25)
+  const DIAS=[];for(let d=1;d<=31;d++){const sem=(2+d)%7;let p=270+(sem===5||sem===6?40:0);if(d>=19&&d<=25)p=Math.round(p*1.6);DIAS.push({d,p,min:Math.round(p/30)});}
+  const PRIMER=3; // el 1 de octubre de 2026 es jueves (lunes = 0)
+  let C=2,dep=false,mal=false,raf=0,estado={};
+  function pintar(prog,tiempo,picos){
+    let h=['lun','mar','mié','jue','vie','sáb','dom'].map(x=>'<div class="c9l2-dsem">'+x+'</div>').join('');
+    for(let i=0;i<PRIMER;i++)h+='<div></div>';
+    DIAS.forEach(o=>{const e=estado[o.d]||'',desc=o.d>=19&&o.d<=25;
+      const txt={cola:'cola',run:'corre',ok:'listo',fail:'falló',bloq:'bloq.','':o.p}[e];
+      h+='<div class="c9l2-d '+e+(desc&&!e?' desc':'')+'"><span>'+o.d+'</span><small>'+txt+'</small>'+(e==='run'&&prog?'<i class="barra" style="width:'+Math.round(prog[o.d]*100)+'%"></i>':'')+'</div>';});
+    $('#c9l2-cal').innerHTML=h;
+  }
+  function simular(){
+    // simulación por minutos: el orquestador lanza hasta C días a la vez, en orden
+    const cola=DIAS.map(o=>o.d),corr={},hecho={},linea=[];let t=0,pico=0;
+    const st={};DIAS.forEach(o=>st[o.d]='cola');
+    while(true){
+      // terminar
+      Object.keys(corr).forEach(k=>{if(corr[k]<=t){const d=+k;delete corr[k];st[d]=(mal&&d===21)?'fail':'ok';}});
+      if(dep)DIAS.forEach(o=>{if(st[o.d]==='cola'&&o.d>1&&(st[o.d-1]==='fail'||st[o.d-1]==='bloq'))st[o.d]='bloq';});
+      // lanzar
+      for(const d of DIAS.map(o=>o.d)){
+        if(Object.keys(corr).length>=C)break;
+        if(st[d]!=='cola')continue;
+        if(dep&&d>1&&st[d-1]!=='ok')break;
+        st[d]='run';corr[d]=t+DIAS[d-1].min*(mal&&d===21?0.5:1);
+      }
+      pico=Math.max(pico,Object.keys(corr).length);
+      const prog={};Object.keys(corr).forEach(k=>{const o=DIAS[k-1];prog[k]=1-(corr[k]-t)/o.min;});
+      linea.push({t,st:{...st},prog});
+      if(!Object.keys(corr).length)break;
+      t+=1;
+    }
+    return {linea,t,pico};
+  }
+  function resumen(S){
+    const fin=S.linea[S.linea.length-1].st;const ok=Object.values(fin).filter(x=>x==='ok').length,bloq=Object.values(fin).filter(x=>x==='bloq').length;
+    $('#c9l2-k1').textContent=S.t+' min';$('#c9l2-k2').textContent=String(S.pico);$('#c9l2-k3').textContent=ok+' de 31';
+    $('#c9l2-t2').className='c9l2-t'+(S.pico>LIMITE?' mal':'');
+    let txt;
+    if(mal&&dep)txt='El 21 falló y, como cada día espera al anterior, del 22 al 31 quedaron bloqueados ('+bloq+' días). Sirve cuando un día necesita el resultado del anterior (un saldo acumulado); si no, frena todo el backfill por un solo día malo.';
+    else if(mal)txt='El 21 falló, pero los demás días son independientes y terminaron. Como cada ejecución reescribe solo su partición de fecha (idempotente), basta con corregir y volver a lanzar el 21.';
+    else if(S.pico>LIMITE)txt='Con '+C+' ejecuciones a la vez el mes se recalcula en '+S.t+' min, pero el almacén recibe '+S.pico+' consultas pesadas juntas (aguanta '+LIMITE+'): los tableros de Elena se ponen lentos mientras dura. Más paralelo no es gratis.';
+    else if(dep)txt='Con depends_on_past los días van de a uno aunque permitas '+C+' a la vez: el mes toma '+S.t+' min. Fíjate en que la semana de descuentos (19 al 25) tarda más porque tiene más pedidos.';
+    else txt='El orquestador crea 31 ejecuciones, una por día, y corre '+C+' a la vez: '+S.t+' min en total. Sube el paralelismo y mira el tiempo y la carga del almacén.';
+    $('#c9l2-out').innerHTML='<span class="big">'+ok+' de 31 días listos en '+S.t+' min</span><span>'+txt+'</span>';
+  }
+  function correr(){
+    clearTimeout(raf);const S=simular();
+    if(reduce){estado=S.linea[S.linea.length-1].st;pintar();resumen(S);return;}
+    const t0=performance.now(),paso=Math.max(25,Math.min(90,5000/S.linea.length));
+    (function f(t){const i=Math.min(S.linea.length-1,Math.floor((t-t0)/paso));const L=S.linea[i];estado=L.st;pintar(L.prog);
+      $('#c9l2-k1').textContent=L.t+' min';
+      if(i<S.linea.length-1)raf=setTimeout(()=>f(performance.now()),30);else resumen(S);})(t0);
+  }
+  $('#c9l2-c').addEventListener('input',e=>{C=+e.target.value;$('#c9l2-co').textContent=C;});
+  $('#c9l2-dep').addEventListener('click',e=>{dep=!dep;e.currentTarget.setAttribute('aria-pressed',dep);});
+  $('#c9l2-mal').addEventListener('click',e=>{mal=!mal;e.currentTarget.setAttribute('aria-pressed',mal);});
+  $('#c9l2-run').addEventListener('click',correr);
+  pintar();
+})();
+</script>
+<script>
+(function(){
+  const raiz=document.querySelector('[id="09-lab-1"]');
+  const {$}=window.Lab;
+  const svg=raiz.querySelector('#c9l1-svg'),NS='http://www.w3.org/2000/svg';
+  const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // tareas: id, nombre, columna, fila, minutos, dependencias
+  const T=[
+    ['ep','extraer_pedidos',0,0,6,[]],['ec','extraer_clientes',0,1,2,[]],['ea','extraer_pagos',0,2,4,[]],
+    ['sp','stg_pedidos',1,0,3,['ep']],['sc','stg_clientes',1,1,1,['ec']],['sa','stg_pagos',1,2,2,['ea']],
+    ['fv','fct_ventas',2,0.5,8,['sp','sa']],['dc','dim_clientes',2,1.8,2,['sc']],
+    ['tb','tablero_ventas',3,1,1,['fv','dc']]];
+  const P={};T.forEach(t=>P[t[0]]={id:t[0],nom:t[1],c:t[2],f:t[3],min:t[4],dep:t[5]});
+  const rotura={}; // 0 sano, 1 falla una vez, 2 falla siempre
+  let estado={},corriendo=false,timers=[],stats={ej:0,fall:0,min:0},corrida=0;
+  const pos=n=>({x:18+n.c*165,y:30+n.f*88});
+  function el(n,a,t,padre){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(t!==undefined)e.textContent=t;(padre||svg).appendChild(e);return e;}
+  const TXT={pend:'pendiente',run:'corriendo',ok:'éxito',retry:'reintenta',fail:'falló',up:'no corre',reuse:'reutilizada'};
+  function dibujar(){
+    svg.innerHTML='';
+    ['EXTRAER','LIMPIAR (staging)','MODELAR','PUBLICAR'].forEach((t,i)=>el('text',{x:18+i*165,y:16,'font-size':10,class:'c9l1-m'},t));
+    T.forEach(t=>{const n=P[t[0]],b=pos(n);n.dep.forEach(d=>{const a=pos(P[d]);el('path',{d:'M'+(a.x+132)+' '+(a.y+26)+'C'+(a.x+150)+' '+(a.y+26)+' '+(b.x-18)+' '+(b.y+26)+' '+b.x+' '+(b.y+26),class:'c9l1-arista'});});});
+    T.forEach(t=>{
+      const n=P[t[0]],b=pos(n),st=estado[n.id]||'pend';
+      const g=el('g',{class:'c9l1-n '+st,tabindex:0,role:'button','aria-label':n.nom+': '+TXT[st]+(rotura[n.id]===1?', rota una vez':rotura[n.id]===2?', rota siempre':'')});
+      el('rect',{x:b.x,y:b.y,width:132,height:52,rx:8},undefined,g);
+      el('text',{x:b.x+8,y:b.y+20,'font-size':11.5,'font-weight':700},n.nom,g);
+      el('text',{x:b.x+8,y:b.y+38,'font-size':10,class:'c9l1-m'},TXT[st]+' · '+n.min+' min',g);
+      if(rotura[n.id])el('text',{x:b.x+124,y:b.y+20,'font-size':12,'text-anchor':'end',fill:'var(--warm)','font-weight':700},rotura[n.id]===1?'⚡':'✖',g);
+      const act=()=>{if(corriendo)return;rotura[n.id]=((rotura[n.id]||0)+1)%3;dibujar();};
+      g.addEventListener('click',act);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();act();}});
+    });
+    raiz.querySelector('#c9l1-k1').textContent=stats.ej;raiz.querySelector('#c9l1-k2').textContent=stats.fall;raiz.querySelector('#c9l1-k3').textContent=stats.min;
+  }
+  function orden(){const vis={},o=[];const v=id=>{if(vis[id])return;vis[id]=1;P[id].dep.forEach(v);o.push(id);};T.forEach(t=>v(t[0]));return o;}
+  function correr(modo){
+    // modo: 'nuevo' | 'reanudar' | 'todo'
+    timers.forEach(clearTimeout);timers=[];corriendo=true;corrida++;
+    const R=+raiz.querySelector('#c9l1-r').value;
+    if(modo!=='reanudar'){estado={};}
+    const pasos=[];const previo={...estado};const fin={};
+    const intentosRotos={};
+    orden().forEach(id=>{
+      const n=P[id];
+      if(modo==='reanudar'&&previo[id]==='ok'||modo==='reanudar'&&previo[id]==='reuse'){fin[id]='reuse';pasos.push([id,'reuse']);return;}
+      if(n.dep.some(d=>fin[d]==='fail'||fin[d]==='up')){fin[id]='up';pasos.push([id,'up']);return;}
+      let intento=0,ok=false;
+      while(intento<=R){
+        const rompe=rotura[id]===2||(rotura[id]===1&&intento===0);
+        pasos.push([id,'run']);stats.ej++;stats.min+=n.min;
+        if(!rompe){ok=true;break;}
+        stats.fall++;
+        pasos.push([id,intento<R?'retry':'fail']);intento++;
+      }
+      fin[id]=ok?'ok':'fail';if(ok)pasos.push([id,'ok']);
+    });
+    const cierre=()=>{
+      corriendo=false;
+      const fallos=T.filter(t=>fin[t[0]]==='fail').map(t=>P[t[0]].nom),omit=T.filter(t=>fin[t[0]]==='up').length,reus=T.filter(t=>fin[t[0]]==='reuse').length;
+      raiz.querySelector('#c9l1-res').disabled=!fallos.length;raiz.querySelector('#c9l1-todo').disabled=!fallos.length;
+      let txt;
+      if(fallos.length)txt='Falló '+fallos.join(' y ')+' después de '+(R+1)+' intento(s). '+omit+' tarea(s) que dependen de ella no corrieron, pero las ramas que no dependen de ella sí terminaron. El tablero no se actualiza con datos a medias. Arregla la causa y elige: reanudar o correr todo.';
+      else if(modo==='reanudar')txt='Reanudación: se reutilizaron '+reus+' tareas que ya habían terminado bien y solo corrió lo que falló y lo que depende de ello. Compara los minutos de cómputo con «correr todo de nuevo».';
+      else if(stats.fall)txt='Hubo '+stats.fall+' intento(s) fallido(s), pero los reintentos lo resolvieron: un corte de red o un bloqueo pasajero no debería despertar a nadie a las 3 de la mañana.';
+      else txt='Las 9 tareas terminaron en el orden que imponen sus dependencias; las ramas independientes corren en paralelo. Rompe una tarea y vuelve a correr.';
+      raiz.querySelector('#c9l1-out').innerHTML='<span class="big">'+(fallos.length?'Falló: '+fallos.join(', '):'Éxito')+' · '+stats.ej+' ejecuciones · '+stats.min+' min de cómputo</span><span>'+txt+'</span>';
+      if(modo!=='reanudar')T.forEach(t=>{if(fin[t[0]]==='reuse')fin[t[0]]='ok';});
+      estado=fin;dibujar();
+    };
+    if(reduce){pasos.forEach(([id,s])=>estado[id]=s);cierre();return;}
+    let acc=0; // cada paso se programa con el retraso acumulado
+    pasos.forEach(([id,s])=>{timers.push(setTimeout(()=>{estado[id]=s;dibujar();},acc));acc+=(s==='reuse'||s==='up'?120:330);});
+    timers.push(setTimeout(cierre,acc+100));
+  }
+  raiz.querySelector('#c9l1-r').addEventListener('input',e=>raiz.querySelector('#c9l1-ro').textContent=e.target.value);
+  raiz.querySelector('#c9l1-run').addEventListener('click',()=>{if(corriendo)return;stats={ej:0,fall:0,min:0};correr('nuevo');});
+  raiz.querySelector('#c9l1-res').addEventListener('click',()=>{if(corriendo)return;Object.keys(rotura).forEach(k=>rotura[k]=0);stats={ej:0,fall:0,min:0};correr('reanudar');});
+  raiz.querySelector('#c9l1-todo').addEventListener('click',()=>{if(corriendo)return;Object.keys(rotura).forEach(k=>rotura[k]=0);stats={ej:0,fall:0,min:0};correr('todo');});
+  rotura.fv=2;dibujar();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="es">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-KX76XF8R');</script>
+<!-- End Google Tag Manager -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Formatos · Ingeniería de datos · Ingeniería de datos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Cómo viaja un dato desde la base de una aplicación hasta el tablero que lee la gerencia: ingesta, formatos, ETL y ELT, data warehouse, lakehouse, Spark, Kafka, orquestación, dbt, calidad y linaje, con laboratorios donde se ve cada pipeline funcionar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400;1,8..60,600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KX76XF8R"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<div class="wrap" data-page="formatos">
+<header class="topbar"><a class="brand" href="index.html">Ingeniería de <b>datos</b></a><span class="eyebrow">Curso visual e interactivo · Datos e inteligencia artificial</span><a class="al-sitio" href="https://aaramirez.github.io/">← Todos los cursos</a></header>
+<div class="layout">
+<nav class="toc" id="toc" aria-label="Ruta de aprendizaje"></nav>
+<main>
+<header class="page-head"><span class="num">CAPÍTULO 03 DE 14</span><h1>Formatos: CSV, JSON, Parquet y Avro</h1><p class="lede">Los mismos pedidos de Tienda Ejemplo pueden ocupar 24 MB o menos de 1 MB, y una consulta puede tardar 150 milisegundos o 9, según cómo se escriban en el disco. Este capítulo compara CSV, JSON, Parquet y Avro, explica por qué guardar por columnas cambia todo y muestra cómo los grupos de filas, la codificación y las particiones permiten leer solo lo que la consulta necesita.</p></header>
+<section><h2>CSV y JSON: fáciles de leer, caros de consultar</h2><div class="prose"><p>La ingesta del capítulo 02 dejó la copia cruda de la tienda en archivos JSON, una fila por línea. Martín Salas, el analista, quiere responder una pregunta simple: ¿cuánto se vendió en octubre por categoría? Natalia Herrera prueba la consulta sobre los archivos y tarda más de lo esperado. Hace la cuenta: para sumar dos columnas de octubre, el motor tiene que leer todos los pedidos de diez meses, con todas sus columnas, y convertir cada número de texto a número. El problema no es la consulta, es el formato.</p><p>Un <b>formato de archivo</b> (<i>file format</i>) es la regla con que los datos se escriben en el disco: en qué orden van, cómo se separan, cómo se representa un número o una fecha y qué información extra acompaña a los datos. Elegirlo parece un detalle, pero decide cuánto ocupa la plataforma, cuánto cuesta cada consulta y qué pasa cuando cambian las columnas.</p></div><div class="analogia"><b>Imagínalo así</b><p>Una agenda de papel escrita a mano se lee sin ninguna herramienta, pero para saber cuántos cumpleaños hay en octubre tienes que hojearla entera. Una planilla con una columna «mes» te deja mirar solo esa columna. Y si además las fichas de cada mes están en carpetas separadas, abres solo la de octubre. Los datos son los mismos; lo que cambia es cuánto tienes que leer.</p></div><div class="prose"><p><b>CSV</b> (<i>Comma-Separated Values</i>, valores separados por comas) es el formato más simple: una fila por línea, los campos separados por comas y, con suerte, una primera línea con los nombres de las columnas. <b>JSON</b> (<i>JavaScript Object Notation</i>, notación de objetos de JavaScript) escribe cada registro como un objeto con nombres y valores, y admite datos anidados. Su variante <b>JSON Lines</b> (un objeto por línea) es la que usa la zona de aterrizaje.</p><p>Los dos tienen virtudes enormes: se abren con cualquier editor, cualquier lenguaje los lee y un humano los entiende. Por eso son el idioma para intercambiar datos entre sistemas. Pero como formato para analizar son caros:</p><ul><li><b>Todo es texto.</b> El monto <code>173.70</code> se guarda como seis caracteres que hay que convertir a número cada vez que se lee. Una fecha, como diecinueve caracteres.</li><li><b>No tienen tipos ni esquema.</b> El CSV no dice si <code>cliente_id</code> es un número o un texto, ni si una celda vacía es cero o desconocido. Cada lector adivina, y no todos adivinan igual.</li><li><b>Se leen enteros.</b> Para sumar una columna hay que recorrer todas las filas y todos los caracteres de cada fila.</li><li><b>Repiten.</b> JSON escribe el nombre de cada columna en cada registro: <code>"estado": "entregado"</code> 114.000 veces.</li><li><b>Tienen casos raros.</b> Comas dentro de un nombre, saltos de línea dentro de un texto, separadores que cambian según el país (punto y coma donde la coma es el decimal). Existe una norma, la <a href="https://www.rfc-editor.org/rfc/rfc4180" target="_blank" rel="noopener">RFC 4180</a>, que casi nadie sigue entera.</li></ul></div></section>
+<section><h2>Por filas o por columnas: cómo se ordena el mismo dato en el disco</h2><div class="prose"><p>Un disco guarda bytes en fila, uno detrás de otro. Una tabla tiene dos dimensiones. Alguien tiene que decidir en qué orden se aplanan, y hay dos respuestas.</p><p>En un <b>formato orientado a filas</b> (<i>row-oriented</i>), cada fila se escribe completa y después viene la siguiente: <code>59521, 1042, 2026-10-14…, entregado, 173,70</code>, luego <code>59522, …</code>. Es lo que hacen CSV, JSON, Avro y las bases transaccionales. Es ideal para el trabajo OLTP del capítulo 01: traer o escribir el pedido 59521 completo es leer un solo tramo del disco.</p><p>En un <b>formato orientado a columnas</b> (<i>columnar</i>), se escriben juntos todos los valores de una columna, después todos los de la siguiente: todos los <code>pedido_id</code>, luego todos los <code>cliente_id</code>, luego todos los <code>estado</code>. Es lo que hacen Parquet, ORC y los almacenes de datos. Es ideal para el trabajo OLAP: sumar <code>cantidad × precio_unitario</code> es leer solo esas dos columnas y saltarse el resto.</p></div><div class="analogia"><b>Imagínalo así</b><p>Una encuesta en papel tiene una hoja por persona con todas sus respuestas: perfecto para ver qué contestó Renata, terrible para contar cuántos dijeron «sí» a la pregunta 7, porque hay que pasar todas las hojas. Si en cambio recortas las respuestas y haces una pila por pregunta, contar los «sí» de la 7 es tomar una pila. Ver todo lo de Renata, en cambio, obliga a buscar en todas las pilas.</p></div><div class="prose"><p>Guardar por columnas trae un segundo regalo: valores del mismo tipo y parecidos quedan juntos, y eso se comprime mucho mejor. Una columna <code>estado</code> es una larga sucesión de <code>entregado, entregado, enviado, entregado…</code>, casi siempre lo mismo. Una fila mezcla números, fechas y textos que no se parecen entre sí.</p></div><figure class="fig fig-comparacion" id="03-diagrama-1"><div class="lienzo"><svg viewBox="0 0 900 430" style="min-width:740px" role="img" aria-label="Cuatro pedidos con cinco columnas, escritos en el disco por filas, con los colores alternados, y por columnas, con cada color en un tramo continuo; llaves que marcan lo que lee cada consulta">
+
+<text x="20" y="26" class="t t-xs t-b t-m">LA TABLA (4 PEDIDOS, 5 COLUMNAS)</text>
+<g class="t t-s t-mono">
+<rect x="20" y="36" width="90" height="22" class="c-fis"/><rect x="110" y="36" width="70" height="22" class="c-enl"/><rect x="180" y="36" width="110" height="22" class="c-red"/><rect x="290" y="36" width="90" height="22" class="c-tra"/><rect x="380" y="36" width="70" height="22" class="c-apl"/>
+<text x="26" y="51" class="t t-s t-b">pedido_id</text><text x="116" y="51" class="t t-s t-b">cliente</text><text x="186" y="51" class="t t-s t-b">creado_en</text><text x="296" y="51" class="t t-s t-b">estado</text><text x="386" y="51" class="t t-s t-b">total</text>
+<text x="26" y="76" class="t t-s t-mono">59521</text><text x="116" y="76" class="t t-s t-mono">1042</text><text x="186" y="76" class="t t-s t-mono">14/10 19:32</text><text x="296" y="76" class="t t-s t-mono">entregado</text><text x="386" y="76" class="t t-s t-mono">173,70</text>
+<text x="26" y="94" class="t t-s t-mono">59522</text><text x="116" y="94" class="t t-s t-mono">2380</text><text x="186" y="94" class="t t-s t-mono">14/10 19:41</text><text x="296" y="94" class="t t-s t-mono">entregado</text><text x="386" y="94" class="t t-s t-mono">45,90</text>
+<text x="26" y="112" class="t t-s t-mono">59523</text><text x="116" y="112" class="t t-s t-mono">4115</text><text x="186" y="112" class="t t-s t-mono">14/10 19:50</text><text x="296" y="112" class="t t-s t-mono">cancelado</text><text x="386" y="112" class="t t-s t-mono">12,90</text>
+<text x="26" y="130" class="t t-s t-mono">59524</text><text x="116" y="130" class="t t-s t-mono">1877</text><text x="186" y="130" class="t t-s t-mono">14/10 19:58</text><text x="296" y="130" class="t t-s t-mono">entregado</text><text x="386" y="130" class="t t-s t-mono">88,00</text>
+</g>
+<text x="480" y="60" class="t t-s">Consulta A: el pedido 59521 completo (OLTP)</text>
+<text x="480" y="80" class="t t-s">Consulta B: la suma de la columna total (OLAP)</text>
+
+<text x="20" y="178" class="t t-xs t-b t-m">EN EL DISCO, POR FILAS (CSV, JSON, AVRO, BASES OLTP)</text>
+<g>
+<rect x="20" y="188" width="40" height="30" class="c-fis"/><rect x="60" y="188" width="40" height="30" class="c-enl"/><rect x="100" y="188" width="40" height="30" class="c-red"/><rect x="140" y="188" width="40" height="30" class="c-tra"/><rect x="180" y="188" width="40" height="30" class="c-apl"/>
+<rect x="220" y="188" width="40" height="30" class="c-fis"/><rect x="260" y="188" width="40" height="30" class="c-enl"/><rect x="300" y="188" width="40" height="30" class="c-red"/><rect x="340" y="188" width="40" height="30" class="c-tra"/><rect x="380" y="188" width="40" height="30" class="c-apl"/>
+<rect x="420" y="188" width="40" height="30" class="c-fis"/><rect x="460" y="188" width="40" height="30" class="c-enl"/><rect x="500" y="188" width="40" height="30" class="c-red"/><rect x="540" y="188" width="40" height="30" class="c-tra"/><rect x="580" y="188" width="40" height="30" class="c-apl"/>
+<rect x="620" y="188" width="40" height="30" class="c-fis"/><rect x="660" y="188" width="40" height="30" class="c-enl"/><rect x="700" y="188" width="40" height="30" class="c-red"/><rect x="740" y="188" width="40" height="30" class="c-tra"/><rect x="780" y="188" width="40" height="30" class="c-apl"/>
+</g>
+<text x="40" y="208" class="t t-xs" text-anchor="middle">59521</text><text x="240" y="208" class="t t-xs" text-anchor="middle">59522</text><text x="440" y="208" class="t t-xs" text-anchor="middle">59523</text><text x="640" y="208" class="t t-xs" text-anchor="middle">59524</text>
+<path d="M20 226V234H220V226" class="ln s-fis" style="stroke-width:2"/>
+<text x="120" y="250" class="t t-s k-fis" text-anchor="middle">A: un tramo</text>
+<path d="M20 262V270H820V262" class="ln s-warm" style="stroke-width:2"/>
+<text x="420" y="286" class="t t-s k-warm" text-anchor="middle">B: hay que recorrer todo para sacar 4 valores rosados</text>
+
+<text x="20" y="324" class="t t-xs t-b t-m">EN EL DISCO, POR COLUMNAS (PARQUET, ORC, ALMACENES)</text>
+<g>
+<rect x="20" y="334" width="160" height="30" class="c-fis"/><rect x="180" y="334" width="160" height="30" class="c-enl"/><rect x="340" y="334" width="160" height="30" class="c-red"/><rect x="500" y="334" width="160" height="30" class="c-tra"/><rect x="660" y="334" width="160" height="30" class="c-apl"/>
+<path d="M60 334V364M100 334V364M140 334V364M220 334V364M260 334V364M300 334V364M380 334V364M420 334V364M460 334V364M540 334V364M580 334V364M620 334V364M700 334V364M740 334V364M780 334V364" class="ln" style="stroke:var(--line)"/>
+</g>
+<text x="100" y="354" class="t t-xs" text-anchor="middle">todos los pedido_id</text><text x="580" y="354" class="t t-xs" text-anchor="middle">todos los estado</text><text x="740" y="354" class="t t-xs t-b" text-anchor="middle">todos los total</text>
+<path d="M660 372V380H820V372" class="ln s-apl" style="stroke-width:2"/>
+<text x="740" y="396" class="t t-s k-apl" text-anchor="middle">B: un tramo</text>
+<path d="M30 372V380M190 372V380M350 372V380M510 372V380" class="ln s-warm" style="stroke-width:2"/>
+<text x="270" y="400" class="t t-s k-warm" text-anchor="middle">A: un pedacito en cada tramo</text>
+</svg></div><figcaption><b>La misma tabla, aplanada de dos formas.</b> Arriba, cuatro pedidos de la tienda con cinco columnas, cada columna con su color. Al medio, cómo quedan en el disco por filas: los colores se alternan, porque cada pedido va completo. Abajo, por columnas: cada color forma un tramo continuo. Las llaves marcan lo que lee cada consulta: el pedido 59521 completo es un tramo en la versión por filas y cinco pedacitos en la versión por columnas; la suma de montos es un tramo en la versión por columnas y obliga a recorrer todo en la versión por filas.</figcaption></figure></section>
+<section><h2>Parquet: grupos de filas, estadísticas y compresión por columna</h2><div class="prose"><p><b>Apache Parquet</b> es el formato por columnas más usado para analítica. Nació en 2013 entre Twitter y Cloudera, inspirado en el sistema Dremel de Google, y hoy lo leen y escriben DuckDB, Polars, pandas, Spark, los almacenes en la nube y los formatos de tabla del capítulo 06. Un archivo Parquet no es una sola tira de columnas: tiene una estructura en capas pensada para leer lo menos posible.</p><ul><li>El archivo se divide en <b>grupos de filas</b> (<i>row groups</i>): bloques de decenas o cientos de miles de filas. Dentro de cada grupo, los datos están por columnas.</li><li>Cada columna dentro de un grupo es un <b>tramo de columna</b> (<i>column chunk</i>), dividido a su vez en <b>páginas</b> (<i>pages</i>) de alrededor de un megabyte, la unidad que se comprime y se lee.</li><li>Al final del archivo va el <b>pie</b> (<i>footer</i>) con los <b>metadatos</b> (<i>metadata</i>): el esquema con el tipo de cada columna, dónde empieza cada tramo y, sobre todo, las <b>estadísticas</b> (<i>statistics</i>) de cada columna en cada grupo: su mínimo, su máximo y cuántos nulos tiene.</li></ul></div><figure class="fig fig-esquema" id="03-diagrama-2"><div class="lienzo"><svg viewBox="0 0 900 470" style="min-width:740px" role="img" aria-label="Estructura de un archivo Parquet: marca de inicio, seis grupos de filas con un tramo por columna y páginas, y el pie con el esquema y el mínimo y máximo de creado_en de cada grupo; con el filtro octubre se descartan los grupos 0 a 3">
+<rect x="20" y="20" width="360" height="26" rx="4" class="caja"/>
+<text x="200" y="38" class="t t-s t-mono" text-anchor="middle">PAR1 · marca de inicio</text>
+
+<g>
+<rect x="20" y="54" width="360" height="52" rx="6" class="caja"/>
+<text x="28" y="72" class="t t-xs t-b">GRUPO 0 · 20.480 filas</text>
+<rect x="28" y="80" width="64" height="18" class="c-fis"/><rect x="96" y="80" width="64" height="18" class="c-enl"/><rect x="164" y="80" width="64" height="18" class="c-red"/><rect x="232" y="80" width="64" height="18" class="c-tra"/><rect x="300" y="80" width="72" height="18" class="c-apl"/>
+<rect x="20" y="112" width="360" height="52" rx="6" class="caja"/>
+<text x="28" y="130" class="t t-xs t-b">GRUPO 1 · 20.480 filas</text>
+<rect x="28" y="138" width="64" height="18" class="c-fis"/><rect x="96" y="138" width="64" height="18" class="c-enl"/><rect x="164" y="138" width="64" height="18" class="c-red"/><rect x="232" y="138" width="64" height="18" class="c-tra"/><rect x="300" y="138" width="72" height="18" class="c-apl"/>
+<rect x="20" y="170" width="360" height="52" rx="6" class="caja"/>
+<text x="28" y="188" class="t t-xs t-b">GRUPO 2 · 20.480 filas</text>
+<rect x="28" y="196" width="64" height="18" class="c-fis"/><rect x="96" y="196" width="64" height="18" class="c-enl"/><rect x="164" y="196" width="64" height="18" class="c-red"/><rect x="232" y="196" width="64" height="18" class="c-tra"/><rect x="300" y="196" width="72" height="18" class="c-apl"/>
+<rect x="20" y="228" width="360" height="52" rx="6" class="caja"/>
+<text x="28" y="246" class="t t-xs t-b">GRUPO 3 · 20.480 filas</text>
+<rect x="28" y="254" width="64" height="18" class="c-fis"/><rect x="96" y="254" width="64" height="18" class="c-enl"/><rect x="164" y="254" width="64" height="18" class="c-red"/><rect x="232" y="254" width="64" height="18" class="c-tra"/><rect x="300" y="254" width="72" height="18" class="c-apl"/>
+<rect x="20" y="286" width="360" height="52" rx="6" class="caja" style="stroke:var(--accent);stroke-width:2"/>
+<text x="28" y="304" class="t t-xs t-b">GRUPO 4 · 20.480 filas</text>
+<rect x="28" y="312" width="64" height="18" class="c-fis"/><rect x="96" y="312" width="64" height="18" class="c-enl"/><rect x="164" y="312" width="64" height="18" class="c-red"/><rect x="232" y="312" width="64" height="18" class="c-tra"/><rect x="300" y="312" width="72" height="18" class="c-apl"/>
+<rect x="20" y="344" width="360" height="52" rx="6" class="caja" style="stroke:var(--accent);stroke-width:2"/>
+<text x="28" y="362" class="t t-xs t-b">GRUPO 5 · 11.712 filas</text>
+<rect x="28" y="370" width="64" height="18" class="c-fis"/><rect x="96" y="370" width="64" height="18" class="c-enl"/><rect x="164" y="370" width="64" height="18" class="c-red"/><rect x="232" y="370" width="64" height="18" class="c-tra"/><rect x="300" y="370" width="72" height="18" class="c-apl"/>
+</g>
+<path d="M232 80V98M248 80V98M264 80V98M280 80V98" class="ln" style="stroke:var(--card);stroke-width:1.5"/>
+<rect x="20" y="404" width="360" height="40" rx="6" class="c-red"/>
+<text x="200" y="429" class="t t-s t-b" text-anchor="middle">PIE: esquema + estadísticas · PAR1</text>
+<text x="20" y="462" class="t t-xs t-m">Colores: pedido_id · creado_en · categoria · cantidad · precio_unitario</text>
+
+<path d="M380 424H430V60H446" class="ln ln-d"/>
+<rect x="446" y="30" width="434" height="414" rx="10" class="c-red"/>
+<text x="460" y="52" class="t t-xs t-b k-red">EL PIE AMPLIADO</text>
+<text x="460" y="74" class="t t-s">Esquema: pedido_id BIGINT · creado_en TIMESTAMP ·</text>
+<text x="460" y="90" class="t t-s">categoria VARCHAR · cantidad BIGINT · precio DECIMAL(10,2)</text>
+<text x="460" y="118" class="t t-s t-b">creado_en por grupo: mínimo → máximo</text>
+<g class="t t-s t-mono">
+<text x="460" y="144" class="t t-s t-mono t-m">0  2026-01-01 00:31 → 2026-03-09 19:37</text>
+<text x="460" y="166" class="t t-s t-mono t-m">1  2026-03-09 19:37 → 2026-05-09 20:29</text>
+<text x="460" y="188" class="t t-s t-mono t-m">2  2026-05-09 20:30 → 2026-07-04 08:34</text>
+<text x="460" y="210" class="t t-s t-mono t-m">3  2026-07-04 08:35 → 2026-08-23 17:49</text>
+<text x="460" y="232" class="t t-s t-mono">4  2026-08-23 17:49 → 2026-10-10 10:10</text>
+<text x="460" y="254" class="t t-s t-mono">5  2026-10-10 10:10 → 2026-10-31 23:33</text>
+</g>
+<path d="M752 140L852 140M752 162L852 162M752 184L852 184M752 206L852 206" class="s-warm" style="stroke-width:1.5"/>
+<text x="460" y="290" class="t t-s t-b">Filtro: creado_en &gt;= '2026-10-01'</text>
+<text x="460" y="312" class="t t-s">· grupos 0 a 3: su máximo es anterior a octubre,</text>
+<text x="460" y="328" class="t t-s">  se descartan sin leer un solo byte de datos</text>
+<text x="460" y="350" class="t t-s">· grupos 4 y 5 (borde azul): se leen, y de ellos</text>
+<text x="460" y="366" class="t t-s">  solo las columnas que la consulta pide</text>
+<text x="460" y="400" class="t t-s t-m">También guarda, por columna y grupo, cuántos nulos</text>
+<text x="460" y="416" class="t t-s t-m">hay y dónde empieza cada tramo en el archivo.</text>
+</svg></div><figcaption><b>Por dentro de un archivo Parquet.</b> El archivo, de arriba abajo: la marca de inicio, seis grupos de filas y el pie. Cada grupo tiene un tramo por columna (los colores son las columnas) y cada tramo, sus páginas comprimidas. A la derecha, el pie ampliado: el esquema y, para cada grupo, el mínimo y el máximo de <code>creado_en</code>. Son los números reales del archivo de la práctica. Con un filtro «octubre», el lector mira el pie y descarta los grupos 0 a 3 sin abrirlos.</figcaption></figure><div class="prose"><p>El lector de Parquet empieza siempre por el pie, y eso le permite tres atajos:</p><ol class="steps"><li><span><b>Leer solo las columnas pedidas</b> (<i>column pruning</i>, poda de columnas). Si la consulta usa <code>cantidad</code> y <code>precio_unitario</code>, ignora los tramos de las demás.</span></li><li><span><b>Saltarse grupos enteros</b> (<i>predicate pushdown</i>, empujar el filtro hacia el lector). Si el filtro es <code>creado_en &gt;= '2026-10-01'</code> y el máximo de un grupo es el 9 de marzo, ese grupo no puede tener filas de octubre: no se lee.</span></li><li><span><b>Leer números como números.</b> Cada columna tiene su tipo (entero, decimal, fecha y hora, texto), así que no hay que convertir nada.</span></li></ol><p>El segundo atajo tiene una condición que muchos olvidan: <b>solo sirve si los datos están ordenados</b> por la columna del filtro, o al menos agrupados. Si los pedidos se escribieran en desorden, cada grupo tendría fechas de enero a octubre, el mínimo y el máximo de todos serían los mismos y no se podría descartar ninguno. Ordenar al escribir es parte del diseño.</p></div><div class="lab" id="03-lab-1"><div class="lab-title"><span class="tag">Laboratorio</span><h3>El mismo dataset en CSV y en Parquet, medido en la página</h3></div><p class="hint">Elige cuántas líneas de pedido generar y si el formato por columnas usa las estadísticas de sus grupos de filas. La página fabrica los datos, los escribe como CSV y como columnas codificadas, mide el tamaño de cada uno y cronometra la suma de octubre en tu propio navegador.</p><style>
+[id="03-lab-1"] .c3l1-graf{display:grid;gap:6px}
+[id="03-lab-1"] .c3l1-rot{font:700 .7rem var(--f-display);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+[id="03-lab-1"] .c3l1-fila{display:grid;grid-template-columns:minmax(0,7.5rem) 1fr minmax(0,6.5rem);gap:8px;align-items:center;font:500 .8rem var(--f-display)}
+[id="03-lab-1"] .c3l1-pista{height:18px;background:var(--grid);border-radius:4px;overflow:hidden}
+[id="03-lab-1"] .c3l1-pista i{display:block;height:100%;border-radius:4px;transition:width .4s}
+[id="03-lab-1"] .c3l1-fila b{font:600 .78rem var(--f-mono);text-align:right}
+[id="03-lab-1"] .c3l1-chk{display:flex;gap:8px;align-items:center;font:500 .85rem var(--f-display)}
+[id="03-lab-1"] pre.c3l1-muestra{margin:0;font:.72rem/1.4 var(--f-mono);white-space:pre;overflow-x:auto;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:6px}
+@media (prefers-reduced-motion: reduce){[id="03-lab-1"] .c3l1-pista i{transition:none}}
+</style>
+<div class="ctls"><div class="ctl"><label for="c3l1-n">Líneas de pedido a generar</label><output id="c3l1-n-o"></output><input type="range" id="c3l1-n" min="20000" max="200000" step="20000" value="60000"></div></div>
+<label class="c3l1-chk"><input type="checkbox" id="c3l1-grupos" checked> En el formato por columnas, saltar grupos de 20.000 filas con su mínimo y máximo de fecha</label>
+<div class="btns"><button type="button" class="primary" id="c3l1-ir">Generar y medir</button></div>
+<pre class="c3l1-muestra" id="c3l1-muestra" aria-label="Primeras líneas del CSV generado"></pre>
+<div class="c3l1-graf" id="c3l1-graf" aria-hidden="true"></div>
+<div class="readout texto" id="c3l1-out" aria-live="polite"></div></div><div class="lab" id="03-lab-2"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Visualizador de un archivo Parquet: qué grupos de filas se saltan</h3></div><p class="hint">El archivo tiene seis grupos de filas con sus estadísticas en el pie. Elige un filtro por fecha, por categoría o por monto y mira qué grupos se leen y cuáles se descartan sin abrir. Después desordena el archivo y repite.</p><style>
+[id="03-lab-2"] .c3l2-grupos{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr));gap:8px}
+[id="03-lab-2"] .c3l2-g{border:2px solid var(--c-red);background:var(--c-red-s);border-radius:10px;padding:8px 10px;font:500 .8rem/1.4 var(--f-display);transition:opacity .3s}
+[id="03-lab-2"] .c3l2-g b{display:block;font:700 .85rem var(--f-display)}
+[id="03-lab-2"] .c3l2-g code{font:.74rem var(--f-mono)}
+[id="03-lab-2"] .c3l2-g.salta{border-style:dashed;border-color:var(--line);background:var(--paper);opacity:.55}
+[id="03-lab-2"] .c3l2-g .tag{display:inline-block;margin-top:4px;font:700 .66rem var(--f-display);letter-spacing:.08em;text-transform:uppercase}
+[id="03-lab-2"] .c3l2-pie{border:1px solid var(--line);border-radius:10px;padding:6px 10px;font:500 .78rem var(--f-display);color:var(--muted);background:var(--paper)}
+@media (prefers-reduced-motion: reduce){[id="03-lab-2"] .c3l2-g{transition:none}}
+</style>
+<div class="opciones">
+  <label>Filtro de la consulta
+    <select id="c3l2-f">
+      <option value="oct">creado_en en octubre</option>
+      <option value="ago">creado_en desde el 15 de agosto</option>
+      <option value="jug">categoria = 'Juguetes'</option>
+      <option value="pre">precio_unitario &gt; 300</option>
+    </select></label>
+  <label>Cómo se ordenaron las filas al escribir
+    <select id="c3l2-o">
+      <option value="fecha">Por fecha (creado_en)</option>
+      <option value="cat">Por categoría</option>
+      <option value="nada">Sin orden</option>
+    </select></label>
+</div>
+<div class="c3l2-pie" id="c3l2-pie"></div>
+<div class="c3l2-grupos" id="c3l2-grupos"></div>
+<div class="readout texto" id="c3l2-out" aria-live="polite"></div></div></section>
+<section><h2>Avro y los esquemas que evolucionan</h2><div class="prose"><p>Parquet es excelente para leer, pero no tanto para escribir de a un registro: está pensado para lotes grandes que se escriben una vez. Para los eventos que viajan uno por uno, como los del CDC del capítulo 02, se usa otro formato.</p><p><b>Apache Avro</b> es un formato binario orientado a filas, creado en 2009 dentro del ecosistema Hadoop. Sus registros son compactos (no repiten nombres de columnas como JSON) y siempre van acompañados de un <b>esquema</b> (<i>schema</i>): una descripción en JSON de los campos y sus tipos. El esquema viaja en la cabecera del archivo o, en Kafka, se guarda en un <b>registro de esquemas</b> (<i>schema registry</i>) y cada mensaje lleva solo su número.</p><div class="code-copia"><pre><code>{
+  "type": "record", "name": "Pedido", "namespace": "tienda",
+  "fields": [
+    {"name": "pedido_id",  "type": "long"},
+    {"name": "cliente_id", "type": "long"},
+    {"name": "creado_en",  "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "estado",     "type": "string"},
+    {"name": "canal",      "type": "string", "default": "web"}
+  ]
+}</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>La gracia de Avro es la <b>evolución de esquemas</b> (<i>schema evolution</i>). Los sistemas cambian: un día la tienda agrega la columna <code>canal</code> porque lanzó la app. Los productores empiezan a escribir con el esquema nuevo, pero los consumidores, y los archivos viejos, siguen con el anterior. Avro resuelve la diferencia comparando el <b>esquema del escritor</b> (<i>writer schema</i>) con el <b>del lector</b> (<i>reader schema</i>): un campo nuevo con valor por omisión se rellena al leer datos viejos, y un campo que el lector no conoce se ignora.</p></div><div class="analogia"><b>Imagínalo así</b><p>Un formulario impreso agrega una casilla nueva, «¿cómo nos conociste?». Los formularios viejos que siguen en la carpeta no la tienen, y nadie los tira: al cargarlos se anota «no informado». Y si un formulario trae una casilla que la persona que carga no conoce, simplemente la salta. Mientras las reglas estén claras, los dos formularios conviven.</p></div><div class="prose"><p>Las reglas se resumen en dos palabras. Un cambio es <b>compatible hacia atrás</b> (<i>backward compatible</i>) si el lector nuevo puede leer datos viejos: agregar un campo con valor por omisión lo es. Es <b>compatible hacia adelante</b> (<i>forward compatible</i>) si un lector viejo puede leer datos nuevos: borrar un campo que tenía valor por omisión lo es. Cambiar el tipo de un campo de texto a número, o renombrarlo sin alias, rompe a alguien. Los registros de esquemas pueden rechazar un esquema nuevo que rompa la compatibilidad antes de que llegue a producción; el capítulo 10 vuelve sobre esto con los contratos de datos.</p><div class="tbl"><table><thead><tr><th></th><th>CSV</th><th>JSON</th><th>Avro</th><th>Parquet</th></tr></thead><tbody><tr><td>Orientación</td><td>Filas</td><td>Filas</td><td>Filas</td><td>Columnas</td></tr><tr><td>Legible por humanos</td><td>Sí</td><td>Sí</td><td>No (binario)</td><td>No (binario)</td></tr><tr><td>Tipos y esquema</td><td>No</td><td>No (salvo convención)</td><td>Sí, obligatorio</td><td>Sí, en el pie</td></tr><tr><td>Evolución de esquema</td><td>Frágil</td><td>Libre, sin control</td><td>Reglas explícitas</td><td>Agregar columnas</td></tr><tr><td>Escribir de a un registro</td><td>Fácil</td><td>Fácil</td><td>Fácil</td><td>No conviene</td></tr><tr><td>Analizar pocas columnas</td><td>Lento</td><td>Lento</td><td>Lento</td><td>Rápido</td></tr><tr><td>Uso típico</td><td>Intercambio, planillas</td><td>APIs, aterrizaje</td><td>Eventos y mensajes</td><td>Lago y analítica</td></tr></tbody></table></div></div></section>
+<section><h2>Compresión y codificación: diccionario y <i>run-length</i></h2><div class="prose"><p>Parquet no se limita a comprimir. Antes de pasar los datos por un compresor, los <b>codifica</b> (<i>encoding</i>): los reescribe de una forma más corta que aprovecha cómo es cada columna. Las dos codificaciones más importantes son fáciles de entender.</p><p>La <b>codificación por diccionario</b> (<i>dictionary encoding</i>) reemplaza los valores repetidos por un número. La columna <code>estado</code> tiene solo seis valores distintos. En lugar de escribir <code>entregado</code> 100.000 veces, Parquet guarda una vez el diccionario (<code>0 = entregado, 1 = enviado, 2 = pagado…</code>) y después solo los números, que caben en tres bits cada uno. Una columna de texto de un megabyte queda en unas decenas de kilobytes.</p><p>La <b>codificación por longitud de corrida</b> (<i>run-length encoding</i>, RLE) reemplaza una racha de valores iguales por el valor y cuántas veces se repite. Si los pedidos están ordenados por fecha, la columna <code>mes</code> es <code>2026-01</code> repetido 9.168 veces, luego <code>2026-02</code> repetido 8.561 veces. Con RLE, cada mes ocupa un par de números.</p></div><div class="analogia"><b>Imagínalo así</b><p>Para dictar una lista de colores por teléfono no dices «rojo, rojo, rojo, rojo, rojo, azul, azul»: dices «cinco rojos y dos azules» (corrida). Y si la lista es larga y solo hay tres colores, acuerdas antes que rojo es 1, azul es 2 y verde es 3, y dictas números (diccionario). Las dos ideas juntas dejan una lista de mil palabras en unas pocas cifras.</p></div><div class="prose"><p>Las dos se combinan: Parquet aplica el diccionario y después codifica los números resultantes con RLE y empaquetado de bits. Recién entonces cada página pasa por un <b>códec de compresión</b> (<i>compression codec</i>) general: Snappy, rápido y muy usado como opción por omisión; ZSTD, que comprime más a un costo similar de lectura; o GZIP, más lento. Por eso el orden de las filas importa también para el tamaño: un archivo ordenado por fecha tiene corridas largas y comprime mejor que el mismo archivo en desorden.</p></div><figure class="fig fig-esquema" id="03-diagrama-3"><div class="lienzo"><svg viewBox="0 0 900 420" style="min-width:720px" role="img" aria-label="Codificación de la columna estado: doce valores en texto de 98 bytes, el diccionario que los convierte en números y las corridas que agrupan los números repetidos">
+<defs>
+<marker id="c3d3-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+</defs>
+<text x="20" y="26" class="t t-xs t-b t-m">1 · TAL COMO LLEGA</text>
+<text x="330" y="26" class="t t-xs t-b t-m">2 · CON DICCIONARIO</text>
+<text x="640" y="26" class="t t-xs t-b t-m">3 · CON CORRIDAS (RLE)</text>
+
+<rect x="20" y="36" width="200" height="300" rx="8" class="caja"/>
+<g class="t t-s t-mono">
+<text x="34" y="60" class="t t-s t-mono">entregado</text><text x="34" y="82" class="t t-s t-mono">entregado</text><text x="34" y="104" class="t t-s t-mono">entregado</text><text x="34" y="126" class="t t-s t-mono">entregado</text>
+<text x="34" y="148" class="t t-s t-mono">enviado</text><text x="34" y="170" class="t t-s t-mono">enviado</text>
+<text x="34" y="192" class="t t-s t-mono">entregado</text><text x="34" y="214" class="t t-s t-mono">entregado</text><text x="34" y="236" class="t t-s t-mono">entregado</text>
+<text x="34" y="258" class="t t-s t-mono">pagado</text><text x="34" y="280" class="t t-s t-mono">pagado</text>
+<text x="34" y="302" class="t t-s t-mono">cancelado</text>
+</g>
+<path d="M226 186H310" class="ln" style="stroke-width:2" marker-end="url(#c3d3-m)"/>
+
+<rect x="330" y="36" width="250" height="110" rx="8" class="c-tra"/>
+<text x="344" y="58" class="t t-xs t-b k-tra">DICCIONARIO (UNA VEZ)</text>
+<text x="344" y="80" class="t t-s t-mono">0 = entregado   1 = enviado</text>
+<text x="344" y="100" class="t t-s t-mono">2 = pagado      3 = cancelado</text>
+<text x="344" y="130" class="t t-s t-m">31 bytes, sin importar las filas</text>
+<rect x="330" y="160" width="250" height="176" rx="8" class="caja"/>
+<text x="344" y="182" class="t t-xs t-b t-m">LA COLUMNA, EN NÚMEROS</text>
+<text x="344" y="212" class="t t-mono" style="font-size:15px">0 0 0 0 1 1</text>
+<text x="344" y="238" class="t t-mono" style="font-size:15px">0 0 0 2 2 3</text>
+<text x="344" y="270" class="t t-s">12 números de 3 bits</text>
+<text x="344" y="288" class="t t-s">= 36 bits ≈ 5 bytes</text>
+<text x="344" y="318" class="t t-s t-m">(3 bits alcanzan para 8 valores)</text>
+<path d="M586 230H624" class="ln" style="stroke-width:2" marker-end="url(#c3d3-m)"/>
+
+<rect x="640" y="36" width="240" height="300" rx="8" class="c-enl"/>
+<text x="654" y="58" class="t t-xs t-b k-enl">VALOR × VECES</text>
+<text x="654" y="92" class="t t-mono" style="font-size:15px">0 × 4</text>
+<text x="654" y="122" class="t t-mono" style="font-size:15px">1 × 2</text>
+<text x="654" y="152" class="t t-mono" style="font-size:15px">0 × 3</text>
+<text x="654" y="182" class="t t-mono" style="font-size:15px">2 × 2</text>
+<text x="654" y="212" class="t t-mono" style="font-size:15px">3 × 1</text>
+<text x="654" y="250" class="t t-s">5 pares ≈ 5 bytes</text>
+<text x="654" y="272" class="t t-s">rinde más con rachas largas:</text>
+<text x="654" y="290" class="t t-s">datos ordenados comprimen</text>
+<text x="654" y="308" class="t t-s">mejor</text>
+
+<rect x="20" y="352" width="860" height="52" rx="8" class="caja"/>
+<text x="34" y="374" class="t t-s t-b">Tamaño de la columna:</text>
+<text x="34" y="394" class="t t-s">texto 98 bytes → diccionario 31 bytes (una vez) + 5 de números → con rachas de miles de filas, las corridas dejan casi nada; luego el códec comprime</text>
+</svg></div><figcaption><b>Diccionario y corridas sobre la columna <code>estado</code>.</b> A la izquierda, doce valores de la columna tal como llegan, en texto (98 bytes). Al centro, el diccionario: cada estado distinto recibe un número y la columna pasa a ser una lista de números de 3 bits. A la derecha, las corridas: los números iguales seguidos se escriben como «valor × veces». Abajo, el tamaño de cada paso. Con millones de filas, la proporción es parecida y el diccionario se escribe una sola vez por tramo.</figcaption></figure></section>
+<section><h2>Particionar los archivos por fecha y por clave</h2><div class="prose"><p>Las estadísticas de Parquet permiten saltarse grupos dentro de un archivo. La <b>partición</b> (<i>partitioning</i>) lleva la misma idea un nivel más arriba: reparte los datos en carpetas según el valor de una columna, para no abrir siquiera los archivos que no interesan.</p><p>La convención más usada es la de Hive: cada carpeta lleva en su nombre la columna y el valor, como <code>lineas_por_mes/mes=2026-10/</code>. Un motor que recibe el filtro <code>mes = '2026-10'</code> mira los nombres de las carpetas y lee solo una, sin abrir las otras nueve. A esto se le llama <b>poda de particiones</b> (<i>partition pruning</i>).</p></div><div class="analogia"><b>Imagínalo así</b><p>Un archivador con un cajón por año y una carpeta por mes. Para buscar una factura de octubre de 2026 abres un cajón y una carpeta; no revisas las otras 119. Pero si alguien hiciera una carpeta por día y por cliente, el archivador tendría millones de carpetas casi vacías y buscar cualquier cosa sería más lento que antes.</p></div><div class="prose"><p>Elegir la columna de partición es un equilibrio:</p><ul><li><b>Particiona por lo que más se filtra.</b> En analítica casi siempre es la fecha: día, mes o año según el volumen. A veces se agrega una clave de negocio con pocos valores, como el país.</li><li><b>Evita columnas con demasiados valores.</b> Particionar por <code>cliente_id</code> crearía 5.000 carpetas con archivos diminutos. Muchos archivos pequeños son el enemigo: cada uno tiene su pie y cada apertura cuesta. Una regla práctica es apuntar a archivos de decenas a cientos de megabytes.</li><li><b>No particiones datos chicos.</b> Los 114.000 registros de la tienda caben en un archivo de menos de un megabyte: las particiones por mes sirven para aprender y empiezan a valer la pena con mucho más volumen.</li><li><b>La partición es parte del contrato.</b> Cambiarla después obliga a reescribir todo; los formatos de tabla del capítulo 06 hacen ese cambio más llevadero.</li></ul></div><figure class="fig fig-esquema" id="03-diagrama-4"><div class="lienzo"><svg viewBox="0 0 900 430" style="min-width:740px" role="img" aria-label="Tres niveles para leer menos: poda de particiones en las carpetas por mes, salto de grupos de filas dentro del archivo de octubre y poda de columnas dentro del grupo que se lee">
+<defs>
+<marker id="c3d4-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+</defs>
+<text x="20" y="26" class="t t-xs t-b k-red">1 · PODA DE PARTICIONES</text>
+<text x="330" y="26" class="t t-xs t-b k-red">2 · SALTO DE GRUPOS</text>
+<text x="620" y="26" class="t t-xs t-b k-red">3 · PODA DE COLUMNAS</text>
+<text x="20" y="46" class="t t-s t-mono">lineas_por_mes/</text>
+<g class="apagado">
+<rect x="34" y="56" width="200" height="22" rx="4" class="caja"/><text x="44" y="71" class="t t-s t-mono">mes=2026-01/</text>
+<rect x="34" y="82" width="200" height="22" rx="4" class="caja"/><text x="44" y="97" class="t t-s t-mono">mes=2026-02/</text>
+<rect x="34" y="108" width="200" height="22" rx="4" class="caja"/><text x="44" y="123" class="t t-s t-mono">mes=2026-03/</text>
+<rect x="34" y="134" width="200" height="22" rx="4" class="caja"/><text x="44" y="149" class="t t-s t-mono">mes=2026-04/</text>
+<rect x="34" y="160" width="200" height="22" rx="4" class="caja"/><text x="44" y="175" class="t t-s t-mono">mes=2026-05/</text>
+<rect x="34" y="186" width="200" height="22" rx="4" class="caja"/><text x="44" y="201" class="t t-s t-mono">mes=2026-06/</text>
+<rect x="34" y="212" width="200" height="22" rx="4" class="caja"/><text x="44" y="227" class="t t-s t-mono">mes=2026-07/</text>
+<rect x="34" y="238" width="200" height="22" rx="4" class="caja"/><text x="44" y="253" class="t t-s t-mono">mes=2026-08/</text>
+<rect x="34" y="264" width="200" height="22" rx="4" class="caja"/><text x="44" y="279" class="t t-s t-mono">mes=2026-09/</text>
+</g>
+<rect x="34" y="290" width="200" height="22" rx="4" class="c-red" style="stroke-width:2"/><text x="44" y="305" class="t t-s t-mono t-b">mes=2026-10/ ← se abre</text>
+<path d="M240 301H326" class="ln" style="stroke-width:2" marker-end="url(#c3d4-m)"/>
+
+<rect x="330" y="40" width="250" height="272" rx="8" class="caja"/>
+<text x="344" y="62" class="t t-s t-mono">data_0.parquet (octubre)</text>
+<g class="apagado">
+<rect x="344" y="74" width="222" height="40" rx="4" class="caja"/><text x="354" y="98" class="t t-s">grupo 0 · 01/10 → 10/10</text>
+</g>
+<rect x="344" y="122" width="222" height="40" rx="4" class="c-red"/><text x="354" y="146" class="t t-s">grupo 1 · 10/10 → 22/10</text>
+<rect x="344" y="170" width="222" height="40" rx="4" class="c-red"/><text x="354" y="194" class="t t-s">grupo 2 · 22/10 → 31/10</text>
+<text x="344" y="236" class="t t-s">Filtro: creado_en &gt;= '2026-10-15'</text>
+<text x="344" y="256" class="t t-s t-m">el grupo 0 termina el 10/10:</text>
+<text x="344" y="272" class="t t-s t-m">se descarta por su máximo</text>
+<path d="M566 190H616" class="ln" style="stroke-width:2" marker-end="url(#c3d4-m)"/>
+
+<rect x="620" y="40" width="260" height="272" rx="8" class="caja"/>
+<text x="634" y="62" class="t t-s">columnas del grupo 2</text>
+<g class="apagado"><rect x="634" y="74" width="40" height="150" class="c-fis"/><rect x="678" y="74" width="40" height="150" class="c-enl"/></g>
+<rect x="722" y="74" width="40" height="150" class="c-red"/><rect x="766" y="74" width="40" height="150" class="c-tra"/><rect x="810" y="74" width="40" height="150" class="c-apl"/>
+<text x="634" y="248" class="t t-s">SUM(cantidad * precio)</text>
+<text x="634" y="266" class="t t-s">WHERE creado_en …</text>
+<text x="634" y="290" class="t t-s t-m">se leen 3 de 5 columnas</text>
+
+<rect x="20" y="330" width="860" height="80" rx="8" class="c-red"/>
+<text x="34" y="352" class="t t-xs t-b k-red">CUÁNTO SE LEE</text>
+<text x="34" y="374" class="t t-s">1 de 10 carpetas  ×  2 de 3 grupos  ×  3 de 5 columnas  ≈  4 % del total, y el resto ni se abre.</text>
+<text x="34" y="394" class="t t-s t-m">Cifras de ejemplo con los datos de la tienda; los grupos de octubre se dibujan más chicos para leerlos.</text>
+</svg></div><figcaption><b>Tres niveles para leer menos.</b> A la izquierda, la carpeta del lago particionada por mes: con el filtro «octubre», nueve carpetas quedan grises sin abrirse (poda de particiones). Al centro, el archivo de octubre: sus grupos de filas con mínimo y máximo, y los que el filtro descarta (salto de grupos). A la derecha, el grupo que se lee: solo las columnas que la consulta pide (poda de columnas). Abajo, cuánto se lee en cada nivel.</figcaption></figure><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>El mismo dataset en CSV, JSON y Parquet, medido en tu computadora</h3></div><p>Vas a usar DuckDB, un motor de análisis que corre dentro de Python, para escribir las líneas de pedido de la tienda en tres formatos, comparar tamaños y tiempos, mirar por dentro el archivo Parquet y particionarlo por mes. Necesitas la carpeta <code>datos-tienda</code> del capítulo 01. La instalación pesa unos 100 MB y crea el entorno virtual que usa el resto del curso.</p><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>cd $HOME\datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python -m venv .venv</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>.venv\Scripts\activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>pip install duckdb pyarrow</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>cd ~/datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 -m venv .venv</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>source .venv/bin/activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>pip install duckdb pyarrow</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>Guarda este script como <code>formatos.py</code> en la carpeta <code>datos-tienda</code>. La primera vez, DuckDB descarga su extensión para leer SQLite.</span></li></ol><div class="code-copia"><pre><code>"""El mismo dataset de Tienda Ejemplo en CSV, JSON y Parquet: tamaño y tiempo de una consulta."""
+import time
+from pathlib import Path
+
+import duckdb
+
+CARPETA = Path.home() / "datos-tienda"
+LAGO = CARPETA / "lago"
+LAGO.mkdir(exist_ok=True)
+con = duckdb.connect()
+con.execute("INSTALL sqlite; LOAD sqlite;")
+con.execute(f"ATTACH '{CARPETA / 'tienda.db'}' AS tienda (TYPE sqlite, READ_ONLY)")
+
+# Una tabla ancha: cada línea de pedido con los datos del pedido y del producto
+con.execute("""
+    CREATE TABLE lineas AS
+    SELECT p.pedido_id, p.cliente_id, CAST(p.creado_en AS TIMESTAMP) AS creado_en,
+           strftime(CAST(p.creado_en AS TIMESTAMP), '%Y-%m') AS mes, p.estado, p.canal,
+           d.linea, d.producto_id, pr.categoria, d.cantidad,
+           CAST(d.precio_unitario AS DECIMAL(10, 2)) AS precio_unitario
+    FROM tienda.pedidos p
+    JOIN tienda.detalle_pedido d ON d.pedido_id = p.pedido_id
+    JOIN tienda.productos pr ON pr.producto_id = d.producto_id
+    ORDER BY p.creado_en""")
+
+archivos = {
+    "CSV": (LAGO / "lineas.csv", "(FORMAT csv, HEADER)"),
+    "JSON": (LAGO / "lineas.json", "(FORMAT json)"),
+    "Parquet": (LAGO / "lineas.parquet", "(FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 20000)"),
+}
+lectores = {"CSV": "read_csv('{}')", "JSON": "read_json('{}')", "Parquet": "read_parquet('{}')"}
+consulta = """SELECT SUM(cantidad * precio_unitario) FROM {}
+              WHERE creado_en &gt;= '2026-10-01' AND estado IN ('pagado', 'enviado', 'entregado')"""
+
+print(f"{'formato':&lt;9}{'tamaño':&gt;10}{'consulta':&gt;12}   resultado")
+for nombre, (ruta, opciones) in archivos.items():
+    con.execute(f"COPY lineas TO '{ruta}' {opciones}")
+    fuente = lectores[nombre].format(ruta.as_posix())
+    inicio = time.perf_counter()
+    for _ in range(5):
+        total = con.execute(consulta.format(fuente)).fetchone()[0]
+    ms = (time.perf_counter() - inicio) / 5 * 1000
+    mb = ruta.stat().st_size / 1e6
+    texto = f"{float(total):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+    print(f"{nombre:&lt;9}{mb:&gt;8.1f} MB{ms:&gt;9.1f} ms   US$ {texto}")
+
+# Por dentro del Parquet: grupos de filas y estadísticas mínimas y máximas por columna
+print("\nGrupos de filas de lineas.parquet (columna creado_en):")
+for fila in con.execute(f"""
+    SELECT row_group_id AS grupo, row_group_num_rows AS filas,
+           stats_min AS minimo, stats_max AS maximo, compression
+    FROM parquet_metadata('{(LAGO / 'lineas.parquet').as_posix()}')
+    WHERE path_in_schema = 'creado_en'""").fetchall():
+    print("  grupo {} · {} filas · de {} a {} · {}".format(*fila))
+
+# Particionar por mes: una carpeta por valor de la columna
+con.execute(f"COPY lineas TO '{(LAGO / 'lineas_por_mes').as_posix()}' "
+            "(FORMAT parquet, PARTITION_BY (mes), OVERWRITE_OR_IGNORE)")
+print("\nCarpetas:", sorted(p.name for p in (LAGO / "lineas_por_mes").iterdir()))
+plan = con.execute(f"""EXPLAIN ANALYZE SELECT COUNT(*) FROM read_parquet(
+    '{(LAGO / 'lineas_por_mes').as_posix()}/*/*.parquet', hive_partitioning = true)
+    WHERE mes = '2026-10'""").fetchall()[0][1]
+for linea in plan.splitlines():
+    if "Files" in linea:
+        print("  " + linea.strip("│ "))</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Con el entorno activado, córrelo:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python formatos.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 formatos.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="3" style="counter-reset:st 2"><li><span>Anota el tamaño y el tiempo de cada formato, y en qué grupos de filas cae octubre según el mínimo y el máximo.</span></li><li><span>Abre <code>lago/lineas.csv</code> y <code>lago/lineas.json</code> con un editor de texto. Intenta abrir <code>lago/lineas.parquet</code>.</span></li><li><span>Opcional: crea una tienda diez veces más grande con <code>python generar_tienda.py --escala 10</code> (tarda uno o dos minutos), repite el paso 2 y, al terminar, vuelve a la base del curso con <code>python generar_tienda.py</code>.</span></li></ol><p><b>Qué observar:</b> los tres formatos dan la misma cifra, US$ 782.785,77, la del tablero. Con la base del curso, el CSV ocupa cerca de 9 MB, el JSON cerca de 24 MB (repite cada nombre de columna) y el Parquet menos de 1 MB. La consulta sobre Parquet es entre diez y veinte veces más rápida, porque lee solo cuatro columnas ya tipadas y salta grupos. Los seis grupos de filas están ordenados por fecha y octubre empieza en el grupo 4: los grupos 0 a 3 no se leen. La consulta particionada abre 1 de 10 archivos. El CSV y el JSON se leen en el editor; el Parquet es binario. Los tiempos dependen de tu equipo; las proporciones se mantienen, y con la escala 10 la diferencia crece.</p></div><div class="ml"><b>En la práctica</b><p><b>La primera decisión de formato de Natalia.</b> La zona de aterrizaje siguió en JSON Lines: es lo que entregan la ingesta y la API, y conviene guardar el dato tal como llegó. Pero desde ahí, todo lo que se analiza pasó a Parquet con compresión ZSTD, ordenado por <code>creado_en</code> y particionado por mes. Para los eventos de la app, que viajan uno por uno, eligió Avro con un registro de esquemas, y una regla: ningún cambio de esquema que no sea compatible hacia atrás. Martín notó la diferencia el primer lunes: el informe que tardaba un minuto en cargar ahora tardaba dos segundos.</p></div></section>
+<section><h2>La idea clave</h2><div class="prose"><p>El formato decide cuánto se lee. CSV y JSON son el idioma del intercambio, pero analizarlos obliga a leer todo y a convertir texto. Los formatos por columnas como Parquet leen solo las columnas pedidas, saltan grupos de filas con las estadísticas del pie y comprimen mucho más gracias al diccionario y a las corridas, sobre todo si los datos están ordenados. Avro, por filas y con esquema obligatorio, sirve para los eventos y deja que los esquemas evolucionen con reglas. Y las particiones por fecha evitan abrir los archivos que la consulta no necesita.</p></div></section>
+<section><h2>Pruébate</h2><div class="quiz"><h3>Pruébate</h3><details><summary>¿Por qué un formato por columnas acelera una suma de montos pero no la lectura de un pedido completo?</summary><p>Porque la suma lee solo la columna de montos, que está en un tramo continuo; el pedido completo necesita un valor de cada columna, repartidos en tramos distintos del archivo.</p></details><details><summary>Un archivo Parquet tiene seis grupos de filas pero los pedidos se escribieron en desorden. ¿Cuántos grupos se saltan con el filtro «octubre»?</summary><p>Probablemente ninguno: cada grupo tiene fechas de todo el año, así que el mínimo y el máximo de todos cubren octubre y el lector no puede descartar nada.</p></details><details><summary>¿Por qué la codificación por diccionario funciona tan bien en la columna <code>estado</code> y tan mal en <code>pedido_id</code>?</summary><p>Porque <code>estado</code> tiene seis valores distintos que se repiten miles de veces; <code>pedido_id</code> tiene un valor distinto en cada pedido, así que el diccionario sería tan grande como la columna.</p></details><details><summary>La tienda agrega el campo <code>canal</code> al esquema Avro de los pedidos, con valor por omisión <code>"web"</code>. ¿Puede el lector nuevo leer los mensajes viejos?</summary><p>Sí: es un cambio compatible hacia atrás. Al leer un mensaje viejo sin <code>canal</code>, el lector usa el valor por omisión.</p></details><details><summary>¿Por qué no conviene particionar los pedidos por <code>cliente_id</code>?</summary><p>Porque hay miles de clientes: se crearían miles de carpetas con archivos diminutos, y abrir muchos archivos pequeños cuesta más de lo que ahorra la poda.</p></details></div></section>
+<section><h2>Para investigar</h2><div class="investiga"><h3>Para investigar</h3><p class="hint">Estas preguntas no se responden en el capítulo: búscalas por tu cuenta.</p><ol><li>¿Qué es ORC y en qué se diferencia de Parquet? ¿Y Apache Arrow, que también es por columnas pero vive en memoria?<small>Pista: busca «Arrow vs Parquet in-memory on-disk».</small></li><li>¿Cómo guarda Parquet las columnas anidadas (listas y estructuras) con niveles de repetición y de definición?<small>Pista: busca el artículo de Dremel de Google (2010).</small></li><li>¿Qué son los filtros de Bloom que Parquet puede guardar por columna y cuándo ayudan más que el mínimo y el máximo?</li><li>¿Qué diferencia hay entre los códecs Snappy, ZSTD, LZ4 y GZIP en velocidad y tasa de compresión?<small>Pista: busca una comparación reciente con el mismo conjunto de datos.</small></li><li>¿Qué es el problema de los archivos pequeños (<i>small files problem</i>) en un lago de datos y qué es la compactación?</li></ol></div></section>
+<section><h2>Para saber más</h2><div class="vids"><span>Para saber más</span><a class="vid" href="https://parquet.apache.org/docs/" target="_blank" rel="noopener">Apache Parquet: documentación <small>formato, codificaciones y metadatos, en inglés</small></a><a class="vid" href="https://avro.apache.org/docs/1.12.0/specification/" target="_blank" rel="noopener">Apache Avro: especificación <small>esquemas y reglas de resolución entre escritor y lector, en inglés</small></a><a class="vid" href="https://duckdb.org/docs/stable/data/parquet/overview" target="_blank" rel="noopener">DuckDB: lectura y escritura de Parquet <small>con particiones y metadatos, en inglés</small></a><a class="vid" href="https://research.google/pubs/dremel-interactive-analysis-of-web-scale-datasets-2/" target="_blank" rel="noopener">Dremel: Interactive Analysis of Web-Scale Datasets <small>el artículo de Google que inspiró Parquet (2010), en inglés</small></a></div></section>
+<label class="got"><input type="checkbox" id="got"> Lo tengo claro</label>
+<nav class="pager" id="pager" aria-label="Capítulo anterior y siguiente"></nav>
+</main>
+</div>
+<footer><span>Curso abierto de aaramirez.github.io.</span><span>Sitio publicado: <a href="https://github.com/aaramirez/ingenieria-de-datos" target="_blank" rel="noopener">github.com/aaramirez/ingenieria-de-datos</a></span></footer>
+</div>
+<script src="assets/lab.js"></script>
+<script>
+(function(){
+  const {$}=window.Lab;
+  const raiz=document.querySelector('[id="03-lab-1"]');
+  const nf=(n,d=0)=>{const s=Math.abs(n).toFixed(d).split('.');s[0]=s[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.');return (n<0?'−':'')+s.join(',');};
+  const mb=b=>b>=1e6?nf(b/1e6,1)+' MB':nf(b/1e3,0)+' kB';
+  function rnd(s){return function(){s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+  const EST=['entregado','enviado','pagado','creado','cancelado','devuelto'],PEST=[.87,.02,.01,.03,.05,.02];
+  const CAT=['Hogar','Cocina','Electrónica','Papelería','Deportes','Juguetes'];
+  const T0=Date.UTC(2026,0,1)/1000,T1=Date.UTC(2026,10,1)/1000,OCT=Date.UTC(2026,9,1)/1000;
+  const pad=x=>String(x).padStart(2,'0');
+  const fecha=s=>{const d=new Date(s*1000);return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())+' '+pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds());};
+  const bits=n=>Math.max(1,Math.ceil(Math.log2(n+1)));
+  $('#c3l1-n').addEventListener('input',()=>$('#c3l1-n-o').textContent=nf(+$('#c3l1-n').value));
+  $('#c3l1-n-o').textContent=nf(+$('#c3l1-n').value);
+  function barra(nombre,valor,max,color,texto){return '<div class="c3l1-fila"><span>'+nombre+'</span><span class="c3l1-pista"><i style="width:'+Math.max(.6,valor/max*100)+'%;background:var('+color+')"></i></span><b>'+texto+'</b></div>';}
+  function medir(){
+    const N=+$('#c3l1-n').value,r=rnd(42);
+    // 1. Fabricar los datos (ordenados por fecha), con precios de un catálogo de 200 productos
+    const precios=Array.from({length:200},()=>Math.round(2*Math.pow(200,r()))*100-10);
+    const ped=new Int32Array(N),ts=new Int32Array(N),est=new Uint8Array(N),cat=new Uint8Array(N),cant=new Uint8Array(N),pre=new Int32Array(N);
+    const paso=(T1-T0)/N;let id=1,t=T0;
+    for(let i=0;i<N;i++){t+=paso*(0.5+r());if(r()<0.57)id++;ped[i]=id;ts[i]=Math.min(t,T1-1);
+      let u=r(),k=0;while(u>PEST[k]&&k<5){u-=PEST[k];k++;}est[i]=k;const p=Math.floor(r()*200);cat[i]=p%6;pre[i]=precios[p];cant[i]=r()<.75?1:(r()<.7?2:3);}
+    // 2. Escribirlos como CSV, de verdad
+    const filas=['pedido_id,creado_en,estado,categoria,cantidad,precio_unitario'];
+    for(let i=0;i<N;i++)filas.push(ped[i]+','+fecha(ts[i])+','+EST[est[i]]+','+CAT[cat[i]]+','+cant[i]+','+(pre[i]/100).toFixed(2));
+    const csv=filas.join('\n');
+    const bCsv=new Blob([csv]).size;
+    const bJson=bCsv+N*(2+6*4+'pedido_idcreado_enestadocategoriacantidadprecio_unitario'.length);
+    $('#c3l1-muestra').textContent=filas.slice(0,4).join('\n')+'\n…';
+    // 3. Tamaño por columnas: diccionario y empaquetado de bits, delta para lo ordenado
+    let mdP=0,mdT=0;for(let i=1;i<N;i++){mdP=Math.max(mdP,ped[i]-ped[i-1]);mdT=Math.max(mdT,ts[i]-ts[i-1]);}
+    const col={pedido_id:N*bits(mdP)/8,creado_en:N*bits(mdT)/8,estado:N*3/8+60,categoria:N*3/8+60,cantidad:N*2/8,precio_unitario:N*8/8+800};
+    const bCol=Object.values(col).reduce((a,b)=>a+b,0)+2000;
+    const leidas=['creado_en','estado','cantidad','precio_unitario'];
+    const G=20000,nG=Math.ceil(N/G);let gLeer=0;const saltar=$('#c3l1-grupos').checked;
+    for(let g=0;g<nG;g++){const mx=ts[Math.min(N,(g+1)*G)-1];if(!saltar||mx>=OCT)gLeer++;}
+    const bColLeido=leidas.reduce((a,c)=>a+col[c],0)*gLeer/nG;
+    // 4. Cronometrar la misma suma de octubre
+    const okE=new Set([0,1,2]);
+    let t1=performance.now(),s1=0;
+    const lineas=csv.split('\n');
+    for(let i=1;i<lineas.length;i++){const c=lineas[i].split(',');if(c[1]>='2026-10-01'&&(c[2]==='entregado'||c[2]==='enviado'||c[2]==='pagado'))s1+=parseInt(c[4],10)*parseFloat(c[5]);}
+    const msCsv=performance.now()-t1;
+    let t2=performance.now(),s2=0;
+    for(let g=0;g<nG;g++){const a=g*G,b=Math.min(N,a+G);if(saltar&&ts[b-1]<OCT)continue;
+      for(let i=a;i<b;i++){if(ts[i]>=OCT&&est[i]<3)s2+=cant[i]*pre[i];}}
+    const msCol=performance.now()-t2;
+    // 5. Mostrar
+    const maxB=Math.max(bJson,bCsv);const maxT=Math.max(msCsv,msCol,0.01);
+    $('#c3l1-graf').innerHTML='<div class="c3l1-rot">Tamaño en disco</div>'+
+      barra('JSON (estimado)',bJson,maxB,'--c-fis',mb(bJson))+barra('CSV',bCsv,maxB,'--c-fis',mb(bCsv))+barra('Por columnas',bCol,maxB,'--c-red',mb(bCol))+
+      '<div class="c3l1-rot">Lo que lee la consulta</div>'+barra('CSV',bCsv,maxB,'--c-fis',mb(bCsv))+barra('Por columnas',bColLeido,maxB,'--c-red',mb(bColLeido))+
+      '<div class="c3l1-rot">Tiempo medido en tu navegador</div>'+barra('CSV',msCsv,maxT,'--c-fis',nf(msCsv,1)+' ms')+barra('Por columnas',msCol,maxT,'--c-red',nf(msCol,1)+' ms');
+    const igual=Math.abs(s1*100-s2)<N;
+    $('#c3l1-out').innerHTML='<span class="big">'+nf(N)+' líneas: el CSV ocupa '+mb(bCsv)+' y por columnas '+mb(bCol)+' ('+nf(bCsv/bCol,0)+' veces menos).</span>'+
+      '<span>La suma de octubre dio US$ '+nf(s2/100,2)+' en los dos formatos'+(igual?'':' (diferencia de redondeo)')+'. Leer el CSV tomó '+nf(msCsv,1)+' ms; las columnas, '+nf(msCol,1)+' ms: unas '+nf(msCsv/Math.max(msCol,0.01),0)+' veces menos.</span>'+
+      '<span>El CSV se lee entero y cada número se convierte de texto. Por columnas se leen 4 de 6 columnas, ya como números'+(saltar?', y solo '+gLeer+' de '+nG+' grupos de filas: los demás terminan antes de octubre':'; sin usar las estadísticas se recorren los '+nG+' grupos')+'. Por eso lee '+mb(bColLeido)+' en lugar de '+mb(bCsv)+'.</span>'+
+      '<span class="hint">El tamaño por columnas se calcula con diccionario, diferencias y empaquetado de bits, sin el compresor final: un Parquet real queda parecido o menor. Los datos se fabrican en la página con semilla; no son los de la tienda, así que la suma no es la del tablero. Los tiempos cambian en cada equipo; las proporciones, poco.</span>';
+  }
+  $('#c3l1-ir').addEventListener('click',medir);
+  $('#c3l1-grupos').addEventListener('change',medir);
+  medir();
+})();
+</script>
+<script>
+(function(){
+  const {$}=window.Lab;
+  const nf=(n,d=0)=>{const s=Math.abs(n).toFixed(d).split('.');s[0]=s[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.');return (n<0?'−':'')+s.join(',');};
+  const FILAS=[20480,20480,20480,20480,20480,11712];
+  const FECHA=[['2026-01-01','2026-03-09'],['2026-03-09','2026-05-09'],['2026-05-09','2026-07-04'],['2026-07-04','2026-08-23'],['2026-08-23','2026-10-10'],['2026-10-10','2026-10-31']];
+  const TODO_F=['2026-01-01','2026-10-31'];
+  const CATS=['Cocina','Deportes','Electrónica','Hogar','Juguetes','Papelería'];
+  const PRE={Cocina:[4.9,69.9],Deportes:[9.9,149.9],'Electrónica':[14.9,399.9],Hogar:[7.9,89.9],Juguetes:[5.9,79.9],'Papelería':[1.9,24.9]};
+  const F={oct:{col:'creado_en',d:'2026-10-01',h:'2026-10-31',txt:"creado_en BETWEEN '2026-10-01' AND '2026-10-31'"},
+           ago:{col:'creado_en',d:'2026-08-15',h:'9999',txt:"creado_en >= '2026-08-15'"},
+           jug:{col:'categoria',d:'Juguetes',h:'Juguetes',txt:"categoria = 'Juguetes'"},
+           pre:{col:'precio_unitario',d:300.0001,h:1e9,txt:'precio_unitario > 300'}};
+  function stats(orden,g){
+    if(orden==='fecha')return {creado_en:FECHA[g],categoria:['Cocina','Papelería'],precio_unitario:[1.9,399.9]};
+    if(orden==='cat'){const c=CATS[g];return {creado_en:TODO_F,categoria:[c,c],precio_unitario:PRE[c]};}
+    return {creado_en:TODO_F,categoria:['Cocina','Papelería'],precio_unitario:[1.9,399.9]};
+  }
+  const fmt=(col,v)=>col==='precio_unitario'?nf(v,2):v;
+  function pintar(){
+    const f=F[$('#c3l2-f').value],orden=$('#c3l2-o').value;
+    let leidos=0,filasLeidas=0,html='';
+    for(let g=0;g<6;g++){
+      const st=stats(orden,g)[f.col];
+      const puede=!(st[1]<f.d||st[0]>f.h);
+      if(puede){leidos++;filasLeidas+=FILAS[g];}
+      html+='<div class="c3l2-g'+(puede?'':' salta')+'"><b>Grupo '+g+' · '+nf(FILAS[g])+' filas</b><code>'+f.col+'</code><br>mín <code>'+fmt(f.col,st[0])+'</code><br>máx <code>'+fmt(f.col,st[1])+'</code><br><span class="tag" style="color:var('+(puede?'--c-red':'--muted')+')">'+(puede?'se lee':'se salta sin abrir')+'</span></div>';
+    }
+    $('#c3l2-grupos').innerHTML=html;
+    $('#c3l2-pie').innerHTML='Pie del archivo · consulta: <code>WHERE '+f.txt+'</code> · orden de escritura: '+$('#c3l2-o').selectedOptions[0].text.toLowerCase();
+    const total=FILAS.reduce((a,b)=>a+b,0);
+    let h='<span class="big">Se leen '+leidos+' de 6 grupos: '+nf(filasLeidas)+' de '+nf(total)+' filas ('+nf(filasLeidas/total*100,0)+' %).</span>';
+    const ordenCol={fecha:'creado_en',cat:'categoria'}[orden];
+    if(leidos===6)h+='<span class="warn">Ningún grupo se pudo descartar: el mínimo y el máximo de '+f.col+' en cada grupo abarcan casi todos los valores posibles, así que cualquier grupo podría tener filas que cumplen.</span><span>'+(orden==='nada'?'En un archivo sin orden las estadísticas no sirven para nada.':'El archivo está ordenado por '+ordenCol+', no por '+f.col+'.')+' Prueba ordenar por la columna que más se filtra.</span>';
+    else if(ordenCol===f.col||(f.col==='precio_unitario'&&orden==='cat'))h+='<span class="ok">El lector miró solo el pie y descartó '+(6-leidos)+' grupo(s) sin leer sus datos.</span><span>'+(f.col==='precio_unitario'?'El orden por categoría agrupa la electrónica, la única con precios mayores a 300: una columna correlacionada con la del orden también se beneficia.':'Funciona porque las filas se escribieron ordenadas por '+f.col+': cada grupo cubre un tramo angosto de valores.')+'</span>';
+    else h+='<span>Algunos grupos se descartan, pero no todos los que podrían: el orden ayuda solo a la columna por la que se ordenó.</span>';
+    h+='<span class="hint">Los mínimos y máximos por fecha son los reales del archivo de la práctica de este capítulo.</span>';
+    $('#c3l2-out').innerHTML=h;
+  }
+  $('#c3l2-f').addEventListener('change',pintar);
+  $('#c3l2-o').addEventListener('change',pintar);
+  pintar();
+})();
+</script>
+</body>
+</html>

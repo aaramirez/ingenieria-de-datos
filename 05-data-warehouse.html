@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="es">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-KX76XF8R');</script>
+<!-- End Google Tag Manager -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Data warehouse · Ingeniería de datos · Ingeniería de datos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Cómo viaja un dato desde la base de una aplicación hasta el tablero que lee la gerencia: ingesta, formatos, ETL y ELT, data warehouse, lakehouse, Spark, Kafka, orquestación, dbt, calidad y linaje, con laboratorios donde se ve cada pipeline funcionar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400;1,8..60,600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KX76XF8R"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<div class="wrap" data-page="data-warehouse">
+<header class="topbar"><a class="brand" href="index.html">Ingeniería de <b>datos</b></a><span class="eyebrow">Curso visual e interactivo · Datos e inteligencia artificial</span><a class="al-sitio" href="https://aaramirez.github.io/">← Todos los cursos</a></header>
+<div class="layout">
+<nav class="toc" id="toc" aria-label="Ruta de aprendizaje"></nav>
+<main>
+<header class="page-head"><span class="num">CAPÍTULO 05 DE 14</span><h1>Data warehouse y modelado dimensional</h1><p class="lede">El pipeline ya deja en el almacén las ventas por día, pero cada pregunta nueva de Elena obliga a escribir otra tabla. Este capítulo ordena el almacén de Tienda Ejemplo con el modelado dimensional: hechos y dimensiones, un esquema en estrella con su grano declarado y una dimensión que recuerda que Renata vivía en Quito cuando compró.</p></header>
+<section><h2>Para qué un almacén de datos: preguntas que cruzan toda la empresa</h2><div class="prose"><p>La primera semana con el pipeline, Elena Vargas hizo cuatro preguntas. ¿Cuánto vendió Electrónica en octubre? ¿Qué ciudades crecieron más durante la semana de descuentos? ¿Los clientes que compran por la app gastan más que los de la web? ¿Cuánto vendimos a clientes que se dieron de alta este año? Natalia Herrera respondió cada una con una tabla nueva: <code>ventas_categoria_mes</code>, <code>ventas_ciudad_semana</code>, <code>ventas_canal</code>… A la cuarta semana había once tablas, dos de ellas con cifras de octubre que no coincidían entre sí.</p><p>El problema no era el SQL. Era que el almacén no tenía forma: cada pregunta producía su propia tabla, con su propia versión de la verdad.</p></div><div class="analogia"><b>Imagínalo así</b><p>Un supermercado no guarda la mercadería en el orden en que llegó el camión. La ordena por pasillos (lácteos, limpieza, panadería) y pone carteles. Así, cualquier cliente encuentra cualquier producto sin preguntarle al encargado, incluso una combinación que nadie había pensado: «todo lo que lleva mi receta». El modelado dimensional es poner pasillos y carteles en el almacén de datos.</p></div><div class="prose"><p>Un <b>almacén de datos</b> (<i>data warehouse</i>) es una base pensada para analizar, no para operar. La base de la tienda, la de Diego Paz, es un sistema <b>OLTP</b> (<i>Online Transaction Processing</i>, procesamiento de transacciones en línea): miles de operaciones pequeñas por minuto, cada una sobre pocas filas, como crear un pedido o aprobar un pago. El almacén es un sistema <b>OLAP</b> (<i>Online Analytical Processing</i>, procesamiento analítico en línea): pocas consultas, cada una sobre millones de filas, como sumar todas las ventas de octubre por ciudad. El capítulo 01 presentó esta división; aquí se diseña el lado analítico.</p><p>Tres ideas definen un buen almacén:</p><ul><li><b>Integra.</b> Junta datos de varias fuentes (la tienda, los pagos, la publicidad) con los mismos nombres y las mismas claves, para que una pregunta pueda cruzarlas.</li><li><b>Guarda historia.</b> La base de la tienda sabe dónde vive Renata hoy; el almacén debe saber dónde vivía el día que compró.</li><li><b>Es fácil de consultar.</b> Martín, y cualquier herramienta de tableros, debe poder responder una pregunta nueva sin pedirle una tabla a Natalia.</li></ul></div></section>
+<section><h2>Hechos y dimensiones: el método de Kimball</h2><div class="prose"><p>En 1996 Ralph Kimball publicó <i>The Data Warehouse Toolkit</i>, y su <b>modelado dimensional</b> (<i>dimensional modeling</i>) sigue siendo la forma más usada de dar estructura a un almacén. Parte de una observación: casi todas las preguntas de negocio tienen la misma forma, «cuánto (algo) por (algo)». Cuánto vendimos por ciudad. Cuántas unidades por producto. Cuánto por mes.</p></div><div class="analogia"><b>Imagínalo así</b><p>Piensa en un ticket de caja. Las cifras (cantidad, precio, total) son lo que se mide. Todo lo demás es contexto: la fecha, la sucursal, el cajero, el producto. Los números se suman; el contexto sirve para filtrar y agrupar. Un ticket de caja ya es, casi, una fila de una tabla de hechos.</p></div><div class="prose"><p>Esa forma da los dos tipos de tabla del modelo:</p><ul><li>La <b>tabla de hechos</b> (<i>fact table</i>) guarda las mediciones de un proceso de negocio: cada fila es un evento (una venta, un pago, una visita) con sus números, llamados <b>medidas</b> (<i>measures</i>), y con claves que apuntan al contexto. En la tienda, <code>fact_ventas</code> con <code>cantidad</code>, <code>precio_unitario</code> y <code>monto</code>.</li><li>Las <b>tablas de dimensión</b> (<i>dimension tables</i>) guardan el contexto: quién, qué, cuándo, dónde. <code>dim_cliente</code> con el nombre y la ciudad, <code>dim_producto</code> con el nombre y la categoría, <code>dim_fecha</code> con el mes, el día de la semana y si era la semana de descuentos. Sus columnas son los <b>atributos</b> (<i>attributes</i>) por los que se filtra y se agrupa.</li></ul><p>Kimball propone diseñar en cuatro pasos, en este orden:</p><ol class="steps"><li><span><b>Elegir el proceso de negocio.</b> No «el área de ventas», sino un proceso que genera eventos: las ventas de la tienda.</span></li><li><span><b>Declarar el grano.</b> Qué representa exactamente una fila de la tabla de hechos. Es la decisión más importante y tiene sección propia más abajo.</span></li><li><span><b>Identificar las dimensiones.</b> Todo lo que describe el evento con el grano elegido: fecha, cliente, producto, canal.</span></li><li><span><b>Identificar los hechos.</b> Los números que se miden con ese grano: cantidad y monto.</span></li></ol><p>Dos detalles prácticos. Las dimensiones usan una <b>clave sustituta</b> (<i>surrogate key</i>), un número propio del almacén (<code>cliente_key</code>), en lugar de la clave del origen (<code>cliente_id</code>). Parece un capricho, pero es lo que permite guardar historia, como se verá con las mudanzas. Y no todas las medidas se pueden sumar: el <code>monto</code> es <b>aditivo</b> (se suma por cualquier dimensión), el saldo de una cuenta es <b>semiaditivo</b> (se suma entre cuentas, pero no entre días), y un porcentaje o un precio unitario <b>no es aditivo</b>: se recalcula a partir de sus partes.</p></div><figure class="fig fig-esquema" id="05-diagrama-1"><div class="lienzo"><svg viewBox="0 0 900 440" style="min-width:760px" role="img" aria-label="Esquema en estrella de las ventas de Tienda Ejemplo: al centro la tabla de hechos fact_ventas con sus claves y medidas; a su alrededor las dimensiones de fecha, cliente y producto, unidas por sus claves sustitutas; abajo a la derecha, la consulta de Elena que une la tabla de hechos con dos dimensiones">
+<text x="20" y="22" class="t t-xs t-b t-m">DIMENSIONES: EL CONTEXTO (QUIÉN, QUÉ, CUÁNDO)</text>
+<rect x="20" y="36" width="230" height="160" rx="10" class="caja"/>
+<rect x="20" y="36" width="230" height="30" rx="10" class="c-red"/>
+<text x="34" y="56" class="t t-b t-mono" style="font-size:12px">dim_fecha</text>
+<text x="34" y="86" class="t t-s t-mono t-b">fecha_key  20261014</text>
+<text x="34" y="104" class="t t-s t-mono">fecha, anio, mes</text>
+<text x="34" y="122" class="t t-s t-mono">anio_mes  '2026-10'</text>
+<text x="34" y="140" class="t t-s t-mono">dia_semana, fin_de_semana</text>
+<text x="34" y="158" class="t t-s t-mono">semana_descuentos</text>
+<text x="34" y="182" class="t t-s t-m">365 filas: una por día</text>
+
+<rect x="20" y="236" width="230" height="160" rx="10" class="caja"/>
+<rect x="20" y="236" width="230" height="30" rx="10" class="c-red"/>
+<text x="34" y="256" class="t t-b t-mono" style="font-size:12px">dim_cliente</text>
+<text x="34" y="286" class="t t-s t-mono t-b">cliente_key  42</text>
+<text x="34" y="304" class="t t-s t-mono">cliente_id  1042</text>
+<text x="34" y="322" class="t t-s t-mono">nombre  Renata Ortiz</text>
+<text x="34" y="340" class="t t-s t-mono">ciudad  Quito (ya limpia)</text>
+<text x="34" y="358" class="t t-s t-mono">fecha_alta</text>
+<text x="34" y="382" class="t t-s t-m">5.000 filas: una por cliente</text>
+
+<rect x="650" y="36" width="230" height="160" rx="10" class="caja"/>
+<rect x="650" y="36" width="230" height="30" rx="10" class="c-red"/>
+<text x="664" y="56" class="t t-b t-mono" style="font-size:12px">dim_producto</text>
+<text x="664" y="86" class="t t-s t-mono t-b">producto_key  88</text>
+<text x="664" y="104" class="t t-s t-mono">producto_id, sku</text>
+<text x="664" y="122" class="t t-s t-mono">nombre  Parlante modelo D</text>
+<text x="664" y="140" class="t t-s t-mono">categoria  Electrónica</text>
+<text x="664" y="158" class="t t-s t-mono">precio_lista</text>
+<text x="664" y="182" class="t t-s t-m">200 filas: una por producto</text>
+
+<text x="320" y="96" class="t t-xs t-b t-m">HECHOS: LO QUE SE MIDE</text>
+<rect x="320" y="106" width="260" height="230" rx="10" class="c-red" style="stroke-width:2"/>
+<text x="336" y="130" class="t t-b t-mono" style="font-size:12px">fact_ventas</text>
+<text x="336" y="148" class="t t-s t-m">grano: una línea de un pedido vendido</text>
+<line x1="336" y1="158" x2="564" y2="158" class="ln" style="stroke-width:.8"/>
+<text x="336" y="178" class="t t-s t-mono t-b">fecha_key</text>
+<text x="336" y="196" class="t t-s t-mono t-b">cliente_key</text>
+<text x="336" y="214" class="t t-s t-mono t-b">producto_key</text>
+<text x="336" y="232" class="t t-s t-mono">pedido_id, linea, canal</text>
+<text x="470" y="178" class="t t-s t-m">claves a las</text>
+<text x="470" y="194" class="t t-s t-m">dimensiones</text>
+<line x1="336" y1="244" x2="564" y2="244" class="ln" style="stroke-width:.8"/>
+<text x="336" y="264" class="t t-s t-mono">cantidad</text>
+<text x="336" y="282" class="t t-s t-mono">precio_unitario</text>
+<text x="336" y="300" class="t t-s t-mono">monto</text>
+<text x="470" y="264" class="t t-s t-m">medidas que</text>
+<text x="470" y="280" class="t t-s t-m">se suman</text>
+<text x="336" y="324" class="t t-s t-m">102.232 filas (ene-oct)</text>
+
+<path d="M250 116H286V178H320" class="ln" style="stroke-width:1.6"/>
+<path d="M250 316H286V196H320" class="ln" style="stroke-width:1.6"/>
+<path d="M650 116H614V214H580" class="ln" style="stroke-width:1.6"/>
+<text x="258" y="110" class="t t-s t-m">1</text><text x="306" y="172" class="t t-s t-m">N</text>
+<text x="258" y="310" class="t t-s t-m">1</text><text x="306" y="190" class="t t-s t-m">N</text>
+<text x="634" y="110" class="t t-s t-m">1</text><text x="588" y="208" class="t t-s t-m">N</text>
+
+<rect x="610" y="236" width="270" height="190" rx="10" class="c-apl"/>
+<text x="624" y="258" class="t t-xs t-b k-apl">LA PREGUNTA DE ELENA</text>
+<text x="624" y="278" class="t t-s">ventas de octubre por categoría y ciudad</text>
+<text x="624" y="302" class="t t-s t-mono">SELECT c.ciudad, p.categoria,</text>
+<text x="680" y="318" class="t t-s t-mono">SUM(v.monto)</text>
+<text x="624" y="334" class="t t-s t-mono">FROM fact_ventas v</text>
+<text x="624" y="350" class="t t-s t-mono">JOIN dim_fecha f USING (fecha_key)</text>
+<text x="624" y="366" class="t t-s t-mono">JOIN dim_cliente c USING (...)</text>
+<text x="624" y="382" class="t t-s t-mono">JOIN dim_producto p USING (...)</text>
+<text x="624" y="398" class="t t-s t-mono">WHERE f.anio_mes = '2026-10'</text>
+<text x="624" y="414" class="t t-s t-mono">GROUP BY ALL</text>
+<text x="320" y="370" class="t t-s t-m">Un solo salto de la tabla de hechos</text>
+<text x="320" y="386" class="t t-s t-m">a cada dimensión: por eso «estrella».</text>
+</svg></div><figcaption><b>El esquema en estrella de las ventas de Tienda Ejemplo.</b> Al centro, la tabla de hechos <code>fact_ventas</code> (borde azul grueso) con su grano escrito arriba: una línea de un pedido vendido. Arriba, sus claves hacia las dimensiones; abajo, las medidas que se suman. Alrededor, las tres dimensiones con su clave sustituta en negrita y la fila de Renata y del Parlante modelo D como ejemplo. Las líneas marcan relaciones de uno a muchos: un cliente, muchas líneas vendidas. En el recuadro rosa, la pregunta de Elena: una unión por dimensión.</figcaption></figure></section>
+<section><h2>Esquema en estrella y copo de nieve</h2><div class="prose"><p>Con la tabla de hechos al centro y cada dimensión unida a ella por su clave, el dibujo parece una estrella, y así se llama: <b>esquema en estrella</b> (<i>star schema</i>). Responder «ventas de octubre por categoría y ciudad» es unir la tabla de hechos con tres dimensiones, filtrar y agrupar. Siempre es la misma forma de consulta, y por eso las herramientas de tableros la entienden sin ayuda.</p><p>Las dimensiones de una estrella están <b>desnormalizadas</b> a propósito: <code>dim_producto</code> repite «Electrónica» en cada uno de sus 33 productos de esa categoría. En una base operacional eso sería un error de diseño, porque cambiar el nombre de la categoría obliga a tocar 33 filas (la normalización está en el curso de <a href="https://aaramirez.github.io/bases-de-datos/temario.html" target="_blank" rel="noopener">Bases de datos</a>). En un almacén se acepta: las dimensiones son chicas comparadas con los hechos, se escriben una vez por noche y se leen miles de veces.</p><p>Si las dimensiones se normalizan (la categoría en su propia tabla, la ciudad en otra, el país en otra) el dibujo se ramifica y se llama <b>esquema de copo de nieve</b> (<i>snowflake schema</i>). Ahorra repeticiones a cambio de más uniones en cada consulta.</p></div><figure class="fig fig-comparacion" id="05-diagrama-2"><div class="lienzo"><svg viewBox="0 0 900 470" style="min-width:760px" role="img" aria-label="Comparación entre esquema en estrella y copo de nieve. A la izquierda, la estrella: la tabla de hechos unida directamente a tres dimensiones anchas. A la derecha, el copo de nieve: las dimensiones se normalizan en tablas más pequeñas de mes, categoría, ciudad y país, y algunas preguntas necesitan más uniones. Abajo, lo que gana y lo que cuesta cada uno">
+<text x="20" y="24" class="t t-xs t-b t-m">ESTRELLA: DIMENSIONES ANCHAS, UN SALTO</text>
+<text x="470" y="24" class="t t-xs t-b t-m">COPO DE NIEVE: DIMENSIONES NORMALIZADAS</text>
+<line x1="452" y1="36" x2="452" y2="320" class="ln ln-d"/>
+
+<line x1="230" y1="192" x2="95" y2="140" class="ln" style="stroke-width:1.5"/>
+<line x1="230" y1="192" x2="365" y2="140" class="ln" style="stroke-width:1.5"/>
+<line x1="230" y1="192" x2="230" y2="250" class="ln" style="stroke-width:1.5"/>
+<rect x="170" y="170" width="120" height="44" rx="8" class="c-red"/>
+<text x="230" y="197" class="t t-s t-mono t-b" text-anchor="middle">fact_ventas</text>
+<rect x="30" y="96" width="130" height="44" rx="8" class="caja"/>
+<text x="95" y="115" class="t t-s t-mono t-b" text-anchor="middle">dim_fecha</text>
+<text x="95" y="131" class="t t-s t-m" text-anchor="middle">fecha, mes, año</text>
+<rect x="300" y="96" width="130" height="44" rx="8" class="caja"/>
+<text x="365" y="115" class="t t-s t-mono t-b" text-anchor="middle">dim_producto</text>
+<text x="365" y="131" class="t t-s t-m" text-anchor="middle">nombre, categoría</text>
+<rect x="160" y="250" width="140" height="44" rx="8" class="caja"/>
+<text x="230" y="269" class="t t-s t-mono t-b" text-anchor="middle">dim_cliente</text>
+<text x="230" y="285" class="t t-s t-m" text-anchor="middle">nombre, ciudad, país</text>
+<text x="30" y="60" class="t t-s">«Electrónica» se repite en 33 filas</text>
+<text x="30" y="76" class="t t-s">de dim_producto: no importa.</text>
+
+<line x1="680" y1="192" x2="535" y2="140" class="ln" style="stroke-width:1.5"/>
+<line x1="680" y1="192" x2="820" y2="140" class="ln" style="stroke-width:1.5"/>
+<line x1="680" y1="192" x2="680" y2="250" class="ln" style="stroke-width:1.5"/>
+<line x1="535" y1="96" x2="535" y2="80" class="ln" style="stroke-width:1.5"/>
+<line x1="820" y1="96" x2="820" y2="80" class="ln" style="stroke-width:1.5"/>
+<line x1="740" y1="272" x2="770" y2="272" class="ln" style="stroke-width:1.5"/>
+<line x1="825" y1="294" x2="825" y2="310" class="ln" style="stroke-width:1.5"/>
+<rect x="620" y="170" width="120" height="44" rx="8" class="c-red"/>
+<text x="680" y="197" class="t t-s t-mono t-b" text-anchor="middle">fact_ventas</text>
+<rect x="480" y="96" width="110" height="44" rx="8" class="caja"/>
+<text x="535" y="123" class="t t-s t-mono t-b" text-anchor="middle">dim_fecha</text>
+<rect x="480" y="44" width="110" height="36" rx="8" class="caja"/>
+<text x="535" y="67" class="t t-s t-mono" text-anchor="middle">dim_mes</text>
+<rect x="760" y="96" width="120" height="44" rx="8" class="caja"/>
+<text x="820" y="123" class="t t-s t-mono t-b" text-anchor="middle">dim_producto</text>
+<rect x="760" y="44" width="120" height="36" rx="8" class="caja"/>
+<text x="820" y="67" class="t t-s t-mono" text-anchor="middle">dim_categoria</text>
+<rect x="620" y="250" width="120" height="44" rx="8" class="caja"/>
+<text x="680" y="277" class="t t-s t-mono t-b" text-anchor="middle">dim_cliente</text>
+<rect x="770" y="250" width="110" height="44" rx="8" class="caja"/>
+<text x="825" y="277" class="t t-s t-mono" text-anchor="middle">dim_ciudad</text>
+<rect x="770" y="310" width="110" height="36" rx="8" class="caja"/>
+<text x="825" y="333" class="t t-s t-mono" text-anchor="middle">dim_pais</text>
+<text x="480" y="232" class="t t-s">Ventas por país:</text>
+<text x="480" y="248" class="t t-s k-warm">3 uniones en vez de 1</text>
+
+<rect x="20" y="364" width="420" height="92" rx="10" class="c-red"/>
+<text x="34" y="386" class="t t-xs t-b k-red">ESTRELLA</text>
+<text x="34" y="406" class="t t-s">+ consultas cortas, una unión por dimensión</text>
+<text x="34" y="424" class="t t-s">+ fácil de leer para analistas y tableros</text>
+<text x="34" y="442" class="t t-s t-m">− repite textos (la categoría en cada producto)</text>
+<rect x="460" y="364" width="420" height="92" rx="10" class="caja"/>
+<text x="474" y="386" class="t t-xs t-b t-m">COPO DE NIEVE</text>
+<text x="474" y="406" class="t t-s">+ sin repeticiones; un cambio se hace en un lugar</text>
+<text x="474" y="424" class="t t-s">+ útil si una jerarquía es enorme o la comparten</text>
+<text x="474" y="442" class="t t-s t-m">− más uniones y más fácil equivocarse al consultar</text>
+</svg></div><figcaption><b>Estrella frente a copo de nieve.</b> A la izquierda, la estrella: tres dimensiones anchas, cada una a un salto de la tabla de hechos. A la derecha, el mismo modelo normalizado: el mes, la categoría, la ciudad y el país salen a tablas propias, y preguntar «ventas por país» exige tres uniones en lugar de una. Abajo, lo que gana y lo que cuesta cada forma. La recomendación general es la estrella, salvo que una jerarquía sea enorme o la compartan muchas dimensiones.</figcaption></figure><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Arma la estrella de la tienda en DuckDB</h3></div><p>Vas a construir <code>dim_fecha</code>, <code>dim_cliente</code>, <code>dim_producto</code> y <code>fact_ventas</code> en <code>almacen.duckdb</code> y responder tres preguntas de Elena. Trabaja en <code>datos-tienda</code> con el entorno virtual activado. Antes, vuelve a crear la base desde cero (<code>python generar_tienda.py</code> en Windows, <code>python3 generar_tienda.py</code> en macOS y Linux) para que la clienta Renata siga en Quito.</p><div class="code-copia"><pre><code>"""Arma el esquema en estrella de las ventas en el almacén (DuckDB)."""
+import duckdb
+
+alm = duckdb.connect("almacen.duckdb")
+alm.execute("INSTALL sqlite; LOAD sqlite;")
+alm.execute("ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")
+
+# Dimensión de fechas: una fila por día, con los atributos por los que se pregunta
+alm.execute("""
+    CREATE OR REPLACE TABLE dim_fecha AS
+    SELECT CAST(strftime(f, '%Y%m%d') AS INTEGER) AS fecha_key, f::DATE AS fecha,
+           year(f) AS anio, month(f) AS mes, strftime(f, '%Y-%m') AS anio_mes,
+           isodow(f) AS dia_semana, isodow(f) &gt;= 6 AS fin_de_semana,
+           f BETWEEN DATE '2026-10-19' AND DATE '2026-10-25' AS semana_descuentos
+    FROM range(DATE '2026-01-01', DATE '2027-01-01', INTERVAL 1 DAY) t(f)""")
+
+# Dimensión de clientes (tipo 1: se sobrescribe), con la ciudad ya limpia
+alm.execute("""
+    CREATE OR REPLACE TABLE dim_cliente AS
+    WITH canon(ciudad) AS (VALUES ('Lima'), ('Bogotá'), ('Ciudad de México'), ('Santiago'),
+         ('Quito'), ('Guadalajara'), ('Medellín'), ('Guayaquil'), ('Santo Domingo'), ('Panamá'))
+    SELECT row_number() OVER (ORDER BY c.cliente_id) AS cliente_key, c.cliente_id, c.nombre,
+           coalesce(k.ciudad, trim(c.ciudad)) AS ciudad, c.fecha_alta::DATE AS fecha_alta
+    FROM tienda.clientes c
+    LEFT JOIN canon k ON strip_accents(lower(trim(c.ciudad))) = strip_accents(lower(k.ciudad))""")
+
+alm.execute("""
+    CREATE OR REPLACE TABLE dim_producto AS
+    SELECT row_number() OVER (ORDER BY producto_id) AS producto_key, producto_id, sku, nombre,
+           categoria, CAST(precio AS DECIMAL(10,2)) AS precio_lista
+    FROM tienda.productos""")
+
+# Tabla de hechos. Grano: una línea de un pedido vendido
+alm.execute("""
+    CREATE OR REPLACE TABLE fact_ventas AS
+    SELECT CAST(strftime(CAST(p.creado_en AS TIMESTAMP), '%Y%m%d') AS INTEGER) AS fecha_key,
+           dc.cliente_key, dp.producto_key, p.pedido_id, d.linea, p.canal,
+           d.cantidad, CAST(d.precio_unitario AS DECIMAL(10,2)) AS precio_unitario,
+           CAST(d.cantidad * d.precio_unitario AS DECIMAL(12,2)) AS monto
+    FROM tienda.pedidos p
+    JOIN tienda.detalle_pedido d ON d.pedido_id = p.pedido_id
+    JOIN dim_cliente dc ON dc.cliente_id = p.cliente_id
+    JOIN dim_producto dp ON dp.producto_id = d.producto_id
+    WHERE p.estado IN ('pagado', 'enviado', 'entregado')""")
+
+for t in ("dim_fecha", "dim_cliente", "dim_producto", "fact_ventas"):
+    print(f"{t:&lt;13}{alm.execute(f'SELECT COUNT(*) FROM {t}').fetchone()[0]:&gt;8} filas")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="code-copia"><pre><code>"""Tres preguntas de Elena, respondidas con el esquema en estrella."""
+import duckdb
+
+alm = duckdb.connect("almacen.duckdb", read_only=True)
+
+print("Ventas netas por mes")
+alm.sql("""
+    SELECT f.anio_mes, SUM(v.monto) AS ventas_netas, COUNT(DISTINCT v.pedido_id) AS pedidos
+    FROM fact_ventas v JOIN dim_fecha f USING (fecha_key)
+    GROUP BY f.anio_mes ORDER BY f.anio_mes""").show()
+
+print("Octubre: las cinco combinaciones de ciudad y categoría que más venden")
+alm.sql("""
+    SELECT c.ciudad, p.categoria, SUM(v.monto) AS ventas
+    FROM fact_ventas v
+    JOIN dim_fecha f USING (fecha_key)
+    JOIN dim_cliente c USING (cliente_key)
+    JOIN dim_producto p USING (producto_key)
+    WHERE f.anio_mes = '2026-10'
+    GROUP BY ALL ORDER BY ventas DESC LIMIT 5""").show()
+
+print("Octubre: venta promedio por día, con y sin semana de descuentos")
+alm.sql("""
+    SELECT f.semana_descuentos, round(SUM(v.monto) / COUNT(DISTINCT f.fecha), 2) AS ventas_por_dia
+    FROM fact_ventas v JOIN dim_fecha f USING (fecha_key)
+    WHERE f.anio_mes = '2026-10' GROUP BY ALL""").show()</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda el primer script como <code>estrella.py</code> y el segundo como <code>preguntas.py</code>, y córrelos:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python estrella.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python preguntas.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 estrella.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 preguntas.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Cuenta las uniones de la segunda pregunta. Después escribe tú una cuarta: ventas de octubre por canal y día de la semana. No hace falta tocar <code>estrella.py</code>.</span></li></ol><p><b>Qué observar:</b> la tabla de hechos tiene 102.232 filas y las dimensiones, 365, 5.000 y 200. La serie mensual coincide con las barras del tablero y octubre da <b>US$ 782.785,77 en 8.376 pedidos</b>. Lima y Electrónica encabezan la segunda tabla con US$ 72.026,16, y sin ciudades repetidas por mayúsculas o espacios: la limpieza se hizo una vez, en la dimensión, y la heredan todas las consultas. Durante la semana de descuentos se vendió en promedio US$ 33.159,94 por día, contra US$ 22.944,42 el resto de octubre. Las tres preguntas usan la misma forma (hechos, uniones a dimensiones, filtro, agrupación), y la cuarta también.</p></div></section>
+<section><h2>El grano de una tabla de hechos</h2><div class="prose"><p>El <b>grano</b> (<i>grain</i>) es la respuesta a «¿qué representa una fila de esta tabla?». No se deduce de las columnas: se declara antes de diseñar, por escrito, en una frase. Para <code>fact_ventas</code>: «una fila por cada línea de un pedido vendido (pagado, enviado o entregado)».</p></div><div class="analogia"><b>Imagínalo así</b><p>Una foto se puede tomar con una cámara de alta resolución y achicar después; al revés no se puede: de una foto pixelada no sale la cara de nadie. El grano fino es la foto en alta resolución: siempre puedes resumir. El grano grueso es la foto ya achicada: lo que no quedó, no vuelve.</p></div><div class="prose"><p>El grano decide qué preguntas se pueden responder. Con una fila por línea de pedido se puede sumar por producto, por pedido, por cliente o por día. Con una fila por pedido se pierde el producto, porque un pedido mezcla varios. Con una fila por día y categoría se pierde quién compró. Kimball recomienda empezar por el <b>grano atómico</b>, el más fino que entrega el proceso, porque las preguntas que el negocio todavía no hizo son las que más cuestan después.</p><p>Dos errores frecuentes:</p><ul><li><b>Mezclar granos en una misma tabla.</b> Una tabla con filas por línea y, debajo, filas de «total del pedido» suma todo dos veces.</li><li><b>Agregar medidas que no se pueden agregar.</b> En una tabla por día y categoría, la columna «pedidos» no se puede sumar entre categorías: un pedido con un Parlante y un Reloj de pared cuenta una vez en Electrónica y otra en Hogar.</li></ul></div><div class="lab" id="05-lab-1"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Construye la tabla de hechos de ventas: elige el grano y mira cómo cambian las respuestas</h3></div><p class="hint">Once líneas vendidas del 14 de octubre, entre ellas las del pedido 59521 de Renata. Elige el grano de <code>fact_ventas</code> y mira cuántas filas tiene la tabla y cuáles de las seis preguntas de Elena y Martín puede responder. Fíjate en la pregunta del ticket promedio con el grano «un día por categoría»: se puede calcular, pero da mal.</p><style>
+[id="05-lab-1"] .c5l1-rot{font:600 .72rem var(--f-display);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+[id="05-lab-1"] table{width:100%;border-collapse:collapse;font:500 .76rem var(--f-mono)}
+[id="05-lab-1"] th,[id="05-lab-1"] td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+[id="05-lab-1"] th{font:600 .7rem var(--f-display);color:var(--muted)}
+[id="05-lab-1"] td.n{text-align:right}
+[id="05-lab-1"] .c5l1-q{display:grid;gap:6px}
+[id="05-lab-1"] .c5l1-q div{display:grid;grid-template-columns:22px 1fr;gap:8px;align-items:start;border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--card);font:500 .84rem/1.4 var(--f-display)}
+[id="05-lab-1"] .c5l1-q div.si{border-color:var(--good);background:var(--good-soft)}
+[id="05-lab-1"] .c5l1-q div.no{border-color:var(--line);background:var(--paper);color:var(--muted)}
+[id="05-lab-1"] .c5l1-q div.mal{border-color:var(--warm);background:var(--warm-soft)}
+[id="05-lab-1"] .c5l1-q b.ic{font:700 .95rem var(--f-mono)}
+[id="05-lab-1"] .c5l1-q small{display:block;color:var(--muted);font-weight:500}
+</style>
+<p class="c5l1-rot">Elige el grano de fact_ventas</p>
+<div class="btns" id="c5l1-granos" role="group" aria-label="Grano de la tabla de hechos"></div>
+<p class="c5l1-rot" id="c5l1-tit"></p>
+<div class="tbl" style="overflow-x:auto"><table id="c5l1-tab"></table></div>
+<p class="c5l1-rot">Las preguntas de Elena y Martín</p>
+<div class="c5l1-q" id="c5l1-q" aria-live="polite"></div>
+<div class="readout texto" id="c5l1-out" aria-live="polite"></div></div><div class="prose"><p>El laboratorio muestra el trato: 304 filas por día alcanzan para una sola pregunta, y las 102.232 líneas responden todas. En un almacén columnar (capítulo 03) cien mil filas no pesan; ni siquiera cien millones. Si una consulta frecuente se vuelve lenta, se agrega una tabla resumida <b>además</b> de la atómica, nunca en su lugar.</p></div></section>
+<section><h2><i>Slowly changing dimensions</i>: tipos 1, 2 y 3</h2><div class="prose"><p>El 1 de noviembre, Renata Ortiz se mudó de Quito a Lima, y la base de la tienda lo registró como cualquier sistema operacional: sobrescribió la ciudad. Para la tienda está bien, porque necesita saber adónde mandar el próximo pedido. Para el almacén es un problema: si <code>dim_cliente</code> también sobrescribe, las compras que Renata hizo en Quito en octubre aparecen de golpe como ventas de Lima, y el informe de octubre que Elena presentó la semana pasada ya no da lo mismo.</p></div><div class="analogia"><b>Imagínalo así</b><p>Un pasaporte se renueva con la dirección nueva, pero los sellos de los viajes anteriores no se borran ni se cambian de país. Si en 2025 entraste a Chile, eso queda escrito aunque hoy vivas en otro lado. Una dimensión con historia funciona como ese pasaporte: el dato actual cambia, lo que pasó antes queda como pasó.</p></div><div class="prose"><p>Las dimensiones cuyos atributos cambian de vez en cuando se llaman <b><i>slowly changing dimensions</b></i> (SCD, dimensiones de cambio lento). Kimball numeró las formas de tratarlas; las tres clásicas son:</p><ul><li><b>Tipo 1: sobrescribir.</b> Se reemplaza el valor viejo por el nuevo. No guarda historia. Es lo correcto para correcciones: si la ciudad de un cliente estaba escrita «quito » con minúscula y un espacio, nadie quiere conservar ese error.</li><li><b>Tipo 2: agregar una fila.</b> Se cierra la fila vigente (con una fecha <code>valido_hasta</code> y la marca <code>es_actual = false</code>) y se agrega otra con el valor nuevo, <b>con una clave sustituta nueva</b>. Cada compra queda unida a la clave que estaba vigente el día en que ocurrió. Es la forma de guardar historia completa, y la más usada para atributos que alteran los informes.</li><li><b>Tipo 3: agregar una columna.</b> Se guarda el valor actual y el anterior en dos columnas (<code>ciudad_actual</code>, <code>ciudad_anterior</code>). Sirve para un cambio único y planeado, como una reorganización de zonas de venta que se quiere comparar «con la regla vieja y con la nueva». No dice cuándo cambió, ni recuerda más de un cambio.</li></ul></div><figure class="fig fig-comparacion" id="05-diagrama-3"><div class="lienzo"><svg viewBox="0 0 900 400" style="min-width:780px" role="img" aria-label="Las tres respuestas a la mudanza de Renata Ortiz de Quito a Lima el 1 de noviembre. Tipo 1 sobrescribe la ciudad y sus compras de octubre pasan a contar como Lima. Tipo 2 cierra la fila de Quito y abre una nueva fila de Lima con otra clave sustituta, y las compras de octubre siguen en Quito. Tipo 3 agrega una columna con la ciudad anterior">
+<rect x="20" y="16" width="860" height="44" rx="10" class="c-fis"/>
+<text x="36" y="36" class="t t-xs t-b k-fis">EL CAMBIO EN EL ORIGEN</text>
+<text x="36" y="52" class="t t-s t-mono">clientes 1042: ciudad 'Quito' → 'Lima', actualizado_en 2026-11-01 06:35:32</text>
+
+<text x="20" y="90" class="t t-xs t-b t-m">TIPO 1 · SOBRESCRIBIR</text>
+<rect x="20" y="100" width="270" height="92" rx="8" class="caja"/>
+<text x="32" y="120" class="t t-xs t-b t-m">KEY</text><text x="72" y="120" class="t t-xs t-b t-m">ID</text><text x="122" y="120" class="t t-xs t-b t-m">CIUDAD</text>
+<line x1="32" y1="128" x2="278" y2="128" class="ln" style="stroke-width:.6"/>
+<rect x="28" y="134" width="254" height="22" rx="3" style="fill:var(--mark)"/>
+<text x="32" y="149" class="t t-s t-mono">42</text><text x="72" y="149" class="t t-s t-mono">1042</text><text x="122" y="149" class="t t-s t-mono">Lima</text>
+<text x="32" y="178" class="t t-s t-m">una fila; Quito ya no existe</text>
+<rect x="20" y="204" width="270" height="70" rx="8" class="caja" style="stroke:var(--warm)"/>
+<text x="32" y="224" class="t t-xs t-b k-warm">VENTAS DE OCTUBRE DE RENATA</text>
+<text x="32" y="244" class="t t-s">Lima US$ 192,31</text>
+<text x="32" y="262" class="t t-s k-warm">cambió el pasado</text>
+
+<text x="315" y="90" class="t t-xs t-b t-m">TIPO 2 · FILA NUEVA</text>
+<rect x="315" y="100" width="290" height="92" rx="8" class="caja"/>
+<text x="327" y="120" class="t t-xs t-b t-m">KEY</text><text x="367" y="120" class="t t-xs t-b t-m">CIUDAD</text><text x="422" y="120" class="t t-xs t-b t-m">DESDE</text><text x="512" y="120" class="t t-xs t-b t-m">HASTA</text>
+<line x1="327" y1="128" x2="593" y2="128" class="ln" style="stroke-width:.6"/>
+<text x="327" y="149" class="t t-s t-mono t-m">42</text><text x="367" y="149" class="t t-s t-mono t-m">Quito</text><text x="422" y="149" class="t t-s t-mono t-m">1900-01-01</text><text x="512" y="149" class="t t-s t-mono t-m">2026-11-01</text>
+<rect x="323" y="156" width="274" height="22" rx="3" style="fill:var(--c-enl-s)"/>
+<text x="327" y="171" class="t t-s t-mono">5001</text><text x="367" y="171" class="t t-s t-mono">Lima</text><text x="422" y="171" class="t t-s t-mono">2026-11-01</text><text x="512" y="171" class="t t-s t-mono">9999-12-31</text>
+<rect x="315" y="204" width="290" height="70" rx="8" class="caja" style="stroke:var(--good)"/>
+<text x="327" y="224" class="t t-xs t-b k-enl">VENTAS DE OCTUBRE DE RENATA</text>
+<text x="327" y="244" class="t t-s">Quito US$ 192,31</text>
+<text x="327" y="262" class="t t-s k-enl">la historia se respeta</text>
+
+<text x="630" y="90" class="t t-xs t-b t-m">TIPO 3 · COLUMNA «ANTERIOR»</text>
+<rect x="630" y="100" width="250" height="92" rx="8" class="caja"/>
+<text x="642" y="120" class="t t-xs t-b t-m">KEY</text><text x="682" y="120" class="t t-xs t-b t-m">ACTUAL</text><text x="742" y="120" class="t t-xs t-b t-m">ANTERIOR</text>
+<line x1="642" y1="128" x2="868" y2="128" class="ln" style="stroke-width:.6"/>
+<rect x="638" y="134" width="234" height="22" rx="3" style="fill:var(--mark)"/>
+<text x="642" y="149" class="t t-s t-mono">42</text><text x="682" y="149" class="t t-s t-mono">Lima</text><text x="742" y="149" class="t t-s t-mono">Quito</text>
+<text x="642" y="178" class="t t-s t-m">un solo cambio, sin fecha</text>
+<rect x="630" y="204" width="250" height="70" rx="8" class="caja"/>
+<text x="642" y="224" class="t t-xs t-b t-m">VENTAS DE OCTUBRE DE RENATA</text>
+<text x="642" y="244" class="t t-s">Lima, o Quito si se elige «anterior»</text>
+<text x="642" y="262" class="t t-s t-m">sirve para comparar antes y después</text>
+
+<rect x="20" y="294" width="860" height="92" rx="10" class="c-red"/>
+<text x="36" y="316" class="t t-xs t-b k-red">CUÁNDO USAR CADA UNO</text>
+<text x="36" y="336" class="t t-s"><tspan class="t-b">Tipo 1:</tspan> correcciones (la ciudad «quito » mal escrita) y atributos cuya historia no le importa a nadie.</text>
+<text x="36" y="354" class="t t-s"><tspan class="t-b">Tipo 2:</tspan> cambios reales que alteran un informe: ciudad, segmento, plan. Las compras guardan la clave del día.</text>
+<text x="36" y="372" class="t t-s"><tspan class="t-b">Tipo 3:</tspan> una reorganización única (zonas de venta nuevas) que se quiere ver con la regla vieja y la nueva.</text>
+</svg></div><figcaption><b>Las tres respuestas a la mudanza de Renata.</b> Arriba, el cambio tal como llega del origen (ámbar). Debajo, la fila o las filas de Renata en <code>dim_cliente</code> con cada tipo: en amarillo lo sobrescrito, en verde la fila nueva. El recuadro de abajo de cada columna dice cómo queda el informe de las compras de octubre de Renata (US$ 192,31): tipo 1 las muda a Lima, tipo 2 las deja en Quito y tipo 3 deja elegir entre la ciudad actual y la anterior. La franja azul resume cuándo conviene cada uno.</figcaption></figure><div class="prose"><p>La clave sustituta es la que hace funcionar al tipo 2. La tabla de hechos no guarda <code>cliente_id = 1042</code>, que es el mismo antes y después de la mudanza, sino <code>cliente_key</code>: 42 para las compras de Renata cuando vivía en Quito y 5001 para las que haga desde Lima. Al cargar cada venta, el pipeline busca la fila de la dimensión vigente ese día y guarda su clave. Así, «ventas por ciudad» sigue siendo una unión simple, sin fechas en la consulta.</p></div><div class="lab" id="05-lab-2"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Un cliente cambia de ciudad: la misma dimensión con SCD tipo 1 y tipo 2</h3></div><p class="hint">Mueve la línea del tiempo de Renata: el 1 de noviembre se muda a Lima, el 20 compra desde allí (un pedido de ejemplo) y en febrero se muda otra vez. Con cada tipo de dimensión mira sus filas en <code>dim_cliente</code>, la clave que guarda cada compra y si el informe de ventas por ciudad coincide con lo que de verdad pasó.</p><style>
+[id="05-lab-2"] .c5l2-rot{font:600 .72rem var(--f-display);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+[id="05-lab-2"] table{width:100%;border-collapse:collapse;font:500 .76rem var(--f-mono)}
+[id="05-lab-2"] th,[id="05-lab-2"] td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+[id="05-lab-2"] th{font:600 .7rem var(--f-display);color:var(--muted)}
+[id="05-lab-2"] td.n{text-align:right}
+[id="05-lab-2"] tr.nueva td{background:var(--c-enl-s)}
+[id="05-lab-2"] tr.cambio td{background:var(--mark)}
+[id="05-lab-2"] tr.vieja td{color:var(--muted)}
+[id="05-lab-2"] .c5l2-dos{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px}
+[id="05-lab-2"] .c5l2-bar{display:grid;grid-template-columns:110px 1fr 90px;gap:8px;align-items:center;font:500 .8rem var(--f-display);margin:3px 0}
+[id="05-lab-2"] .c5l2-bar i{display:block;height:14px;border-radius:4px;background:var(--c-red);min-width:2px}
+[id="05-lab-2"] .c5l2-bar i.mal{background:var(--warm)}
+[id="05-lab-2"] .c5l2-bar b{font:600 .78rem var(--f-mono);text-align:right}
+</style>
+<div class="ctls">
+  <label class="ctl">Línea del tiempo de Renata <output id="c5l2-to"></output>
+    <input type="range" id="c5l2-t" min="0" max="3" step="1" value="1" aria-label="Momento de la historia de Renata"></label>
+</div>
+<p class="c5l2-rot">Tipo de dimensión lenta</p>
+<div class="btns" id="c5l2-tipos" role="group" aria-label="Tipo de SCD"></div>
+<p class="c5l2-rot" id="c5l2-dtit"></p>
+<div class="tbl" style="overflow-x:auto"><table id="c5l2-dim"></table></div>
+<div class="c5l2-dos">
+  <div><p class="c5l2-rot">Compras de Renata en fact_ventas</p><div class="tbl" style="overflow-x:auto"><table id="c5l2-fact"></table></div></div>
+  <div><p class="c5l2-rot">Ventas de Renata por ciudad, según el almacén</p><div id="c5l2-rep" aria-live="polite"></div></div>
+</div>
+<div class="readout texto" id="c5l2-out" aria-live="polite"></div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Una dimensión tipo 2 que recuerda la mudanza de Renata</h3></div><p>Vas a crear <code>dim_cliente_historia</code> como SCD tipo 2, avanzar la tienda un día (el 1 de noviembre Renata se muda a Lima) y comparar el informe con la dimensión tipo 1 de la práctica anterior. Necesitas el almacén de la práctica anterior, hecho con la base recién creada.</p><div class="code-copia"><pre><code>"""Mantiene dim_cliente_historia como SCD tipo 2: cada cambio de ciudad abre una fila nueva."""
+import duckdb
+
+alm = duckdb.connect("almacen.duckdb")
+alm.execute("INSTALL sqlite; LOAD sqlite;")
+alm.execute("ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")
+alm.execute("CREATE SEQUENCE IF NOT EXISTS sec_cliente START 1")
+alm.execute("""
+    CREATE TABLE IF NOT EXISTS dim_cliente_historia (
+        cliente_key INTEGER DEFAULT nextval('sec_cliente'), cliente_id INTEGER,
+        nombre VARCHAR, ciudad VARCHAR, valido_desde TIMESTAMP, valido_hasta TIMESTAMP,
+        es_actual BOOLEAN)""")
+# Foto de hoy del origen, con la ciudad limpia como en estrella.py
+alm.execute("""
+    CREATE OR REPLACE TEMP TABLE origen AS
+    WITH canon(ciudad) AS (VALUES ('Lima'), ('Bogotá'), ('Ciudad de México'), ('Santiago'),
+         ('Quito'), ('Guadalajara'), ('Medellín'), ('Guayaquil'), ('Santo Domingo'), ('Panamá'))
+    SELECT c.cliente_id, c.nombre, coalesce(k.ciudad, trim(c.ciudad)) AS ciudad,
+           CAST(c.actualizado_en AS TIMESTAMP) AS actualizado_en
+    FROM tienda.clientes c
+    LEFT JOIN canon k ON strip_accents(lower(trim(c.ciudad))) = strip_accents(lower(k.ciudad))""")
+
+alm.execute("BEGIN TRANSACTION")
+# 1. Cerrar la versión vigente de quien cambió de ciudad
+cerradas = alm.execute("""
+    UPDATE dim_cliente_historia h SET valido_hasta = o.actualizado_en, es_actual = false
+    FROM origen o
+    WHERE h.cliente_id = o.cliente_id AND h.es_actual AND h.ciudad &lt;&gt; o.ciudad""").fetchone()[0]
+# 2. Abrir una versión nueva para los cambiados y para los clientes que no estaban
+nuevas = alm.execute("""
+    INSERT INTO dim_cliente_historia (cliente_id, nombre, ciudad, valido_desde, valido_hasta, es_actual)
+    SELECT o.cliente_id, o.nombre, o.ciudad,
+           CASE WHEN EXISTS (SELECT 1 FROM dim_cliente_historia x WHERE x.cliente_id = o.cliente_id)
+                THEN o.actualizado_en ELSE TIMESTAMP '1900-01-01' END,
+           TIMESTAMP '9999-12-31', true
+    FROM origen o
+    WHERE NOT EXISTS (SELECT 1 FROM dim_cliente_historia h
+                      WHERE h.cliente_id = o.cliente_id AND h.es_actual)
+    ORDER BY o.cliente_id""").fetchone()[0]
+alm.execute("COMMIT")
+print(f"{cerradas} versiones cerradas, {nuevas} versiones nuevas")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="code-copia"><pre><code>"""Las ventas de Renata Ortiz por ciudad, con la dimensión tipo 1 y con la tipo 2."""
+import duckdb
+
+alm = duckdb.connect("almacen.duckdb")
+alm.sql("SELECT * FROM dim_cliente_historia WHERE cliente_id = 1042 ORDER BY valido_desde").show()
+print("Tipo 1 (dim_cliente): la ciudad de hoy para toda la historia")
+alm.sql("""
+    SELECT c.ciudad, SUM(v.monto) AS ventas FROM fact_ventas v
+    JOIN dim_cliente c USING (cliente_key) WHERE c.cliente_id = 1042 GROUP BY ALL""").show()
+print("Tipo 2 (dim_cliente_historia): la ciudad que tenía el día de cada compra")
+alm.sql("""
+    SELECT h.ciudad, SUM(v.monto) AS ventas FROM fact_ventas v
+    JOIN dim_fecha f USING (fecha_key)
+    JOIN dim_cliente c USING (cliente_key)
+    JOIN dim_cliente_historia h ON h.cliente_id = c.cliente_id
+     AND f.fecha &gt;= h.valido_desde AND f.fecha &lt; h.valido_hasta
+    WHERE c.cliente_id = 1042 GROUP BY ALL""").show()</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda los scripts como <code>scd2.py</code> y <code>renata.py</code>. Corre la carga inicial de la dimensión, avanza la tienda un día, vuelve a cargar la dimensión, reconstruye la estrella (que sobrescribe <code>dim_cliente</code>, tipo 1) y compara:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python scd2.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python generar_tienda.py --avanzar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python scd2.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python estrella.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python renata.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 scd2.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 generar_tienda.py --avanzar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 scd2.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 estrella.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 renata.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Vuelve a correr <code>python preguntas.py</code> (o <code>python3</code>) y mira la fila de octubre.</span></li></ol><p><b>Qué observar:</b> la primera carga abre 5.000 versiones; después de avanzar, la segunda cierra 3 y abre 3: las tres mudanzas del día. Renata tiene ahora dos filas, Quito hasta el 1 de noviembre a las 06:35:32 y Lima desde entonces, con claves distintas. Con la dimensión tipo 1, sus US$ 300,71 de compras de todo el año aparecen en Lima; con la tipo 2, en Quito, donde de verdad vivía. Para ver el ejemplo con pocas líneas, <code>renata.py</code> une por fecha y <code>cliente_id</code>; en un almacén en producción, cada fila de <code>fact_ventas</code> guardaría directamente la clave vigente el día de la venta. Y mira la fila de octubre en <code>preguntas.py</code>: ahora dice US$ 782.625,71 en 8.374 pedidos, porque dos pedidos de octubre se devolvieron el 1 de noviembre. No es un error: el estado del pedido cambió y la definición lo excluye. Cómo se anuncia y se versiona un cambio así es tema del capítulo 12.</p></div><div class="caso"><b>Un caso real</b><p><b>El vendedor que cambió de zona.</b> Un caso clásico en empresas con fuerza de ventas: una vendedora pasa de la zona Norte a la zona Sur a mitad de año y la dimensión de vendedores se actualiza con tipo 1. Al día siguiente, el informe de cumplimiento muestra que la zona Norte nunca llegó a su meta del primer semestre y que la Sur la superó con creces, porque todas las ventas de la vendedora se mudaron con ella. Las comisiones del semestre, ya pagadas, dejan de cuadrar con el informe. La corrección fue la de este capítulo: el atributo «zona» pasó a tipo 2, y la regla quedó escrita en el diccionario del almacén para cada atributo de cada dimensión.</p></div></section>
+<section><h2>Almacenes del mercado: BigQuery, Snowflake, Redshift y DuckDB para empezar</h2><div class="prose"><p>El modelado dimensional no depende del motor: una estrella es una estrella en cualquier base. Lo que cambia entre los almacenes del mercado es cómo guardan y procesan los datos y cómo se pagan. A noviembre de 2026, algunos ejemplos públicos, sin orden de preferencia:</p><div class="tbl"><table><thead><tr><th>Almacén</th><th>Qué lo caracteriza</th></tr></thead><tbody><tr><td><b>Google BigQuery</b></td><td>Sin servidores que administrar: se cargan tablas y se consulta; se paga por los datos que lee cada consulta o por capacidad reservada</td></tr><tr><td><b>Snowflake</b></td><td>Separa el almacenamiento de los «almacenes virtuales» de cómputo, que se encienden, se apagan y se agrandan por separado; corre sobre varias nubes</td></tr><tr><td><b>Amazon Redshift</b></td><td>El almacén de AWS, en clúster o en modo sin servidor, integrado con el resto de esa nube</td></tr><tr><td><b>DuckDB</b></td><td>Gratuito y de código abierto, corre dentro de tu programa o en tu computadora, sin servidor; ideal para aprender, para equipos chicos y para procesar archivos</td></tr></tbody></table></div><p>Otros nombres que aparecen en el mismo espacio son Azure Synapse y Microsoft Fabric, Databricks SQL y ClickHouse. Todos comparten lo esencial que viste en el capítulo 03: guardan por columnas, comprimen y leen solo las columnas que pide la consulta. Por eso una estrella con columnas anchas y cien millones de filas en la tabla de hechos sigue respondiendo en segundos.</p><p>Para Tienda Ejemplo, Natalia eligió empezar con DuckDB: los datos caben de sobra en una máquina, no hay cuentas que pagar y todo lo que construya (las tablas, el SQL, las pruebas) se traslada casi sin cambios a cualquiera de los otros si la tienda crece. La decisión de cambiar de motor se toma cuando lo pida el volumen o el número de personas consultando a la vez, no antes.</p></div><div class="ml"><b>En la práctica</b><p><b>El diccionario de una sola página.</b> Natalia dejó junto al almacén una tabla que se lee en un minuto: para cada tabla de hechos, su grano en una frase; para cada dimensión, sus atributos y el tipo de SCD de cada uno. <code>dim_cliente</code>: nombre tipo 1 (las correcciones no necesitan historia), ciudad tipo 2, correo tipo 1. Cuando Irene Castro, la científica de datos, preguntó si podía usar la ciudad para su modelo de demanda, la respuesta estaba escrita: sí, y con la ciudad que el cliente tenía el día de cada compra.</p></div></section>
+<section><h2>La idea clave</h2><div class="prose"><p>Un almacén ordenado se modela por procesos de negocio: una tabla de hechos con medidas y un grano escrito en una frase, y dimensiones anchas a un salto, en estrella. El grano más fino responde las preguntas que todavía nadie hizo, y las dimensiones que cambian se tratan a propósito: tipo 1 para corregir, tipo 2 para guardar historia con una clave sustituta nueva, tipo 3 para un cambio único que se quiere comparar.</p></div></section>
+<section><h2>Pruébate</h2><div class="quiz"><h3>Pruébate</h3><details><summary>En <code>fact_ventas</code>, ¿qué columnas son medidas y cuáles son claves a dimensiones?</summary><p>Medidas: <code>cantidad</code>, <code>precio_unitario</code> y <code>monto</code> (solo <code>cantidad</code> y <code>monto</code> se suman). Claves: <code>fecha_key</code>, <code>cliente_key</code> y <code>producto_key</code>; <code>pedido_id</code> y <code>linea</code> son datos del evento que no apuntan a ninguna dimensión.</p></details><details><summary>¿Por qué el precio unitario no se suma, aunque sea un número de la tabla de hechos?</summary><p>Porque no es aditivo: sumar precios de distintas líneas no significa nada. Se suman <code>monto</code> y <code>cantidad</code>, y el precio promedio se recalcula como uno dividido por el otro.</p></details><details><summary>Una tabla tiene una fila por día y categoría con la columna <code>pedidos</code>. ¿Por qué no se puede obtener el total de pedidos del día sumando esa columna?</summary><p>Porque un pedido con productos de dos categorías aparece en las dos filas; la suma lo cuenta dos veces. Con el grano de línea se cuentan los <code>pedido_id</code> distintos.</p></details><details><summary>Un cliente escribió mal su correo y lo corrige. ¿Qué tipo de SCD usarías para el correo y por qué?</summary><p>Tipo 1: es una corrección, no un cambio de la realidad, y nadie necesita conservar el correo equivocado.</p></details><details><summary>Con SCD tipo 2, ¿por qué la tabla de hechos guarda <code>cliente_key</code> y no <code>cliente_id</code>?</summary><p>Porque <code>cliente_id</code> es el mismo antes y después del cambio; la clave sustituta distingue cada versión del cliente, y así cada venta queda unida a la versión vigente el día en que ocurrió.</p></details></div></section>
+<section><h2>Para investigar</h2><div class="investiga"><h3>Para investigar</h3><p class="hint">Estas preguntas no se responden en el capítulo: búscalas por tu cuenta.</p><ol><li>¿Qué son los tipos 4, 6 y 7 de <i>slowly changing dimensions</i> y qué problema de los tipos 1, 2 y 3 intenta resolver cada uno?<small>Pista: busca la lista de técnicas del Kimball Group.</small></li><li>¿Qué es una tabla de hechos sin hechos (<i>factless fact table</i>) y qué pregunta respondería en la tienda?</li><li>¿Qué es una dimensión «basura» (<i>junk dimension</i>) y cuándo conviene juntar varios indicadores pequeños en ella?</li><li>¿Cómo maneja una tabla de hechos los eventos que llegan tarde, por ejemplo un pedido de octubre que se carga en diciembre, cuando la dimensión del cliente ya tiene una versión más nueva?</li><li>¿Qué es una dimensión que cumple varios roles (<i>role-playing dimension</i>) y cómo usarías <code>dim_fecha</code> a la vez para la fecha del pedido y la de entrega?</li></ol></div></section>
+<section><h2>Para saber más</h2><div class="vids"><span>Para saber más</span><a class="vid" href="https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/" target="_blank" rel="noopener">Dimensional Modeling Techniques <small>el catálogo de técnicas del Kimball Group, en inglés</small></a><a class="vid" href="https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/type-2/" target="_blank" rel="noopener">Type 2: Add New Row <small>la SCD tipo 2 explicada por el Kimball Group, en inglés</small></a><a class="vid" href="https://duckdb.org/docs/stable/core_extensions/sqlite" target="_blank" rel="noopener">SQLite Extension de DuckDB <small>cómo leer la base de la tienda desde DuckDB, en inglés</small></a></div></section>
+<label class="got"><input type="checkbox" id="got"> Lo tengo claro</label>
+<nav class="pager" id="pager" aria-label="Capítulo anterior y siguiente"></nav>
+</main>
+</div>
+<footer><span>Curso abierto de aaramirez.github.io.</span><span>Sitio publicado: <a href="https://github.com/aaramirez/ingenieria-de-datos" target="_blank" rel="noopener">github.com/aaramirez/ingenieria-de-datos</a></span></footer>
+</div>
+<script src="assets/lab.js"></script>
+<script>
+(function(){
+  const {$}=window.Lab;
+  const raiz=document.querySelector('[id="05-lab-1"]');
+  const nf=(n,d=0)=>{const s=Math.abs(n).toFixed(d).split('.');s[0]=s[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.');return (n<0?'−':'')+s.join(',');};
+  const usd=n=>'US$ '+nf(n,2);
+  // Líneas vendidas del 14 de octubre de 2026 (muestra real, semilla 42): pedido, línea, cliente, ciudad, producto, categoría, cantidad, precio
+  const L=[
+    [59521,1,'Renata Ortiz','Quito','Reloj de pared modelo C','Hogar',1,13.9],
+    [59521,2,'Renata Ortiz','Quito','Parlante modelo D','Electrónica',2,79.9],
+    [59522,1,'Olivia Medina','Bogotá','Pelota modelo B','Juguetes',2,17.9],
+    [59523,1,'Clara Cruz','Guadalajara','Cuaderno modelo F','Papelería',1,1.9],
+    [59523,2,'Clara Cruz','Guadalajara','Juego de cuchillos modelo C','Cocina',1,12.9],
+    [59523,3,'Clara Cruz','Guadalajara','Olla modelo A','Cocina',2,44.9],
+    [59524,1,'Hugo Flores','Quito','Espejo modelo B','Hogar',1,8.9],
+    [59524,2,'Hugo Flores','Quito','Bloques modelo C','Juguetes',1,39.9],
+    [59526,1,'Paula Flores','Santo Domingo','Cojín modelo D','Hogar',2,7.9],
+    [59526,2,'Paula Flores','Santo Domingo','Audífonos modelo A','Electrónica',1,41.9],
+    [59528,1,'Martina Herrera','Lima','Reloj de pared modelo A','Hogar',3,47.9]
+  ].map(r=>({pedido:r[0],linea:r[1],cliente:r[2],ciudad:r[3],producto:r[4],categoria:r[5],cantidad:r[6],monto:Math.round(r[6]*r[7]*100)/100}));
+  const r2=x=>Math.round(x*100)/100;
+  const G={
+    linea:{n:'Una línea de pedido',filas:102232,tabla:()=>L.map(x=>({fecha:'2026-10-14',pedido_id:x.pedido,linea:x.linea,cliente:x.cliente,producto:x.producto,cantidad:x.cantidad,monto:x.monto}))},
+    pedido:{n:'Un pedido',filas:58472,tabla:()=>{const m={};L.forEach(x=>{m[x.pedido]=m[x.pedido]||{fecha:'2026-10-14',pedido_id:x.pedido,cliente:x.cliente,lineas:0,unidades:0,monto:0};const o=m[x.pedido];o.lineas++;o.unidades+=x.cantidad;o.monto=r2(o.monto+x.monto);});return Object.values(m);}},
+    diacat:{n:'Un día por categoría',filas:1824,tabla:()=>{const m={};L.forEach(x=>{m[x.categoria]=m[x.categoria]||{fecha:'2026-10-14',categoria:x.categoria,pedidos:new Set(),monto:0};m[x.categoria].pedidos.add(x.pedido);m[x.categoria].monto=r2(m[x.categoria].monto+x.monto);});return Object.values(m).sort((a,b)=>b.monto-a.monto).map(o=>({fecha:o.fecha,categoria:o.categoria,pedidos:o.pedidos.size,monto:o.monto}));}},
+    dia:{n:'Un día',filas:304,tabla:()=>[{fecha:'2026-10-14',pedidos:new Set(L.map(x=>x.pedido)).size,monto:r2(L.reduce((s,x)=>s+x.monto,0))}]}
+  };
+  const total=r2(L.reduce((s,x)=>s+x.monto,0)),npedidos=new Set(L.map(x=>x.pedido)).size;
+  const porCiudad=()=>{const m={};L.forEach(x=>m[x.ciudad]=r2((m[x.ciudad]||0)+x.monto));return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,2).map(e=>e[0]+' '+usd(e[1])).join(', ')+'…';};
+  const elec=r2(L.filter(x=>x.categoria==='Electrónica').reduce((s,x)=>s+x.monto,0));
+  const parlante=L.filter(x=>x.producto==='Parlante modelo D').reduce((s,x)=>s+x.cantidad,0);
+  const multi=Object.values(L.reduce((m,x)=>{m[x.pedido]=(m[x.pedido]||0)+1;return m;},{})).filter(n=>n>1).length;
+  const sumaPedCat=G.diacat.tabla().reduce((s,x)=>s+x.pedidos,0);
+  // Para cada pregunta: [texto, {grano: [estado, respuesta]}]; estado: si | no | mal
+  const Q=[
+    ['¿Cuánto se vendió el 14 de octubre?',{linea:['si',usd(total)],pedido:['si',usd(total)],diacat:['si',usd(total)],dia:['si',usd(total)]}],
+    ['¿Cuánto vendió Electrónica ese día?',{linea:['si',usd(elec)],pedido:['no','el pedido mezcla productos de varias categorías'],diacat:['si',usd(elec)],dia:['no','el día ya no distingue categorías']}],
+    ['¿Cuál fue el ticket promedio (ventas ÷ pedidos)?',{linea:['si',usd(total/npedidos)+' (contando pedidos distintos)'],pedido:['si',usd(total/npedidos)],diacat:['mal',usd(total/sumaPedCat)+': sumar «pedidos» de cada categoría da '+sumaPedCat+', no '+npedidos+'; un pedido con dos categorías se cuenta dos veces'],dia:['si',usd(total/npedidos)]}],
+    ['¿Cuánto se vendió por ciudad del cliente?',{linea:['si',porCiudad()],pedido:['si',porCiudad()],diacat:['no','al agrupar se perdió quién compró'],dia:['no','al agrupar se perdió quién compró']}],
+    ['¿Cuántos Parlantes modelo D se vendieron?',{linea:['si',parlante+' unidades'],pedido:['no','el pedido solo guarda el total de unidades'],diacat:['no','solo hay categorías, no productos'],dia:['no','solo hay el total del día']}],
+    ['¿Cuántos pedidos traían más de un producto?',{linea:['si',multi+' de '+npedidos],pedido:['si',multi+' de '+npedidos+' (columna «lineas»)'],diacat:['no','ya no se sabe qué líneas iban juntas'],dia:['no','ya no se sabe qué líneas iban juntas']}]
+  ];
+  let g='linea';
+  function pintar(){
+    $('#c5l1-granos').innerHTML=Object.keys(G).map(k=>'<button type="button" data-g="'+k+'" aria-pressed="'+(k===g)+'">'+G[k].n+'</button>').join('');
+    raiz.querySelectorAll('#c5l1-granos button').forEach(b=>b.addEventListener('click',()=>{g=b.dataset.g;pintar();}));
+    const t=G[g].tabla(),cols=Object.keys(t[0]);
+    $('#c5l1-tit').textContent='fact_ventas con grano «'+G[g].n.toLowerCase()+'»: '+t.length+' fila'+(t.length>1?'s':'')+' para este día';
+    $('#c5l1-tab').innerHTML='<thead><tr>'+cols.map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody>'+t.map(f=>'<tr>'+cols.map(c=>{const v=f[c];return '<td class="'+(typeof v==='number'&&c!=='pedido_id'&&c!=='linea'?'n':'')+'">'+(c==='monto'?nf(v,2):v)+'</td>';}).join('')+'</tr>').join('')+'</tbody>';
+    let si=0,mal=0;
+    $('#c5l1-q').innerHTML=Q.map(q=>{const [e,r]=q[1][g];if(e==='si')si++;if(e==='mal')mal++;return '<div class="'+e+'"><b class="ic" aria-hidden="true">'+(e==='si'?'✓':e==='mal'?'!':'✗')+'</b><span>'+q[0]+'<small>'+(e==='si'?r:e==='mal'?'Se puede calcular, pero da mal: '+r:'No se puede: '+r)+'</small></span></div>';}).join('');
+    let o='<span class="big">'+si+' de '+Q.length+' preguntas bien respondidas · '+nf(G[g].filas)+' filas de enero a octubre</span>';
+    if(g==='linea')o+='<span class="ok">El grano más fino responde todo: cualquier resumen se arma sumando líneas. Es el grano que recomienda Kimball para empezar, y con un almacén columnar las 102.232 filas no pesan.</span>';
+    else if(g==='dia')o+='<span class="warn">Con 304 filas la tabla es diminuta, pero solo responde la pregunta para la que se hizo. Cada pregunta nueva obliga a volver al crudo.</span>';
+    else o+='<span>Un grano más grueso ahorra filas, pero borra para siempre el detalle que había debajo.'+(mal?' Y cuidado con lo que se puede sumar: la columna «pedidos» de una tabla por categoría no es aditiva entre categorías.':'')+'</span>';
+    $('#c5l1-out').innerHTML=o;
+  }
+  pintar();
+})();
+</script>
+<script>
+(function(){
+  const {$}=window.Lab;
+  const raiz=document.querySelector('[id="05-lab-2"]');
+  const nf=(n,d=0)=>{const s=Math.abs(n).toFixed(d).split('.');s[0]=s[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.');return (n<0?'−':'')+s.join(',');};
+  const usd=n=>'US$ '+nf(n,2);
+  // Historia de Renata Ortiz (cliente 1042). Pedidos 1 a 5: reales (semilla 42); el 6 es de ejemplo.
+  const MOMENTOS=[
+    {f:'2026-10-31',n:'31 oct: vive en Quito'},
+    {f:'2026-11-01',n:'1 nov: se muda a Lima'},
+    {f:'2026-11-20',n:'20 nov: compra desde Lima'},
+    {f:'2027-02-10',n:'10 feb 2027: se muda a Bogotá'}];
+  const MUDANZAS=[{f:'2025-03-14',c:'Quito'},{f:'2026-11-01',c:'Lima'},{f:'2027-02-10',c:'Bogotá'}];
+  const PEDIDOS=[
+    {id:4644,f:'2026-01-28',m:49.80},{id:12275,f:'2026-03-13',m:35.70},{id:12903,f:'2026-03-16',m:22.90},
+    {id:59521,f:'2026-10-14',m:173.70},{id:63753,f:'2026-10-25',m:18.61},{id:'ejemplo',f:'2026-11-20',m:45.90}];
+  let tipo='2';
+  const hoy=()=>MOMENTOS[+$('#c5l2-t').value].f;
+  const mudanzasHasta=f=>MUDANZAS.filter(m=>m.f<=f);
+  const ciudadEn=(f,muds)=>{let c=muds[0].c;muds.forEach(m=>{if(m.f<=f)c=m.c;});return c;};
+  function dimension(f){
+    const muds=mudanzasHasta(f),ult=muds[muds.length-1];
+    if(tipo==='1')return {cols:['cliente_key','cliente_id','nombre','ciudad'],filas:[{cliente_key:42,cliente_id:1042,nombre:'Renata Ortiz',ciudad:ult.c,_c:muds.length>1?'cambio':''}]};
+    if(tipo==='3')return {cols:['cliente_key','cliente_id','nombre','ciudad_actual','ciudad_anterior'],filas:[{cliente_key:42,cliente_id:1042,nombre:'Renata Ortiz',ciudad_actual:ult.c,ciudad_anterior:muds.length>1?muds[muds.length-2].c:'NULL',_c:muds.length>1?'cambio':''}]};
+    const keys=[42,5001,5207];
+    return {cols:['cliente_key','cliente_id','ciudad','valido_desde','valido_hasta','es_actual'],filas:muds.map((m,i)=>({cliente_key:keys[i],cliente_id:1042,ciudad:m.c,valido_desde:i?m.f:'1900-01-01',valido_hasta:i<muds.length-1?muds[i+1].f:'9999-12-31',es_actual:i===muds.length-1,_c:i===muds.length-1&&i>0?'nueva':(i<muds.length-1?'vieja':'')}))};
+  }
+  function pintar(){
+    const f=hoy(),muds=mudanzasHasta(f);
+    $('#c5l2-to').textContent=MOMENTOS[+$('#c5l2-t').value].n;
+    $('#c5l2-tipos').innerHTML=[['1','Tipo 1: sobrescribir'],['2','Tipo 2: fila nueva'],['3','Tipo 3: columna «anterior»']].map(t=>'<button type="button" data-t="'+t[0]+'" aria-pressed="'+(t[0]===tipo)+'">'+t[1]+'</button>').join('');
+    raiz.querySelectorAll('#c5l2-tipos button').forEach(b=>b.addEventListener('click',()=>{tipo=b.dataset.t;pintar();}));
+    const d=dimension(f);
+    $('#c5l2-dtit').textContent='dim_cliente (fila o filas de Renata) al '+f.split('-').reverse().join('/');
+    $('#c5l2-dim').innerHTML='<thead><tr>'+d.cols.map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody>'+d.filas.map(r=>'<tr class="'+r._c+'">'+d.cols.map(c=>'<td>'+r[c]+'</td>').join('')+'</tr>').join('')+'</tbody>';
+    // Hechos: en tipo 2 cada compra guarda la clave sustituta vigente el día de la compra
+    const ped=PEDIDOS.filter(p=>p.f<=f);
+    const clave=p=>{if(tipo!=='2')return 42;const ks=d.filas;let k=ks[0].cliente_key;ks.forEach(r=>{if(r.valido_desde<=p.f)k=r.cliente_key;});return k;};
+    $('#c5l2-fact').innerHTML='<thead><tr><th>pedido_id</th><th>fecha</th><th>cliente_key</th><th>monto</th></tr></thead><tbody>'+ped.map(p=>'<tr'+(p.id==='ejemplo'?' class="nueva"':'')+'><td>'+p.id+'</td><td>'+p.f+'</td><td>'+clave(p)+'</td><td class="n">'+nf(p.m,2)+'</td></tr>').join('')+'</tbody>';
+    // Informe según el tipo, y la verdad (dónde vivía el día de cada compra)
+    const verdad={},seg={};
+    ped.forEach(p=>{const c=ciudadEn(p.f,MUDANZAS);verdad[c]=(verdad[c]||0)+p.m;});
+    ped.forEach(p=>{let c;
+      if(tipo==='2')c=d.filas.find(r=>r.cliente_key===clave(p)).ciudad;
+      else c=d.filas[0][tipo==='1'?'ciudad':'ciudad_actual'];
+      seg[c]=(seg[c]||0)+p.m;});
+    const ciudades=Array.from(new Set(Object.keys(verdad).concat(Object.keys(seg))));
+    const mx=Math.max.apply(null,Object.values(seg).concat(Object.values(verdad)));
+    const bien=ciudades.every(c=>Math.abs((seg[c]||0)-(verdad[c]||0))<0.005);
+    $('#c5l2-rep').innerHTML=ciudades.map(c=>{const v=seg[c]||0,ok=Math.abs(v-(verdad[c]||0))<0.005;return '<div class="c5l2-bar"><span>'+c+'</span><i class="'+(ok?'':'mal')+'" style="width:'+(100*v/mx)+'%"></i><b>'+nf(v,2)+'</b></div>';}).join('')+'<div class="c5l2-bar" style="color:var(--muted)"><span>Debería ser</span><span>'+ciudades.map(c=>c+' '+nf(verdad[c]||0,2)).join(' · ')+'</span><b></b></div>';
+    let o='<span class="big">'+(bien?'El informe coincide con la historia':'El informe reescribe la historia')+'</span>';
+    if(muds.length===1)o+='<span>Renata todavía no se muda: los tres tipos dan lo mismo. Mueve la línea del tiempo.</span>';
+    else if(tipo==='1')o+='<span class="warn">Tipo 1 sobrescribió la ciudad: las compras que Renata hizo en Quito ahora aparecen como ventas de '+muds[muds.length-1].c+'. Sirve para corregir errores (una ciudad mal escrita), no para cambios reales.</span>';
+    else if(tipo==='2')o+='<span class="ok">Tipo 2 cerró la fila vieja y abrió una nueva con otra clave sustituta. Cada compra quedó atada a la clave vigente ese día, y el informe por ciudad respeta la historia. El precio: más filas y joins por clave, no por cliente_id.</span>';
+    else o+='<span class="'+(bien?'ok':'warn')+'">Tipo 3 guarda la ciudad anterior en una columna: sirve para comparar «antes y después» de un único cambio, pero no dice cuándo cambió, el informe por ciudad actual sigue mezclando compras'+(muds.length>2?', y con la segunda mudanza Quito ya no aparece en ninguna columna.':'.')+'</span>';
+    $('#c5l2-out').innerHTML=o;
+  }
+  $('#c5l2-t').addEventListener('input',pintar);
+  pintar();
+})();
+</script>
+</body>
+</html>

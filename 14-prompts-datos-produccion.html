@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="es">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-KX76XF8R');</script>
+<!-- End Google Tag Manager -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Prompts de producción · Ingeniería de datos · Ingeniería de datos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Cómo viaja un dato desde la base de una aplicación hasta el tablero que lee la gerencia: ingesta, formatos, ETL y ELT, data warehouse, lakehouse, Spark, Kafka, orquestación, dbt, calidad y linaje, con laboratorios donde se ve cada pipeline funcionar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400;1,8..60,600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KX76XF8R"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<div class="wrap" data-page="prompts-datos-produccion">
+<header class="topbar"><a class="brand" href="index.html">Ingeniería de <b>datos</b></a><span class="eyebrow">Curso visual e interactivo · Datos e inteligencia artificial</span><a class="al-sitio" href="https://aaramirez.github.io/">← Todos los cursos</a></header>
+<div class="layout">
+<nav class="toc" id="toc" aria-label="Ruta de aprendizaje"></nav>
+<main>
+<header class="page-head"><span class="num">CAPÍTULO 14 DE 14</span><h1>Prompts para generar pipelines de producción</h1><p class="lede">Un asistente de código escribe en un minuto un script que copia una tabla, y casi siempre deja afuera lo que el curso enseñó: la marca de agua, la escritura idempotente, los borrados, las pruebas, las alertas, la retención y el linaje. Este capítulo convierte el curso en un archivo de instrucciones, cuatro plantillas de prompts y una lista para revisar lo que el asistente entrega.</p></header>
+<section><div class="prose"><p>Un viernes por la tarde, Martín Salas quiso adelantar trabajo. Finanzas le había pedido las ventas cruzadas con los pagos, y los pagos todavía no estaban en el almacén. Abrió su asistente de código y escribió: «Escribe un script en Python que copie la tabla pagos de tienda.db a almacen.duckdb». En menos de un minuto tenía doce líneas que funcionaban: 67.281 pagos copiados, la suma cuadraba con el origen. Lo programó para que corriera cada noche y se fue tranquilo.</p><p>El lunes, el tablero de Finanzas mostraba el triple de pagos. El script copiaba la tabla completa cada noche y la agregaba a lo que ya había. Natalia Herrera lo revisó con él: no había marca de agua, ni clave para fusionar, ni una prueba de unicidad que hubiera gritado el sábado; tampoco veía los pagos borrados en el origen, ni avisaba si fallaba, ni tenía entrada en <code>retencion.yml</code>. «El script está bien escrito», le dijo. «Hace exactamente lo que le pediste».</p></div></section>
+<section><h2>La distancia entre un script de una vez y un pipeline en producción</h2><div class="analogia"><b>Imagínalo así</b><p>Si le pides a alguien «llévale este paquete a mi tía», lo lleva. Si es un servicio de mensajería, además lo registra, le pone un número de seguimiento, lo entrega una sola vez aunque el camión pase dos veces por la misma calle, lo reintenta si no hay nadie y te avisa si no pudo. La diferencia no está en llevar el paquete: está en todo lo que pasa cuando algo sale distinto de lo previsto.</p></div><div class="prose"><p>Un asistente de código optimiza lo que le pides: que el código corra. Aprendió de miles de ejemplos que muestran el camino feliz, y un «copia esta tabla» en un tutorial es exactamente el script de Martín. Lo que el curso mostró en trece capítulos no aparece por dos razones: nada en el pedido lo exige, y en la primera corrida ninguna de esas piezas cambia el resultado. La idempotencia solo se nota la segunda vez; la marca de agua, cuando la tabla crece; la conciliación de borrados, cuando alguien borra algo en el origen; la alerta, cuando algo falla un sábado.</p><p>Asistentes del mercado como Claude Code, GitHub Copilot, Cursor, Codex o Gemini CLI (ejemplos a noviembre de 2026; cambian rápido) generan código muy bueno cuando saben qué se espera. Lo que falta se puede ordenar por pieza de la plataforma, y cada pieza es un prompt de este capítulo:</p></div><figure class="fig fig-esquema" id="14-diagrama-1"><div class="lienzo"><svg viewBox="0 0 940 420" style="min-width:740px" role="img" aria-label="Lo que trae el prompt corto y lo que falta: en el centro, un script que copia la tabla con un INSERT; alrededor, lo que el asistente omite si no se pide, agrupado por la pieza de la plataforma y el capítulo donde se enseñó">
+<defs>
+<marker id="c14d1-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+</defs>
+<rect x="330" y="160" width="280" height="100" rx="12" style="fill:var(--warm-soft);stroke:var(--warm)"/>
+<text x="470" y="186" class="t t-b k-warm" text-anchor="middle">Lo que trae el prompt corto</text>
+<text x="470" y="208" class="t t-s t-mono" text-anchor="middle">INSERT INTO crudo.pagos</text>
+<text x="470" y="224" class="t t-s t-mono" text-anchor="middle">SELECT * FROM t.pagos</text>
+<text x="470" y="246" class="t t-s t-m" text-anchor="middle">funciona una vez; la segunda, duplica</text>
+
+<rect x="20" y="20" width="270" height="112" rx="10" class="c-enl"/>
+<text x="34" y="44" class="t t-b k-enl">Ingesta · capítulo 2</text>
+<text x="34" y="66" class="t t-s">marca de agua con margen</text>
+<text x="34" y="84" class="t t-s">MERGE por clave, en una transacción</text>
+<text x="34" y="102" class="t t-s">borrados del origen conciliados</text>
+<text x="34" y="120" class="t t-s">reintentos ante el origen caído</text>
+
+<rect x="335" y="20" width="270" height="112" rx="10" class="c-red"/>
+<text x="349" y="44" class="t t-b k-red">Almacenamiento · capítulos 3 y 6</text>
+<text x="349" y="66" class="t t-s">tipos explícitos, no lo que adivine</text>
+<text x="349" y="84" class="t t-s">Parquet particionado por mes</text>
+<text x="349" y="102" class="t t-s">reescribir solo las particiones tocadas</text>
+<text x="349" y="120" class="t t-s">capa cruda separada de la limpia</text>
+
+<rect x="650" y="20" width="270" height="112" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="664" y="44" class="t t-b">Orquestación · capítulo 9</text>
+<text x="664" y="66" class="t t-s">dependencias explícitas</text>
+<text x="664" y="84" class="t t-s">reprocesos (backfill) por fecha</text>
+<text x="664" y="102" class="t t-s">tiempo límite por tarea</text>
+<text x="664" y="120" class="t t-s">alertas al fallar o con volumen raro</text>
+
+<rect x="20" y="288" width="270" height="112" rx="10" class="c-tra"/>
+<text x="34" y="312" class="t t-b k-tra">Transformación · capítulo 10</text>
+<text x="34" y="334" class="t t-s">pruebas de datos en cada modelo</text>
+<text x="34" y="352" class="t t-s">contrato de columnas</text>
+<text x="34" y="370" class="t t-s">documentación generada</text>
+<text x="34" y="388" class="t t-s">materialización incremental</text>
+
+<rect x="335" y="288" width="270" height="112" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="349" y="312" class="t t-b">Retención · capítulo 11</text>
+<text x="349" y="334" class="t t-s">entrada en retencion.yml</text>
+<text x="349" y="352" class="t t-s">nivel de almacenamiento por edad</text>
+<text x="349" y="370" class="t t-s">el borrado a pedido funciona</text>
+<text x="349" y="388" class="t t-s">sobre la tabla nueva</text>
+
+<rect x="650" y="288" width="270" height="112" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="664" y="312" class="t t-b">Calidad y gobierno · capítulo 12</text>
+<text x="664" y="334" class="t t-s">columnas clasificadas por sensibilidad</text>
+<text x="664" y="352" class="t t-s">dueño en el catálogo</text>
+<text x="664" y="370" class="t t-s">linaje emitido en cada corrida</text>
+<text x="664" y="388" class="t t-s">conciliación con el origen</text>
+
+<line x1="200" y1="132" x2="340" y2="162" class="ln ln-d" marker-end="url(#c14d1-m)"/>
+<line x1="470" y1="132" x2="470" y2="158" class="ln ln-d" marker-end="url(#c14d1-m)"/>
+<line x1="740" y1="132" x2="600" y2="162" class="ln ln-d" marker-end="url(#c14d1-m)"/>
+<line x1="200" y1="288" x2="340" y2="258" class="ln ln-d" marker-end="url(#c14d1-m)"/>
+<line x1="470" y1="288" x2="470" y2="262" class="ln ln-d" marker-end="url(#c14d1-m)"/>
+<line x1="740" y1="288" x2="600" y2="258" class="ln ln-d" marker-end="url(#c14d1-m)"/>
+<text x="120" y="215" class="t t-s t-m" text-anchor="middle">nada de esto llega</text>
+<text x="120" y="231" class="t t-s t-m" text-anchor="middle">si no se pide</text>
+<text x="820" y="215" class="t t-s t-m" text-anchor="middle">cada recuadro es</text>
+<text x="820" y="231" class="t t-s t-m" text-anchor="middle">un prompt del capítulo</text>
+</svg></div><figcaption><b>Lo que trae el prompt corto y lo que falta.</b> En el centro, en color cálido, lo único que el asistente genera con el pedido de una línea: un <code>INSERT</code> de toda la tabla, que funciona una vez y duplica la segunda. Alrededor, las piezas de la plataforma con sus colores (ingesta en verde, almacenamiento en azul, transformación en morado, operación en punteado) y lo que el asistente omite en cada una si no se pide, con el capítulo donde se enseñó. Cada recuadro es una sección de este capítulo.</figcaption></figure><div class="prose"><p>Los prompts de las secciones siguientes no son frases mágicas: son <b>especificaciones</b> (<i>specifications</i>), escritas para que un asistente las cumpla y para que una persona compruebe que se cumplieron. Cómo escribir prompts para una aplicación con un modelo de lenguaje está en <a href="https://aaramirez.github.io/aplicaciones-con-ia/temario.html" target="_blank" rel="noopener">Aplicaciones con IA</a>, y los de un modelo de aprendizaje automático, en <a href="https://aaramirez.github.io/mlops/temario.html" target="_blank" rel="noopener">IA en producción (MLOps)</a>. Aquí la materia prima son tablas, y lo que importa es que una carga se pueda repetir, se pruebe sola y quede gobernada.</p></div><div class="lab" id="14-lab-1"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Corre dos veces el mismo pipeline</h3></div><p class="hint">Los dos pipelines copian la tabla de pedidos de la tienda al almacén: uno salió del prompt corto y el otro del prompt completo. Córrelos una vez y compara; después córrelos otra vez con los mismos datos, avanza un día en la base y prueba una corrida que falla a mitad. Mira las filas, la prueba de unicidad y las ventas netas de octubre de cada uno.</p><style>
+[id="14-lab-1"] .c14l1-dos{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:10px}
+[id="14-lab-1"] .c14l1-p{border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--card);display:grid;gap:8px;min-width:0}
+[id="14-lab-1"] .c14l1-p h4{margin:0;font:700 .9rem var(--f-display)}
+[id="14-lab-1"] .c14l1-p .q{font:500 .74rem/1.35 var(--f-display);color:var(--muted);border-left:3px solid var(--warm);padding-left:8px}
+[id="14-lab-1"] .c14l1-p.b .q{border-left-color:var(--good)}
+[id="14-lab-1"] .c14l1-p pre{margin:0;font:.7rem/1.4 var(--f-mono);background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:6px 8px;overflow-x:auto;white-space:pre}
+[id="14-lab-1"] .c14l1-tar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+[id="14-lab-1"] .c14l1-t{border:1px solid var(--line);border-radius:8px;padding:6px 8px;display:grid;gap:2px;font:500 .7rem/1.3 var(--f-display);color:var(--muted)}
+[id="14-lab-1"] .c14l1-t b{font:700 .92rem var(--f-mono);color:var(--ink);overflow-wrap:anywhere}
+[id="14-lab-1"] .c14l1-t.mal{background:var(--warm-soft);border-color:var(--warm)}
+[id="14-lab-1"] .c14l1-t.mal b{color:var(--warm)}
+[id="14-lab-1"] .c14l1-t.bien{background:var(--good-soft);border-color:var(--good)}
+[id="14-lab-1"] .c14l1-t.bien b{color:var(--good)}
+[id="14-lab-1"] .c14l1-ver{font:500 .78rem var(--f-display);color:var(--muted)}
+[id="14-lab-1"] .c14l1-ver b{color:var(--ink);font-family:var(--f-mono)}
+[id="14-lab-1"] ol.c14l1-log{margin:0;padding-left:1.4em;font:500 .76rem/1.4 var(--f-display);color:var(--muted);max-height:9em;overflow:auto}
+</style>
+<div class="btns">
+  <button type="button" id="c14l1-run" class="primary">Correr los dos pipelines</button>
+  <button type="button" id="c14l1-dia">Avanzar un día en la base</button>
+  <button type="button" id="c14l1-falla">Correr con una falla a mitad</button>
+  <button type="button" id="c14l1-ini">Empezar de nuevo</button>
+</div>
+<div class="c14l1-ver" id="c14l1-ver" aria-live="polite"></div>
+<div class="c14l1-dos">
+  <div class="c14l1-p a"><h4>Pipeline del prompt corto</h4>
+    <div class="q">«Escribe un script que copie la tabla pedidos de tienda.db a almacen.duckdb»</div>
+<pre>con.execute("CREATE TABLE IF NOT EXISTS crudo.pedidos AS
+             SELECT * FROM t.pedidos LIMIT 0")
+for lote in lotes(t.pedidos, 10_000):
+    con.execute("INSERT INTO crudo.pedidos ...", lote)</pre>
+    <div class="c14l1-tar" id="c14l1-ta"></div>
+  </div>
+  <div class="c14l1-p b"><h4>Pipeline del prompt completo</h4>
+    <div class="q">incremental con margen, MERGE por pedido_id, una transacción, borrados conciliados, prueba de unicidad</div>
+<pre>BEGIN
+INSERT INTO crudo.pedidos SELECT ... WHERE actualizado_en &gt;= marca - 1 día
+  ON CONFLICT (pedido_id) DO UPDATE SET ...
+DELETE FROM crudo.pedidos WHERE pedido_id NOT IN (origen)
+COMMIT  -- y recién entonces, la marca de agua</pre>
+    <div class="c14l1-tar" id="c14l1-tb"></div>
+  </div>
+</div>
+<ol class="c14l1-log" id="c14l1-log" aria-label="Registro de corridas"></ol>
+<div class="readout texto" id="c14l1-out" aria-live="polite"></div></div></section>
+<section><h2>El archivo de instrucciones de la plataforma</h2><div class="analogia"><b>Imagínalo así</b><p>En la cocina de un restaurante hay reglas pegadas en la pared: qué tabla de picar es para la carne y cuál para la verdura, cómo se rotula lo que entra a la cámara y qué no sale sin que lo pruebe el jefe. Un cocinero nuevo no necesita que se las repitan con cada pedido: las lee el primer día y las sigue.</p></div><div class="prose"><p>Antes de los prompts va un <b>archivo de instrucciones</b> (<i>instructions file</i>) que el asistente lee al empezar cada conversación en el repositorio. Cada herramienta tiene su convención: <code>AGENTS.md</code>, <code>CLAUDE.md</code>, <code>.github/copilot-instructions.md</code>, las reglas del editor. El método general para escribirlo (qué poner, qué dejar afuera, cómo mantenerlo) está en <a href="https://aaramirez.github.io/desarrollo-de-aplicaciones/temario.html" target="_blank" rel="noopener">Ingeniería de software</a>. Aquí va lo propio de una plataforma de datos: las capas, los nombres, los comandos que prueban que algo funciona y las reglas que no se negocian. Este es el de Natalia:</p><div class="code-copia"><pre><code># Plataforma de datos de Tienda Ejemplo: instrucciones para asistentes de código
+
+## Capas
+- tienda.db (origen, dueño Diego Paz): solo lectura. Nunca escribas en el origen
+  ni lo consultes sin filtro de fecha.
+- aterrizaje/: JSONL crudo por tabla y fecha. Solo se agrega; nunca se edita.
+- almacen.duckdb, esquema crudo: una tabla por tabla de origen, mismas columnas
+  más _cargado_en (TIMESTAMP).
+- dbt/models: staging (stg_&lt;tabla&gt;), marts (dim_&lt;entidad en plural&gt;, fct_&lt;hecho&gt;)
+  y agregados (ventas_mensuales, ventas_por_categoria).
+
+## Convenciones
+- Nombres en minúsculas con guion bajo. Fechas *_en: TIMESTAMP en hora local de
+  la tienda, sin zona. Montos: DECIMAL(10,2), en US$.
+- Ventas netas: definición del glosario (dueña Elena Vargas). No se cambia sin ella.
+
+## Comandos
+- Pruebas de Python: python -m pytest -q
+- Prueba de una ingesta: python probar_ingesta.py &lt;script&gt;
+- dbt (desde dbt/): dbt build --select &lt;modelo&gt;+
+- Datos de prueba: python generar_tienda.py --carpeta prueba (nunca datos reales)
+
+## Reglas que no se negocian
+- Toda carga es idempotente: correrla dos veces deja lo mismo que una.
+- Toda tabla nueva tiene entrada en retencion.yml y sus columnas clasificadas
+  (publico, interno, confidencial, personal) en el YAML de dbt.
+- nombre y email no salen de stg_clientes sin enmascarar.
+- Ninguna dependencia nueva sin fijar su versión en requirements.txt.
+
+## Terminado significa
+- pytest en verde, probar_ingesta.py con cuatro «ok», dbt build sin fallas y la
+  tabla nueva en el catálogo con su dueño.</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>Tres detalles hacen que funcione. Las reglas se pueden verificar: «toda tabla nueva tiene entrada en <code>retencion.yml</code>» se revisa con una búsqueda; «usa buenas prácticas» no. Los comandos están completos, así que el asistente los corre en lugar de suponer que su código funciona. Y «terminado significa» le da un criterio para detenerse que no es «compila».</p></div></section>
+<section><h2>Prompt para una ingesta</h2><div class="analogia"><b>Imagínalo así</b><p>Un contador que concilia la cuenta del banco no copia el extracto entero cada mes encima del anterior. Marca hasta qué fecha concilió, toma los movimientos desde ahí (y los dos días previos, por si algo llegó tarde), los cruza por número de operación para no contar dos veces el mismo, y si el banco anuló una operación, la anula también en su libro.</p></div><div class="prose"><p>El capítulo 2 enseñó la marca de agua, la idempotencia y el problema de los borrados. El prompt pide exactamente eso, con números y con una forma de probarlo:</p><div class="code-copia"><pre><code>Contexto: plataforma descrita en el archivo de instrucciones. Python 3.12 y
+duckdb con la versión de requirements.txt.
+
+Escribe ingesta_pagos.py. Se corre sin argumentos en una carpeta con tienda.db
+(SQLite, origen) y escribe en almacen.duckdb, tabla crudo.pagos.
+
+1. Esquema explícito: pago_id INTEGER PRIMARY KEY, pedido_id INTEGER, metodo
+   TEXT, monto DECIMAL(10,2), estado TEXT, pagado_en TIMESTAMP, todas NOT NULL,
+   más _cargado_en TIMESTAMP. No uses CREATE TABLE AS SELECT.
+2. Incremental: guarda la mayor pagado_en cargada en marca_de_agua_pagos.json.
+   Lee del origen solo pagado_en &gt;= marca - 1 día (margen para lo que llega
+   tarde). Sin marca, lee todo.
+3. Idempotente: escribe con INSERT ... ON CONFLICT (pago_id) DO UPDATE, dentro
+   de una transacción. La marca se guarda solo después del COMMIT.
+4. Borrados: el origen borra pagos de carritos abandonados. En cada corrida
+   compara solo las claves (pago_id) y borra del almacén las que ya no existen.
+5. Reintentos: 3 intentos con espera de 2, 4 y 8 s si el origen está bloqueado.
+6. Al final imprime filas leídas, insertadas, actualizadas y borradas.
+
+Pruebas (pytest, con una base creada por generar_tienda.py en una carpeta
+temporal): dos corridas seguidas dejan el mismo conteo y la misma suma de
+monto; después de generar_tienda.py --avanzar, conteo y suma iguales al
+origen; una falla simulada entre el INSERT y el COMMIT deja el almacén y la
+marca como estaban.</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>Los requisitos responden a fallas concretas. El esquema explícito evita que el asistente deje que el motor adivine los tipos (y que <code>monto</code> termine como texto si una fila viene rara). El margen de un día es la razón por la que la idempotencia no es opcional: si la corrida vuelve a leer las filas del día anterior, solo un <code>ON CONFLICT</code> por clave impide insertarlas otra vez. La marca guardada después del <code>COMMIT</code> hace que una corrida fallida se repita desde el mismo punto. Y la conciliación de claves es la respuesta barata al problema del capítulo 2: una marca de agua no ve los borrados, pero comparar 67.000 claves enteras cuesta menos de un segundo.</p></div><figure class="fig fig-flujo" id="14-diagrama-2"><div class="lienzo"><svg viewBox="0 0 1000 520" style="min-width:760px" role="img" aria-label="Diagrama de secuencia de una corrida idempotente de la ingesta de pagos: el orquestador la lanza con tiempo límite, la ingesta lee la marca de agua, consulta el origen desde la marca menos un día con reintentos, escribe con MERGE y concilia borrados dentro de una transacción, corre las pruebas, confirma y recién entonces mueve la marca; si algo falla, deshace todo y avisa">
+<defs>
+<marker id="c14d2-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+<marker id="c14d2-e" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-enl"/></marker>
+<marker id="c14d2-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-red"/></marker>
+<marker id="c14d2-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-warm"/></marker>
+</defs>
+<rect x="14" y="14" width="112" height="50" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="70" y="35" class="t t-b" text-anchor="middle" style="font-size:12px">Orquestador</text>
+<text x="70" y="52" class="t t-s t-m" text-anchor="middle">cada día, 2:00</text>
+<line x1="70" y1="64" x2="70" y2="496" class="vida"/>
+<rect x="164" y="14" width="112" height="50" rx="10" class="c-enl"/>
+<text x="220" y="35" class="t t-b k-enl" text-anchor="middle" style="font-size:12px">Ingesta</text>
+<text x="220" y="52" class="t t-s t-m" text-anchor="middle">ingesta_pagos.py</text>
+<line x1="220" y1="64" x2="220" y2="496" class="vida"/>
+<rect x="314" y="14" width="112" height="50" rx="10" class="caja"/>
+<text x="370" y="35" class="t t-b" text-anchor="middle" style="font-size:12px">Marca de agua</text>
+<text x="370" y="52" class="t t-s t-m" text-anchor="middle">archivo JSON</text>
+<line x1="370" y1="64" x2="370" y2="496" class="vida"/>
+<rect x="464" y="14" width="112" height="50" rx="10" class="c-fis"/>
+<text x="520" y="35" class="t t-b k-fis" text-anchor="middle" style="font-size:12px">Base de la tienda</text>
+<text x="520" y="52" class="t t-s t-m" text-anchor="middle">tienda.pagos</text>
+<line x1="520" y1="64" x2="520" y2="496" class="vida"/>
+<rect x="614" y="14" width="112" height="50" rx="10" class="c-red"/>
+<text x="670" y="35" class="t t-b k-red" text-anchor="middle" style="font-size:12px">Almacén</text>
+<text x="670" y="52" class="t t-s t-m" text-anchor="middle">crudo.pagos</text>
+<line x1="670" y1="64" x2="670" y2="496" class="vida"/>
+<rect x="764" y="14" width="96" height="50" rx="10" style="fill:var(--warm-soft);stroke:var(--warm)"/>
+<text x="812" y="35" class="t t-b k-warm" text-anchor="middle" style="font-size:12px">Alertas</text>
+<text x="812" y="52" class="t t-s t-m" text-anchor="middle">canal</text>
+<line x1="812" y1="64" x2="812" y2="496" class="vida"/>
+
+<line x1="70" y1="96" x2="218" y2="96" class="ln" style="stroke-width:2" marker-end="url(#c14d2-m)"/>
+<text x="78" y="88" class="t" style="font-size:12px">① corre, límite 30 min</text>
+<line x1="220" y1="134" x2="368" y2="134" class="ln" style="stroke-width:2" marker-end="url(#c14d2-m)"/>
+<text x="228" y="126" class="t" style="font-size:12px">② ¿hasta dónde leí?</text>
+<line x1="370" y1="164" x2="222" y2="164" class="ln ln-d" style="stroke-width:2" marker-end="url(#c14d2-m)"/>
+<text x="240" y="182" class="t t-s t-m">31-10 23:58</text>
+<line x1="220" y1="214" x2="518" y2="214" class="ln s-enl" style="stroke-width:2" marker-end="url(#c14d2-e)"/>
+<text x="228" y="206" class="t" style="font-size:12px">③ pagado_en ≥ marca − 1 día (3 intentos)</text>
+<line x1="520" y1="244" x2="222" y2="244" class="ln ln-d s-enl" style="stroke-width:2" marker-end="url(#c14d2-e)"/>
+<text x="240" y="262" class="t t-s t-m">filas del margen + nuevas; y todas las claves</text>
+<line x1="220" y1="298" x2="668" y2="298" class="ln s-red" style="stroke-width:2" marker-end="url(#c14d2-r)"/>
+<text x="228" y="290" class="t" style="font-size:12px">④ BEGIN · MERGE por pago_id · DELETE de claves que ya no están</text>
+<line x1="220" y1="342" x2="668" y2="342" class="ln s-red" style="stroke-width:2" marker-end="url(#c14d2-r)"/>
+<text x="228" y="334" class="t" style="font-size:12px">⑤ pruebas: único, no nulos, conteo y suma = origen</text>
+<line x1="220" y1="386" x2="668" y2="386" class="ln s-red" style="stroke-width:2" marker-end="url(#c14d2-r)"/>
+<text x="228" y="378" class="t" style="font-size:12px">⑥ COMMIT</text>
+<line x1="220" y1="424" x2="368" y2="424" class="ln" style="stroke-width:2" marker-end="url(#c14d2-m)"/>
+<text x="228" y="416" class="t" style="font-size:12px">⑦ nueva marca</text>
+<line x1="220" y1="470" x2="810" y2="470" class="ln ln-d s-warm" style="stroke-width:2" marker-end="url(#c14d2-w)"/>
+<text x="228" y="462" class="t k-warm" style="font-size:12px">⑧ si algo falla en ③ a ⑥: ROLLBACK, la marca no se mueve, aviso</text>
+
+<rect x="880" y="80" width="108" height="110" rx="6" class="caja"/>
+<text x="934" y="130" class="t t-s t-b" text-anchor="middle">Leer</text>
+<text x="934" y="148" class="t t-s t-m" text-anchor="middle">① a ③</text>
+<rect x="880" y="198" width="108" height="72" rx="6" class="c-enl"/>
+<text x="934" y="232" class="t t-s t-b k-enl" text-anchor="middle">Traer</text>
+<text x="934" y="250" class="t t-s t-m" text-anchor="middle">idas y vueltas: 1</text>
+<rect x="880" y="278" width="108" height="122" rx="6" class="c-red"/>
+<text x="934" y="332" class="t t-s t-b k-red" text-anchor="middle">Todo o nada</text>
+<text x="934" y="350" class="t t-s t-m" text-anchor="middle">④ a ⑥</text>
+<rect x="880" y="408" width="108" height="80" rx="6" class="caja" style="stroke:var(--good)"/>
+<text x="934" y="444" class="t t-s t-b" text-anchor="middle">Cerrar</text>
+<text x="934" y="462" class="t t-s t-m" text-anchor="middle">⑦ u ⑧</text>
+</svg></div><figcaption><b>Una corrida idempotente de la ingesta de pagos.</b> Participantes arriba: el orquestador, la ingesta, la marca de agua, la base de la tienda, el almacén y el canal de alertas; el tiempo corre hacia abajo. ① El orquestador la lanza con un tiempo límite; ② y la ingesta lee hasta dónde llegó; ③ pide al origen los pagos desde la marca menos un día, con reintentos, y todas las claves; ④ dentro de una transacción fusiona por <code>pago_id</code> y borra las claves que ya no existen; ⑤ corre las pruebas; ⑥ confirma; ⑦ y recién entonces mueve la marca. ⑧ Si algo falla entre ③ y ⑥, deshace todo, no mueve la marca y avisa. A la derecha, las fases: leer, traer, todo o nada, y cerrar.</figcaption></figure><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Pide la ingesta de pagos y córrela dos veces</h3></div><p>Vas a pedirle a un asistente de código la ingesta de pagos, primero con el prompt corto de Martín y después con el prompt de esta sección, y a probar cada versión con un programa que no sabe cómo está escrita: la corre dos veces con los mismos datos, avanza un día en la base y vuelve a correrla, comparando siempre con el origen. Sirve cualquier asistente, también los gratuitos en el navegador (copias el código a un archivo). Trabaja en <code>~/datos-tienda</code>, con el entorno del capítulo 2 y <code>generar_tienda.py</code> en la carpeta.</p><p>Guarda este programa como <code>probar_ingesta.py</code>. Crea su propia base de prueba en <code>prueba_ingesta/</code>, así que no toca tu <code>tienda.db</code>:</p><div class="code-copia"><pre><code>"""Prueba una ingesta de pagos sin mirar su código: la corre dos veces, avanza un día y compara con el origen."""
+import shutil
+import sqlite3
+import subprocess
+import sys
+from pathlib import Path
+
+import duckdb
+
+SCRIPT = Path(sys.argv[1] if len(sys.argv) &gt; 1 else "ingesta_pagos.py").resolve()
+PRUEBA = Path("prueba_ingesta")
+
+
+def origen():
+    con = sqlite3.connect(PRUEBA / "tienda.db")
+    n, total = con.execute("SELECT count(*), round(sum(monto), 2) FROM pagos").fetchone()
+    con.close()
+    return n, total
+
+
+def destino():
+    con = duckdb.connect(str(PRUEBA / "almacen.duckdb"), read_only=True)
+    n, distintos, total = con.execute(
+        "SELECT count(*), count(DISTINCT pago_id), round(sum(monto), 2) FROM crudo.pagos").fetchall()[0]
+    con.close()
+    return n, distintos, float(total or 0)
+
+
+def correr(paso):
+    r = subprocess.run([sys.executable, str(SCRIPT)], cwd=PRUEBA, capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"{paso}: la ingesta terminó con error\n{r.stderr[-600:]}")
+        return False
+    return True
+
+
+shutil.rmtree(PRUEBA, ignore_errors=True)
+PRUEBA.mkdir()
+subprocess.run([sys.executable, "generar_tienda.py", "--carpeta", str(PRUEBA)], check=True, capture_output=True)
+fallas = 0
+for paso in ["1.ª corrida", "2.ª corrida, mismos datos", "avanza un día", "otra vez, mismos datos"]:
+    if paso == "avanza un día":
+        subprocess.run([sys.executable, "generar_tienda.py", "--carpeta", str(PRUEBA), "--avanzar"],
+                       check=True, capture_output=True)
+    if not correr(paso):
+        fallas += 1
+        continue
+    (n_o, t_o), (n_d, dist, t_d) = origen(), destino()
+    ok = n_d == n_o and dist == n_o and abs(t_d - t_o) &lt; 0.01
+    fallas += not ok
+    print(f"[{' ok ' if ok else 'MAL '}] {paso:26} origen {n_o} pagos, US$ {t_o:.2f} | "
+          f"almacén {n_d} filas ({dist} distintas), US$ {t_d:.2f}")
+print("\nLa ingesta se puede repetir sin dañar nada." if fallas == 0 else f"\n{fallas} paso(s) con diferencias.")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Pídele al asistente: «Escribe un script en Python, ingesta_pagos.py, que copie la tabla pagos de tienda.db (SQLite) a la tabla crudo.pagos de almacen.duckdb usando duckdb». Guarda la respuesta como <code>ingesta_pagos.py</code> y córrela con el probador:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>cd $HOME\datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>.venv\Scripts\activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python probar_ingesta.py ingesta_pagos.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>cd ~/datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>source .venv/bin/activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 probar_ingesta.py ingesta_pagos.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Anota en qué pasos dice <code>MAL</code>, cuántas filas tiene el almacén y si la suma cambió entre la primera y la segunda corrida.</span></li><li><span>En una conversación nueva, pega el archivo de instrucciones y el prompt de esta sección. Guarda la respuesta como <code>ingesta_pagos_v2.py</code> y córrela con <code>python probar_ingesta.py ingesta_pagos_v2.py</code> (o <code>python3</code> en macOS y Linux).</span></li><li><span>Si algún paso falla, devuélvele al asistente la salida del probador y pídele que corrija el script sin tocar el probador.</span></li></ol><p><b>Qué observar:</b> con el prompt corto, la primera corrida da «ok» (67.281 pagos, la misma suma que el origen) y la segunda ya no: el almacén tiene 134.562 filas y el total se duplica, porque el script inserta la tabla completa cada vez; si el asistente usó <code>CREATE OR REPLACE</code>, no duplica, pero recarga todo cada noche. Con el prompt completo, las cuatro líneas dan «ok» y el total se mantiene aunque corras el script diez veces. Un detalle que delata una ingesta a medias: si el script es incremental pero no concilia las claves, el paso «avanza un día» queda con una fila de más (67.643 contra 67.642), el pago de un carrito que el origen borró. El probador no sabe cómo está escrito el script: sirve igual para la versión de hoy y para la que genere el próximo asistente.</p></div></section>
+<section><h2>Prompt para un modelo de dbt</h2><div class="analogia"><b>Imagínalo así</b><p>En una fábrica de alimentos, cada lote que sale lleva su ficha: ingredientes, de qué lotes vinieron, qué controles pasó y quién lo aprobó. Un lote sin ficha no sale, aunque se vea perfecto.</p></div><div class="prose"><p>El capítulo 10 mostró que una transformación es código: versionada, probada y documentada. El prompt pide el modelo con su ficha completa:</p><div class="code-copia"><pre><code>Contexto: proyecto dbt en dbt/ con dbt-duckdb; staging ya existe (stg_pedidos,
+stg_detalle_pedido, stg_productos).
+
+Crea dos modelos:
+1. marts/fct_ventas.sql: una fila por línea de pedido (grano: pedido_id + linea)
+   con pedido_id, linea, cliente_id, producto_id, fecha (DATE de creado_en),
+   estado, cantidad, precio_unitario y venta = cantidad * precio_unitario.
+   Materialización incremental con unique_key [pedido_id, linea], que reprocesa
+   los últimos 3 días para tomar los cambios de estado.
+2. agregados/ventas_mensuales.sql: por mes de fecha, ventas_netas (suma de venta
+   de los estados pagado, enviado y entregado) y pedidos (pedidos distintos).
+
+En el YAML de cada modelo:
+- contract: enforced: true, con el tipo de cada columna (venta DECIMAL(12,2)).
+- Pruebas: unique y not_null en la clave; relationships de cliente_id con
+  dim_clientes; accepted_values en estado con los seis estados del origen.
+- Una prueba singular: ventas_netas de cada mes = pagos aprobados - reembolsados
+  de los pedidos creados ese mes (tolerancia 0,01).
+- description en cada modelo y cada columna; en ventas_netas, la definición
+  del glosario. meta: dueno, sensibilidad (confidencial) y retencion (analitico).
+
+Comprueba con: dbt build --select fct_ventas+ y muéstrame la salida. Las ventas
+netas de octubre de 2026 con la base de semilla 42 deben dar 782785.77.</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>Tres pedidos de este prompt valen más que el resto. El grano escrito evita que el asistente arme la tabla de hechos al nivel de pedido y pierda las líneas (el error clásico del capítulo 5). El contrato hace que dbt falle si el modelo produce una columna con otro tipo, en lugar de propagar un <code>monto</code> en texto hacia el tablero. Y la cifra esperada al final convierte «parece que funciona» en una comprobación: si el asistente olvida el filtro de estados o suma los pagos sin restar los reembolsos, el número que muestra no es 782.785,77, y se nota en la primera ejecución.</p></div></section>
+<section><h2>Prompt para la orquestación</h2><div class="analogia"><b>Imagínalo así</b><p>El jefe de turno de una planta no aprieta los botones de cada máquina: sabe en qué orden van, cuánto debería tardar cada una, a quién llamar si una se traba y cómo volver a pasar el lote del martes si salió mal, sin repetir el del lunes.</p></div><div class="prose"><p>El capítulo 9 convirtió los scripts de Natalia en un DAG de Airflow con reintentos, tiempos máximos y un límite de extracciones contra la base de Diego. El prompt fija ese grafo y, sobre todo, lo que pasa cuando algo falla:</p><div class="code-copia"><pre><code>Con Airflow (o Dagster: dilo antes de empezar), arma el DAG diario de la
+plataforma:
+ingesta_pagos, ingesta_pedidos -&gt; dbt build (staging, marts, agregados)
+-&gt; publicar el tablero.
+
+1. Particiones diarias desde 2026-01-01. Cada ejecución procesa su día; un
+   reproceso (backfill) de un rango corre los días en orden, de a 3 a la vez,
+   y cada día da el mismo resultado si se repite.
+2. Reintentos: 2 por tarea, con espera exponencial desde 30 s. Las extracciones
+   contra la base de la tienda, de a una por vez (un pool de 1).
+3. Tiempos límite: 30 min por tarea; si a las 7:00 el tablero no está
+   publicado, alerta.
+4. Si una tarea falla, las que dependen de ella no corren y el tablero conserva
+   el dato de ayer con un aviso de frescura.
+5. Alertas al canal del equipo: falla definitiva, tiempo límite superado, o
+   ventas del día fuera de ±50 % del promedio de los 7 días anteriores. Cada
+   alerta nombra la tarea, la partición y el enlace a los registros.
+6. Programación: todos los días a las 2:00, hora de la tienda.
+
+Pruebas: una ingesta que falla dos veces y funciona a la tercera termina bien;
+una falla en dbt no ejecuta la actualización del tablero; el reproceso de
+octubre deja ventas_mensuales de octubre en 782785.77.</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>El punto 4 es el que más se olvida y el que más protege: sin él, una falla a medias publica un tablero con las ventas de un día a la mitad, y Elena las lee el lunes en el comité. Una cifra vieja con un aviso es mejor que una cifra nueva equivocada.</p></div></section>
+<section><h2>Prompt para el gobierno</h2><div class="analogia"><b>Imagínalo así</b><p>Cuando una biblioteca recibe un libro nuevo, no lo pone en el estante y después ve. Antes lo cataloga, le asigna sección, decide si se presta o se consulta en sala y anota de quién fue la donación. Catalogar después de un año de préstamos es mucho más difícil.</p></div><div class="prose"><p>Los capítulos 11 y 12 mostraron que retención, clasificación y linaje cuestan poco el primer día y mucho después. El prompt los pide junto con la tabla, no como una tarea pendiente:</p><div class="code-copia"><pre><code>Para cada tabla nueva que crees en este cambio (crudo.pagos, fct_ventas,
+ventas_mensuales):
+
+1. Clasificación: en el YAML de dbt, meta.sensibilidad por columna con los
+   niveles del archivo de instrucciones. monto y metodo: confidencial. Si una
+   columna contiene nombre, email o algo que identifique a un cliente, márcala
+   personal y avísame antes de seguir.
+2. Retención: agrega su entrada a retencion.yml (crudo.pagos: tipo auditoria,
+   vence 10y; fct_ventas: analitico, caliente 90d, tibio 365d, vence 3y,
+   al_vencer agregar_mensual).
+3. Dueño: meta.dueno y meta.custodio en cada modelo.
+4. Linaje: activa la integración de OpenLineage de dbt y del orquestador para
+   que cada corrida emita sus entradas y salidas. Muestra el evento de una
+   corrida de prueba.
+5. Borrado a pedido: si la tabla tiene cliente_id, confirma que el trabajo de
+   borrado del capítulo 11 la encuentra (agrégala a su lista si no).
+
+Comprueba con un script que falle si alguna tabla del proyecto no tiene
+entrada en retencion.yml o tiene columnas sin sensibilidad.</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>El último pedido convierte las reglas en una prueba: un script que recorre el proyecto y falla si una tabla no tiene retención o una columna no tiene sensibilidad. Esa prueba corre en la integración continua (los fundamentos están en <a href="https://aaramirez.github.io/devops/temario.html" target="_blank" rel="noopener">DevOps</a>) y hace que la regla se cumpla sin depender de la memoria de nadie, la idea del gobierno federado del capítulo 12.</p></div></section>
+<section><h2>Revisar lo generado: la lista de criterios de producción</h2><div class="prose"><p>Un prompt completo sube mucho la probabilidad de recibir lo que pediste, pero no la lleva a uno. El asistente puede cumplir nueve requisitos y saltarse el décimo con la misma seguridad, o escribir una prueba que no prueba nada. Por eso lo generado se revisa con una lista, y cada punto tiene una forma de comprobarlo que no depende de leer todo el código.</p></div><figure class="fig fig-esquema" id="14-diagrama-3"><div class="lienzo"><svg viewBox="0 0 940 370" style="min-width:740px" role="img" aria-label="Del prompt a la evidencia: para la ingesta, el modelo de dbt, la orquestación y el gobierno, el requisito central del prompt, la prueba o el comando que lo comprueba y la evidencia que debe quedar">
+<defs>
+<marker id="c14d3-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+</defs>
+<text x="150" y="28" class="t t-xs t-b t-m">REQUISITO DEL PROMPT</text>
+<text x="440" y="28" class="t t-xs t-b t-m">CÓMO SE COMPRUEBA</text>
+<text x="710" y="28" class="t t-xs t-b t-m">EVIDENCIA QUE QUEDA</text>
+
+<rect x="14" y="44" width="120" height="64" rx="8" class="c-enl"/>
+<text x="74" y="81" class="t t-b k-enl" text-anchor="middle">Ingesta</text>
+<text x="146" y="70" class="t">Idempotente, incremental</text>
+<text x="146" y="88" class="t">y con borrados conciliados</text>
+<line x1="380" y1="76" x2="424" y2="76" class="ln" marker-end="url(#c14d3-m)"/>
+<text x="436" y="70" class="t">probar_ingesta.py: dos</text>
+<text x="436" y="88" class="t">corridas y un día nuevo</text>
+<line x1="666" y1="76" x2="700" y2="76" class="ln" marker-end="url(#c14d3-m)"/>
+<rect x="706" y="52" width="220" height="48" rx="6" class="caja"/>
+<text x="716" y="72" class="t t-s">cuatro «ok»: mismo conteo</text>
+<text x="716" y="88" class="t t-s">y misma suma que el origen</text>
+
+<rect x="14" y="124" width="120" height="64" rx="8" class="c-tra"/>
+<text x="74" y="161" class="t t-b k-tra" text-anchor="middle">Modelo dbt</text>
+<text x="146" y="150" class="t">Pruebas, contrato</text>
+<text x="146" y="168" class="t">y documentación</text>
+<line x1="380" y1="156" x2="424" y2="156" class="ln" marker-end="url(#c14d3-m)"/>
+<text x="436" y="150" class="t">dbt build con un pedido</text>
+<text x="436" y="168" class="t">duplicado a propósito</text>
+<line x1="666" y1="156" x2="700" y2="156" class="ln" marker-end="url(#c14d3-m)"/>
+<rect x="706" y="132" width="220" height="48" rx="6" class="caja"/>
+<text x="716" y="152" class="t t-s">la prueba unique falla y los</text>
+<text x="716" y="168" class="t t-s">modelos de abajo no se construyen</text>
+
+<rect x="14" y="204" width="120" height="64" rx="8" class="caja" style="stroke-dasharray:5 4"/>
+<text x="74" y="241" class="t t-b" text-anchor="middle">Orquestación</text>
+<text x="146" y="230" class="t">Reintentos, backfill,</text>
+<text x="146" y="248" class="t">alertas y tiempo límite</text>
+<line x1="380" y1="236" x2="424" y2="236" class="ln" marker-end="url(#c14d3-m)"/>
+<text x="436" y="230" class="t">Romper una tarea y</text>
+<text x="436" y="248" class="t">reprocesar un mes</text>
+<line x1="666" y1="236" x2="700" y2="236" class="ln" marker-end="url(#c14d3-m)"/>
+<rect x="706" y="212" width="220" height="48" rx="6" class="caja"/>
+<text x="716" y="232" class="t t-s">una alerta de prueba; el mes</text>
+<text x="716" y="248" class="t t-s">reprocesado da la misma cifra</text>
+
+<rect x="14" y="284" width="120" height="64" rx="8" class="caja" style="stroke-dasharray:5 4"/>
+<text x="74" y="321" class="t t-b" text-anchor="middle">Gobierno</text>
+<text x="146" y="310" class="t">Clasificación, retención</text>
+<text x="146" y="328" class="t">y linaje desde el día uno</text>
+<line x1="380" y1="316" x2="424" y2="316" class="ln" marker-end="url(#c14d3-m)"/>
+<text x="436" y="310" class="t">Buscar la tabla nueva en</text>
+<text x="436" y="328" class="t">retencion.yml y el catálogo</text>
+<line x1="666" y1="316" x2="700" y2="316" class="ln" marker-end="url(#c14d3-m)"/>
+<rect x="706" y="292" width="220" height="48" rx="6" class="caja"/>
+<text x="716" y="312" class="t t-s">entrada con plazo y dueño;</text>
+<text x="716" y="328" class="t t-s">la tabla aparece en el linaje</text>
+<text x="470" y="362" class="t t-s t-m" text-anchor="middle">Un requisito sin evidencia es un requisito que nadie verificó.</text>
+</svg></div><figcaption><b>Del prompt a la evidencia.</b> Cada fila es una pieza con su color: ingesta, modelo de dbt, orquestación y gobierno. A la izquierda, el requisito central del prompt; al centro, la prueba o el comando que lo comprueba; a la derecha, la evidencia que debe quedar (cuatro «ok» del probador, una prueba de unicidad que falla a propósito, una alerta de prueba, la tabla en <code>retencion.yml</code>). Una fila sin evidencia es un requisito que nadie verificó.</figcaption></figure><div class="prose"><div class="tbl"><table><thead><tr><th>Pieza</th><th>Qué se revisa</th><th>Cómo se comprueba</th></tr></thead><tbody><tr><td>Ingesta</td><td>Esquema explícito, marca con margen, MERGE por clave, transacción, borrados</td><td><code>probar_ingesta.py</code> con cuatro «ok»; buscar <code>ON CONFLICT</code> y que la marca se guarde después del <code>COMMIT</code></td></tr><tr><td>Modelo de dbt</td><td>Grano, contrato, pruebas, conciliación, descripciones</td><td><code>dbt build</code> con un pedido duplicado a propósito: debe fallar <code>unique</code> y no construirse lo de abajo</td></tr><tr><td>Cifra</td><td>La definición del glosario</td><td>Ventas netas de octubre con semilla 42 = 782.785,77</td></tr><tr><td>Orquestación</td><td>Dependencias, reintentos, tiempos, alertas, reproceso</td><td>Romper una tarea: no corre lo que depende de ella y llega una alerta; reprocesar octubre da la misma cifra</td></tr><tr><td>Gobierno</td><td>Clasificación, retención, dueño, linaje</td><td>El script de verificación pasa; la tabla aparece en el catálogo y en el linaje</td></tr><tr><td>Dependencias</td><td>Versiones fijadas</td><td>Buscar cada paquete nuevo en <code>requirements.txt</code> con su versión</td></tr></tbody></table></div><p>Dos señales de alarma en lo generado: pruebas que se conectan a la base real de la tienda (lentas, frágiles y peligrosas: el archivo de instrucciones dice que se usan datos de <code>generar_tienda.py</code>) y pruebas que solo verifican que la función «devuelve algo». Una prueba útil fija una entrada y un resultado exacto, como el conteo y la suma del origen. Cuando algo falla, lo eficiente no es corregirlo a mano: se le devuelve al asistente la salida de la prueba y se le pide que corrija el código sin tocar las pruebas.</p></div><div class="lab" id="14-lab-2"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Arma el prompt por piezas</h3></div><p class="hint">Empieza con el prompt corto y activa los criterios uno por uno: incremental, idempotente, borrados, reintentos, particiones, pruebas, alertas y gobierno. Mira cómo crece el prompt, qué líneas aparecen en el código que genera el asistente, qué pruebas vienen con él y cuáles de las seis garantías de producción se cumplen. Prueba combinaciones a medias, como incremental sin idempotencia.</p><style>
+[id="14-lab-2"] .c14l2-rot{font:700 .72rem var(--f-display);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+[id="14-lab-2"] .c14l2-crit{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:6px}
+[id="14-lab-2"] .c14l2-crit label{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--card);font:500 .8rem/1.3 var(--f-display);cursor:pointer}
+[id="14-lab-2"] .c14l2-crit input{margin-top:2px;accent-color:var(--accent)}
+[id="14-lab-2"] .c14l2-crit small{display:block;color:var(--muted);font-size:.7rem}
+[id="14-lab-2"] .c14l2-dos{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:10px}
+[id="14-lab-2"] .c14l2-dos>div{display:grid;gap:4px;min-width:0;align-content:start}
+[id="14-lab-2"] pre{margin:0;font:.7rem/1.45 var(--f-mono);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 10px;overflow:auto;max-height:22em;white-space:pre}
+[id="14-lab-2"] pre .n{background:var(--c-enl-s);display:inline-block;min-width:100%}
+[id="14-lab-2"] .c14l2-tar{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:6px}
+[id="14-lab-2"] .c14l2-t{border:1px solid var(--line);border-radius:8px;padding:6px 8px;display:grid;gap:2px;font:500 .72rem/1.3 var(--f-display);color:var(--muted)}
+[id="14-lab-2"] .c14l2-t b{font:700 .9rem var(--f-display);color:var(--warm)}
+[id="14-lab-2"] .c14l2-t.si{background:var(--good-soft);border-color:var(--good)}
+[id="14-lab-2"] .c14l2-t.si b{color:var(--good)}
+[id="14-lab-2"] ul.c14l2-pr{margin:0;padding-left:1.2em;font:500 .78rem/1.45 var(--f-display)}
+</style>
+<div class="c14l2-rot">Criterios que agregas al prompt</div>
+<div class="btns"><button type="button" id="c14l2-nada" aria-pressed="true">Prompt corto</button><button type="button" id="c14l2-todo" aria-pressed="false">Todos los criterios</button></div>
+<div class="c14l2-crit" id="c14l2-crit"></div>
+<div class="c14l2-tar" id="c14l2-tar" aria-live="polite"></div>
+<div class="c14l2-dos">
+  <div><span class="c14l2-rot">El prompt</span><pre id="c14l2-prompt"></pre></div>
+  <div><span class="c14l2-rot">Lo que el asistente genera (resumido)</span><pre id="c14l2-code"></pre></div>
+</div>
+<div><span class="c14l2-rot">Pruebas que vienen con el código</span><ul class="c14l2-pr" id="c14l2-pr"></ul></div>
+<div class="readout texto" id="c14l2-out" aria-live="polite"></div></div><div class="ml"><b>En la práctica</b><p><b>La ingesta de pagos, segunda vuelta.</b> Con el archivo de instrucciones y el prompt de la ingesta, el asistente de Martín entregó un script que pasó tres de los cuatro pasos del probador. Falló en «avanza un día»: una fila de más. Había implementado la marca de agua y el <code>ON CONFLICT</code>, pero leyó «compara las claves» como «compara las claves de las filas leídas», es decir, solo las del último día, y el pago borrado era de un carrito de enero. Martín le devolvió la salida del probador; la corrección tomó dos minutos. Natalia agregó al archivo de instrucciones una línea: «la conciliación de borrados compara contra todas las claves del origen, no solo las de la ventana».</p></div></section>
+<section><h2>La idea clave</h2><div class="prose"><p>Un pipeline no está listo porque corrió una vez. Está listo cuando se puede correr dos veces sin dañar nada (marca de agua con margen, escritura por clave, transacción y borrados conciliados), cuando sus pruebas detienen un dato malo antes del tablero, cuando el orquestador lo reintenta, lo reprocesa y avisa si falla, y cuando nace con su clasificación, su retención y su linaje. El asistente construye lo que se le pide: se le pide por escrito, con un archivo de instrucciones, un prompt por pieza y un probador que cualquier versión del código debe pasar.</p></div></section>
+<section><h2>Pruébate</h2><div class="quiz"><h3>Pruébate</h3><details><summary>¿Por qué el script de Martín pasó la primera prueba y falló la segunda?</summary><p>Porque insertaba la tabla completa en cada corrida: la primera vez el almacén queda igual al origen, la segunda duplica todo. La falta de idempotencia solo se nota al repetir.</p></details><details><summary>Si la ingesta lee desde la marca de agua menos un día, ¿por qué necesita además escribir con <code>ON CONFLICT</code> por clave?</summary><p>Porque el margen vuelve a leer filas que ya se cargaron; sin fusionar por clave, se insertarían otra vez.</p></details><details><summary>¿Por qué la marca de agua se guarda después del <code>COMMIT</code> y no antes?</summary><p>Para que una corrida que falla a mitad no avance la marca: la siguiente vuelve a leer desde el mismo punto y no se pierde nada.</p></details><details><summary>¿Qué detecta el paso «avanza un día» del probador que no detectan las dos primeras corridas?</summary><p>Los cambios del origen entre corridas, en particular los borrados físicos que una marca de agua no ve.</p></details><details><summary>¿Para qué sirve pedir en el prompt de dbt la cifra esperada de las ventas netas de octubre?</summary><p>Para convertir «parece que funciona» en una comprobación exacta: un filtro de estados olvidado o los reembolsos sin restar dan otra cifra en la primera ejecución.</p></details><details><summary>¿Por qué el prompt de orquestación pide que el tablero conserve el dato de ayer cuando algo falla?</summary><p>Porque una cifra vieja con aviso de frescura es mejor que una cifra nueva equivocada que alguien presenta en un comité.</p></details></div></section>
+<section><h2>Para investigar</h2><div class="investiga"><h3>Para investigar</h3><p class="hint">Estas preguntas no se responden en el capítulo: búscalas por tu cuenta.</p><ol><li>¿Qué diferencia hay entre la idempotencia y la semántica de «exactamente una vez» en un sistema de streaming?<small>Pista: busca «idempotent producer exactly-once semantics».</small></li><li>¿Qué es el modo <code>merge</code> frente a <code>delete+insert</code> en los modelos incrementales de dbt, y qué motores admiten cada uno?</li><li>¿Cómo se escribe una prueba basada en propiedades (<i>property-based testing</i>) para un pipeline de datos, y qué bibliotecas de Python la permiten?<small>Pista: busca «Hypothesis property-based testing data pipeline».</small></li><li>¿Qué es un contrato de datos según el estándar abierto Open Data Contract Standard y qué campos define?</li><li>¿Cómo se evalúa la calidad del código que genera un asistente de IA con un conjunto de pruebas fijo, y qué es un <i>benchmark</i> como SWE-bench?</li></ol></div></section>
+<section><h2>Para saber más</h2><div class="vids"><span>Para saber más</span><a class="vid" href="https://agents.md/" target="_blank" rel="noopener">AGENTS.md <small>el formato abierto de archivo de instrucciones para asistentes de código, en inglés</small></a><a class="vid" href="https://docs.getdbt.com/docs/mesh/govern/model-contracts" target="_blank" rel="noopener">dbt: contratos de modelos <small>documentación oficial, en inglés</small></a><a class="vid" href="https://duckdb.org/docs/stable/sql/statements/insert.html" target="_blank" rel="noopener">DuckDB: INSERT ... ON CONFLICT <small>la escritura idempotente de la práctica, en inglés</small></a><a class="vid" href="https://aaramirez.github.io/desarrollo-de-aplicaciones/temario.html" target="_blank" rel="noopener">Ingeniería de software <small>el método general del archivo de instrucciones y de programar con IA, curso del sitio</small></a></div></section>
+<label class="got"><input type="checkbox" id="got"> Lo tengo claro</label>
+<nav class="pager" id="pager" aria-label="Capítulo anterior y siguiente"></nav>
+</main>
+</div>
+<footer><span>Curso abierto de aaramirez.github.io.</span><span>Sitio publicado: <a href="https://github.com/aaramirez/ingenieria-de-datos" target="_blank" rel="noopener">github.com/aaramirez/ingenieria-de-datos</a></span></footer>
+</div>
+<script src="assets/lab.js"></script>
+<script>
+(function(){
+  const {$}=window.Lab;
+  const raiz=document.querySelector('[id="14-lab-1"]');
+  const nf=(n,d=0)=>{const s=Math.abs(n).toFixed(d).split('.');s[0]=s[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.');return (n<0?'−':'')+s.join(',');};
+  const usd=n=>'US$ '+nf(n,2);
+  // Instantáneas del origen (semilla 42): la base recién creada y después de un --avanzar
+  const SNAP=[{dia:'31 de octubre',n:65316,ids:65316,oct:782785.77},{dia:'1 de noviembre',n:65661,ids:65661,oct:782625.71}];
+  const NUEVOS=347; // pedidos nuevos del 1 de noviembre (y 2 carritos borrados)
+  let s,A,B,log;
+  function ini(){s=0;A={filas:0,ids:0,oct:0,v:[],parcial:false};B={filas:0,ids:0,oct:0,snap:null};log=[];}
+  function correr(falla){
+    const S=SNAP[s];
+    // Prompt corto: agrega todo, lote por lote; si falla, deja lo que alcanzó a insertar
+    if(falla){A.filas+=40000;A.parcial=true;}
+    else{A.filas+=S.n;A.oct+=S.oct;A.v.push(s);}
+    const vs=new Set(A.v);
+    if(vs.has(0))A.ids=SNAP[0].ids+(vs.has(1)?NUEVOS:0);          // los 2 carritos borrados siguen en la copia vieja
+    else if(vs.has(1))A.ids=SNAP[1].ids+(A.parcial?2:0);
+    else A.ids=A.parcial?40000:0;
+    // Prompt completo: todo o nada
+    if(!falla){B.filas=S.n;B.ids=S.ids;B.oct=S.oct;B.snap=s;}
+    log.push(falla?'Corrida con falla después del lote 4 (base al '+S.dia+')':'Corrida (base al '+S.dia+')');
+  }
+  function tarjetas(P,esB){
+    const S=SNAP[s];const dup=P.filas-P.ids;
+    const okF=P.filas===S.n,okO=Math.abs(P.oct-S.oct)<0.005;
+    const atras=esB&&P.snap!==null&&P.snap<s;
+    const vacio=P.filas===0;
+    const cl=(ok)=>vacio?'':(ok?'bien':(atras?'':'mal'));
+    return '<div class="c14l1-t '+cl(okF)+'"><span>Filas en crudo.pedidos</span><b>'+nf(P.filas)+'</b></div>'+
+      '<div class="c14l1-t '+(vacio?'':(dup>0?'mal':'bien'))+'"><span>Prueba unique(pedido_id)</span><b>'+(vacio?'—':(dup>0?'falla: '+nf(dup)+' repetidos':'pasa'))+'</b></div>'+
+      '<div class="c14l1-t '+cl(okO)+'"><span>Ventas netas de octubre</span><b>'+usd(P.oct)+'</b></div>'+
+      '<div class="c14l1-t '+(vacio?'':(okF&&dup===0?'bien':(atras?'':'mal')))+'"><span>Frente al origen</span><b>'+(vacio?'sin cargar':(okF&&dup===0&&okO?'igual':(atras?'atrasado un día':'distinto')))+'</b></div>';
+  }
+  function pintar(){
+    const S=SNAP[s];
+    $('#c14l1-ver').innerHTML='Origen (base al '+S.dia+'): <b>'+nf(S.n)+'</b> pedidos · ventas netas de octubre <b>'+usd(S.oct)+'</b>';
+    $('#c14l1-ta').innerHTML=tarjetas(A,false);$('#c14l1-tb').innerHTML=tarjetas(B,true);
+    $('#c14l1-log').innerHTML=log.map(l=>'<li>'+l+'</li>').join('');
+    let t;
+    if(!log.length)t='<span class="big">Nada cargado todavía</span><span>Corre los dos pipelines una vez: en la primera corrida los dos dan lo mismo, y por eso el script corto «funciona».</span>';
+    else if(log[log.length-1].indexOf('La base avanza')===0)t='<span class="big">El origen cambió</span><span>Los dos almacenes quedaron un día atrás. Corre los pipelines y mira cómo cada uno incorpora los '+NUEVOS+' pedidos nuevos, las devoluciones y los 2 carritos borrados.</span>';
+    else{
+      if(A.filas===SNAP[s].n&&A.ids===SNAP[s].ids)t='<span class="big">Los dos coinciden con el origen</span><span>Es la primera corrida: ninguna prueba distingue todavía al script de una vez del pipeline. Córrelos otra vez con los mismos datos.</span>';
+      else{
+        t='<span class="big">Prompt corto: '+nf(A.filas)+' filas para '+nf(SNAP[s].n)+' pedidos</span>';
+        if(log[log.length-1].indexOf('falla')>=0)t+='<span class="warn">El script corto dejó a medias los lotes que alcanzó a insertar; el completo hizo ROLLBACK y no movió la marca de agua: la próxima corrida retoma desde el mismo punto.</span>';
+        else t+='<span class="warn">Cada corrida vuelve a insertar todo: las ventas netas de octubre se multiplican ('+usd(A.oct)+') y la prueba de unicidad lo grita, si alguien la escribió.</span>';
+        if(B.snap!==null&&B.snap<s)t+='<span>El pipeline completo está atrasado un día, pero no dañado: córrelo y se pone al día.</span>';
+        else if(B.filas)t+='<span class="ok">El pipeline completo sigue igual al origen: '+nf(B.filas)+' pedidos, '+usd(B.oct)+'. Repetirlo no cambia nada; eso es idempotencia.</span>';
+        if(s===1&&B.snap===1)t+='<span>Tras el día nuevo, el completo también reflejó las devoluciones (octubre bajó a '+usd(SNAP[1].oct)+') y los 2 carritos borrados en el origen, gracias a la conciliación de claves.</span>';
+      }
+    }
+    $('#c14l1-out').innerHTML=t;
+  }
+  $('#c14l1-run').addEventListener('click',()=>{correr(false);pintar();});
+  $('#c14l1-falla').addEventListener('click',()=>{correr(true);pintar();});
+  $('#c14l1-dia').addEventListener('click',()=>{if(s===0){s=1;log.push('La base avanza al 1 de noviembre: '+NUEVOS+' pedidos nuevos, 692 cambios de estado, 2 carritos borrados');}pintar();});
+  $('#c14l1-ini').addEventListener('click',()=>{ini();pintar();});
+  ini();pintar();
+})();
+</script>
+<script>
+(function(){
+  const {$}=window.Lab;
+  const raiz=document.querySelector('[id="14-lab-2"]');
+  const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const C=[
+    {k:'inc',t:'Incremental con marca de agua',s:'pagado_en, con un día de margen',
+     p:['- Incremental: lee solo pagos con pagado_en >= marca de agua - 1 día.','  La marca vive en marca_de_agua_pagos.json y se mueve al final.'],
+     c:['marca = leer_marca("marca_de_agua_pagos.json")','filas = origen.execute("SELECT ... FROM pagos WHERE pagado_en >= ?",','                       [marca - timedelta(days=1)])'],
+     pr:['dos corridas sin datos nuevos leen 0 filas nuevas del origen']},
+    {k:'idem',t:'Idempotente',s:'MERGE por pago_id en una transacción',
+     p:['- Idempotente: escribe con INSERT ... ON CONFLICT (pago_id) DO UPDATE','  dentro de una transacción; si algo falla, ROLLBACK y la marca no se mueve.'],
+     c:['with transaccion(destino):','    destino.execute("INSERT INTO crudo.pagos ... ON CONFLICT (pago_id)','                     DO UPDATE SET estado = excluded.estado, ...")','guardar_marca(nueva)   # solo después del COMMIT'],
+     pr:['correr dos veces con los mismos datos deja el mismo conteo y la misma suma','una falla simulada a mitad deja el almacén como estaba']},
+    {k:'del',t:'Borrados conciliados',s:'claves que ya no están en el origen',
+     p:['- Borrados físicos del origen: compara solo las claves (pago_id) y borra','  del almacén las que ya no existen.'],
+     c:['destino.execute("DELETE FROM crudo.pagos WHERE pago_id NOT IN','                 (SELECT pago_id FROM t.pagos)")'],
+     pr:['un pago borrado en el origen desaparece del almacén en la siguiente corrida']},
+    {k:'ret',t:'Reintentos y tiempo límite',s:'3 intentos, espera creciente, 30 minutos',
+     p:['- Reintenta 3 veces la lectura del origen con espera exponencial (2, 4, 8 s)','  y aborta si la corrida supera 30 minutos.'],
+     c:['@reintentar(intentos=3, espera=exponencial(2))','def leer_origen(desde): ...','limite = time.monotonic() + 1800'],
+     pr:['un origen que falla dos veces y responde a la tercera termina bien']},
+    {k:'part',t:'Particiones por mes',s:'Parquet en lago/pagos/mes=AAAA-MM',
+     p:['- Además escribe Parquet (zstd) particionado por mes de pagado_en en','  lago/pagos/, reemplazando solo las particiones tocadas.'],
+     c:['destino.execute("COPY (SELECT * FROM crudo.pagos WHERE mes IN (...))',"                 TO 'lago/pagos' (FORMAT parquet, PARTITION_BY (mes),",'                 OVERWRITE_OR_IGNORE)")'],
+     pr:['reprocesar octubre reescribe mes=2026-10 y no toca los demás meses']},
+    {k:'test',t:'Pruebas de datos',s:'unicidad, no nulos, valores, conciliación',
+     p:['- Pruebas: pago_id único; monto y estado no nulos; estado en (aprobado,','  rechazado, reembolsado); conteo y suma iguales al origen. Si fallan, la','  corrida termina con error y no mueve la marca.'],
+     c:['verificar(destino, unicos=["pago_id"], no_nulos=["monto", "estado"],','          valores={"estado": ESTADOS}, conciliar_con="t.pagos")'],
+     pr:['una fila duplicada a propósito hace fallar la corrida','un estado «pendiente» desconocido hace fallar la corrida']},
+    {k:'alert',t:'Alertas',s:'al fallar o con volumen raro',
+     p:['- Alerta al canal del equipo si la corrida falla, si tarda más de 30 minutos','  o si las filas nuevas se alejan más de 50 % del promedio de 7 días.'],
+     c:['if not (0.5 * promedio_7d <= nuevas <= 1.5 * promedio_7d):','    alertar(f"pagos: {nuevas} filas nuevas, promedio {promedio_7d}")'],
+     pr:['un día con 10 % del volumen normal envía una alerta (canal simulado)']},
+    {k:'gob',t:'Retención, clasificación y linaje',s:'desde el primer día',
+     p:['- Gobierno: agrega crudo.pagos a retencion.yml (tipo auditoría, 10 años),','  clasifica las columnas (monto y metodo: confidencial) en el YAML del','  catálogo y emite un evento de linaje de entrada y salida por corrida.'],
+     c:['# retencion.yml:  crudo.pagos: {tipo: auditoria, vence: 10y}','# catalogo.yml:   monto, metodo -> confidencial','emitir_linaje(job="ingesta_pagos", entradas=["tienda.pagos"],','              salidas=["crudo.pagos"], filas=nuevas)'],
+     pr:['una tabla sin entrada en retencion.yml hace fallar la revisión']}
+  ];
+  const on=new Set();
+  $('#c14l2-crit').innerHTML=C.map(c=>'<label><input type="checkbox" data-k="'+c.k+'"><span>'+c.t+'<small>'+c.s+'</small></span></label>').join('');
+  const BASE_P=['Escribe ingesta_pagos.py: copia la tabla pagos de tienda.db','(SQLite) a la tabla crudo.pagos de almacen.duckdb.'];
+  const BASE_C=['con = duckdb.connect("almacen.duckdb")','con.execute("ATTACH \'tienda.db\' AS t (TYPE sqlite)")','con.execute("CREATE TABLE IF NOT EXISTS crudo.pagos AS ...")'];
+  const CORTO_C=['con.execute("INSERT INTO crudo.pagos SELECT * FROM t.pagos")'];
+  function pintar(){
+    const act=C.filter(c=>on.has(c.k));
+    let p=BASE_P.slice();if(act.length)p.push('','Requisitos:');act.forEach(c=>p=p.concat(c.p));
+    if(act.length)p.push('','Escribe también las pruebas de cada requisito y córrelas.');
+    $('#c14l2-prompt').textContent=p.join('\n');
+    let code=BASE_C.map(esc);
+    if(!on.has('idem')&&!on.has('inc'))code=code.concat(CORTO_C.map(esc));
+    act.forEach(c=>{code.push('<span class="n">'+c.c.map(esc).join('</span>\n<span class="n">')+'</span>');});
+    $('#c14l2-code').innerHTML=code.join('\n');
+    const prs=act.flatMap(c=>c.pr);
+    $('#c14l2-pr').innerHTML=prs.length?prs.map(x=>'<li>'+x+'</li>').join(''):'<li>ninguna: el asistente no escribe pruebas si nadie las pide</li>';
+    const q=[['¿Se puede correr dos veces?',on.has('idem')],['¿Sobrevive a una falla a mitad?',on.has('idem')&&on.has('ret')],['¿Ve los borrados del origen?',on.has('del')],['¿Alguien se entera si falla?',on.has('alert')],['¿Lo prueba solo?',on.has('test')],['¿Gobernado desde el día uno?',on.has('gob')]];
+    $('#c14l2-tar').innerHTML=q.map(([t,v])=>'<div class="c14l2-t'+(v?' si':'')+'"><span>'+t+'</span><b>'+(v?'Sí':'No')+'</b></div>').join('');
+    const si=q.filter(x=>x[1]).length;
+    let t='<span class="big">'+p.length+' líneas de prompt · '+prs.length+' pruebas · '+si+' de 6 garantías</span>';
+    if(!act.length)t+='<span class="warn">Dos líneas de prompt, un INSERT de todo y ninguna prueba: funciona la primera vez y duplica todo la segunda.</span>';
+    else if(on.has('inc')&&!on.has('idem'))t+='<span class="warn">Incremental sin idempotencia es la trampa más común: el margen de un día vuelve a leer las filas del día anterior y, sin MERGE por clave, las inserta de nuevo.</span>';
+    else if(on.has('alert')&&!on.has('test'))t+='<span class="warn">Alertas sin pruebas: te avisan si la corrida se cae, no si carga datos malos.</span>';
+    else if(act.length===C.length)t+='<span class="ok">El prompt completo. Cada criterio llega con su prueba: la revisión ya no depende de leer todo el código, sino de que esas pruebas existan y pasen.</span>';
+    else t+='<span>Cada criterio agrega pocas líneas al prompt y su prueba al código. Fíjate en las combinaciones: sobrevivir a una falla necesita idempotencia y reintentos juntos.</span>';
+    $('#c14l2-out').innerHTML=t;
+  }
+  function sync(){raiz.querySelectorAll('[data-k]').forEach(c=>{c.checked=on.has(c.dataset.k);});pintar();}
+  raiz.querySelectorAll('[data-k]').forEach(c=>c.addEventListener('change',()=>{c.checked?on.add(c.dataset.k):on.delete(c.dataset.k);$('#c14l2-nada').setAttribute('aria-pressed','false');$('#c14l2-todo').setAttribute('aria-pressed','false');pintar();}));
+  $('#c14l2-nada').addEventListener('click',e=>{on.clear();e.currentTarget.setAttribute('aria-pressed','true');$('#c14l2-todo').setAttribute('aria-pressed','false');sync();});
+  $('#c14l2-todo').addEventListener('click',e=>{C.forEach(c=>on.add(c.k));e.currentTarget.setAttribute('aria-pressed','true');$('#c14l2-nada').setAttribute('aria-pressed','false');sync();});
+  pintar();
+})();
+</script>
+</body>
+</html>

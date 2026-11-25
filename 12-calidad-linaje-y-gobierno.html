@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="es">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-KX76XF8R');</script>
+<!-- End Google Tag Manager -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Calidad, linaje y gobierno · Ingeniería de datos · Ingeniería de datos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Cómo viaja un dato desde la base de una aplicación hasta el tablero que lee la gerencia: ingesta, formatos, ETL y ELT, data warehouse, lakehouse, Spark, Kafka, orquestación, dbt, calidad y linaje, con laboratorios donde se ve cada pipeline funcionar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400;1,8..60,600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KX76XF8R"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<div class="wrap" data-page="calidad-linaje-y-gobierno">
+<header class="topbar"><a class="brand" href="index.html">Ingeniería de <b>datos</b></a><span class="eyebrow">Curso visual e interactivo · Datos e inteligencia artificial</span><a class="al-sitio" href="https://aaramirez.github.io/">← Todos los cursos</a></header>
+<div class="layout">
+<nav class="toc" id="toc" aria-label="Ruta de aprendizaje"></nav>
+<main>
+<header class="page-head"><span class="num">CAPÍTULO 12 DE 14</span><h1>Calidad, linaje y gobierno de datos</h1><p class="lede">Un tablero vale lo que vale la confianza en sus cifras. Este capítulo muestra cómo se mide la calidad de un dato, cómo se vigila una plataforma sin escribir una prueba por tabla, cómo se rastrea una cifra hasta la columna de origen, cómo se clasifica cada columna por sensibilidad y quién responde por cada dato; al final, data mesh.</p></header>
+<section><div class="prose"><p>En el comité del lunes, Elena Vargas presentó las ventas netas de octubre: US$ 782.785,77. La gerente de Finanzas levantó la mano. Su reporte decía US$ 788.028,47. «¿Cuál es la buena?», preguntó alguien, y la reunión se fue en eso.</p><p>Natalia Herrera tardó una tarde en responder, y la respuesta fue incómoda: las dos cifras eran correctas. La de Finanzas suma los pagos aprobados de los pedidos de octubre; la de Elena resta además los US$ 5.242,70 de reembolsos, porque cuenta lo vendido que se quedó vendido. Ninguna de las dos estaba mal calculada. Lo que faltaba era otra cosa: una definición escrita de «ventas netas», un dueño que la defendiera y un camino visible desde la cifra hasta las columnas de donde sale.</p><p>Los capítulos anteriores construyeron la plataforma y la protegieron con pruebas (capítulo 10). Este capítulo trata de la confianza: saber si un dato es bueno, de dónde viene, qué tan delicado es y quién responde por él.</p></div></section>
+<section><h2>Las dimensiones de la calidad</h2><div class="analogia"><b>Imagínalo así</b><p>El agua del grifo puede fallar de varias maneras distintas: puede no salir, salir turbia, salir con olor, llegar tarde porque cortaron el servicio, o salir bien en la cocina y mal en el baño. Decir «el agua está mala» no ayuda al plomero; decir cuál de esas cosas pasa, sí.</p></div><div class="prose"><p>«El dato está malo» tampoco ayuda. La <b>calidad de datos</b> (<i>data quality</i>) se separa en <b>dimensiones</b> (<i>quality dimensions</i>), y cada una se mide con una regla distinta. Con los datos de Tienda Ejemplo, que el generador del capítulo 1 ensucia a propósito:</p><div class="tbl"><table><thead><tr><th>Dimensión</th><th>Pregunta</th><th>En la tienda</th></tr></thead><tbody><tr><td><b>Completitud</b> (<i>completeness</i>)</td><td>¿Están todos los valores que deberían estar?</td><td>26 clientes sin <code>email</code></td></tr><tr><td><b>Validez</b> (<i>validity</i>)</td><td>¿Cada valor respeta su formato y su lista?</td><td>64 ciudades escritas a mano fuera de la lista de diez: <code>lima</code>, <code>BOGOTÁ</code>, <code>Quito </code> con espacio</td></tr><tr><td><b>Exactitud</b> (<i>accuracy</i>)</td><td>¿El valor coincide con la realidad?</td><td>un precio que no es el que pagó el cliente; solo se comprueba contra otra fuente</td></tr><tr><td><b>Unicidad</b> (<i>uniqueness</i>)</td><td>¿Cada cosa aparece una sola vez?</td><td>un pedido cargado dos veces por una ingesta repetida (capítulo 2)</td></tr><tr><td><b>Frescura</b> (<i>freshness</i>, <i>timeliness</i>)</td><td>¿El dato llegó a tiempo?</td><td>el tablero muestra hasta el 31 de octubre cuando ya debería mostrar el 1 de noviembre</td></tr><tr><td><b>Consistencia</b> (<i>consistency</i>)</td><td>¿Dos lugares dicen lo mismo?</td><td>ventas netas (782.785,77) = pagos aprobados (788.028,47) − reembolsos (5.242,70)</td></tr></tbody></table></div><p>La validez y la exactitud se confunden, y no son lo mismo: <code>Lima</code> es una ciudad válida, pero si Renata vive en Quito y la fila dice Lima, el dato es válido e inexacto. La exactitud casi nunca se puede probar desde adentro de la tabla; hace falta otra fuente, como la conciliación con pagos de la última fila. Por eso las reglas de consistencia valen tanto: comparan dos caminos independientes hacia la misma cifra.</p><p>Las pruebas de dbt del capítulo 10 cubren buena parte de esta tabla: <code>not_null</code> es completitud, <code>accepted_values</code> es validez, <code>unique</code> es unicidad, <code>source freshness</code> es frescura. Lo que agrega este capítulo es nombrarlas, medirlas todas, también las que no se ven desde una sola tabla, y saber qué cifra del tablero toca cada una cuando falla.</p></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Mide las dimensiones de la calidad en la base de la tienda</h3></div><p>Vas a escribir un chequeo por dimensión sobre la base del capítulo 1 con DuckDB, y a ver cuáles fallan con los datos que el generador ensucia a propósito. Trabaja en <code>~/datos-tienda</code>, con el entorno virtual del capítulo 2.</p><p>Guarda este programa como <code>calidad.py</code>:</p><div class="code-copia"><pre><code>"""Chequeos de calidad sobre la base de Tienda Ejemplo: una línea por dimensión."""
+import duckdb
+
+con = duckdb.connect()
+con.sql("INSTALL sqlite; LOAD sqlite; ATTACH 'tienda.db' AS t (TYPE sqlite, READ_ONLY)")
+CIUDADES = ["Lima", "Bogotá", "Ciudad de México", "Santiago", "Quito",
+            "Guadalajara", "Medellín", "Guayaquil", "Santo Domingo", "Panamá"]
+
+def uno(sql):
+    return con.sql(sql).fetchall()[0]
+
+chequeos = []
+# Completitud: correos que faltan
+n, = uno("SELECT count(*) FROM t.clientes WHERE email IS NULL")
+chequeos.append(("completitud", "clientes.email no nulo", n, n == 0))
+# Validez: ciudades fuera de la lista
+lista = ", ".join(f"'{c}'" for c in CIUDADES)
+n, = uno(f"SELECT count(*) FROM t.clientes WHERE ciudad NOT IN ({lista})")
+chequeos.append(("validez", "clientes.ciudad en la lista de 10", n, n == 0))
+# Unicidad: un pedido, una fila
+n, = uno("SELECT count(*) - count(DISTINCT pedido_id) FROM t.pedidos")
+chequeos.append(("unicidad", "pedidos.pedido_id único", n, n == 0))
+# Frescura: horas entre el último cambio y el corte esperado (fin del último día cargado)
+ultimo, = uno("SELECT max(actualizado_en) FROM t.pedidos")
+dia, = uno("SELECT valor FROM t._meta WHERE clave = 'ultimo_dia'")
+horas, = uno(f"SELECT date_diff('hour', TIMESTAMP '{ultimo}', TIMESTAMP '{dia} 23:59:59')")
+chequeos.append(("frescura", f"último cambio {ultimo} (máximo 24 h)", horas, horas &lt;= 24))
+# Consistencia: ventas netas = pagos aprobados − reembolsos (pedidos de octubre)
+ventas, = uno("""SELECT round(sum(d.cantidad * d.precio_unitario), 2) FROM t.pedidos p
+                 JOIN t.detalle_pedido d USING (pedido_id)
+                 WHERE p.creado_en &gt;= '2026-10-01' AND p.creado_en &lt; '2026-11-01'
+                   AND p.estado IN ('pagado', 'enviado', 'entregado')""")
+pagos, = uno("""SELECT round(sum(CASE g.estado WHEN 'aprobado' THEN g.monto
+                                          WHEN 'reembolsado' THEN -g.monto ELSE 0 END), 2)
+                FROM t.pagos g JOIN t.pedidos p USING (pedido_id)
+                WHERE p.creado_en &gt;= '2026-10-01' AND p.creado_en &lt; '2026-11-01'""")
+dif = round(ventas - pagos, 2)
+chequeos.append(("consistencia", f"ventas {ventas:.2f} = pagos netos {pagos:.2f}", dif, dif == 0))
+
+for dimension, regla, valor, ok in chequeos:
+    print(f"[{'ok ' if ok else 'MAL'}] {dimension:12} {regla:48} {valor}")
+
+print("\nEjemplos de ciudades mal escritas:")
+for fila in con.sql(f"""SELECT '«' || ciudad || '»' AS ciudad, count(*) AS n FROM t.clientes
+                        WHERE ciudad NOT IN ({lista}) GROUP BY ciudad ORDER BY n DESC LIMIT 6""").fetchall():
+    print("  ", *fila)</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>cd $HOME\datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>.venv\Scripts\activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python calidad.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>cd ~/datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>source .venv/bin/activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 calidad.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>Anota qué dimensiones dicen <code>MAL</code> y con qué valor.</span></li><li><span>Mira los ejemplos de ciudades: ¿cuántas formas distintas de escribir Lima aparecen?</span></li><li><span>Corre <code>python generar_tienda.py --avanzar</code> (o <code>python3</code> en macOS y Linux) y repite: mira si la frescura y la consistencia de octubre cambian.</span></li></ol><p><b>Qué observar:</b> con la base recién creada fallan la completitud (26 correos nulos) y la validez (64 ciudades mal escritas, con mayúsculas, sin tilde o con un espacio al final), mientras que la unicidad, la frescura y la consistencia pasan: las ventas netas cuadran al centavo con los pagos aprobados menos los reembolsos. Esos dos <code>MAL</code> no detienen el tablero de ventas netas, porque la cifra no usa ni el correo ni la ciudad; sí afectan a «clientes por ciudad». Después de <code>--avanzar</code>, el último cambio pasa al 1 de noviembre y las ventas netas de octubre bajan a 782.625,71 por las dos devoluciones del día, pero siguen cuadrando con los pagos: una cifra puede cambiar y seguir siendo consistente. Saber qué cifra toca cada falla es justo lo que da el linaje.</p></div></section>
+<section><h2>Observabilidad de datos: volumen, esquema y distribución</h2><div class="analogia"><b>Imagínalo así</b><p>Una prueba es como el examen que el mecánico le hace al auto cada seis meses: revisa lo que ya sabe que puede fallar. El tablero del auto es otra cosa: mira todo el tiempo la temperatura, el aceite y la batería, y enciende una luz cuando algo se sale de lo normal, aunque nadie haya previsto esa falla en particular.</p></div><div class="prose"><p>Las pruebas atrapan los problemas que alguien imaginó. La <b>observabilidad de datos</b> (<i>data observability</i>) vigila los que nadie imaginó: mide cada tabla todos los días, aprende cómo es lo normal a partir de su historia y avisa cuando algo se sale del patrón. Se suele describir en cinco pilares:</p><ul><li><b>Frescura</b> (<i>freshness</i>): cuándo se actualizó la tabla por última vez.</li><li><b>Volumen</b> (<i>volume</i>): cuántas filas llegaron. Si la tienda recibe unos 270 pedidos diarios en octubre y un martes llegan 27, ninguna prueba falla (no hay nulos ni duplicados), pero algo pasó.</li><li><b>Esquema</b> (<i>schema</i>): qué columnas hay y de qué tipo. Una columna que desaparece o cambia de tipo en el origen es la causa más común de pipelines rotos.</li><li><b>Distribución</b> (<i>distribution</i>): cómo se reparten los valores. El porcentaje de correos nulos pasa del 0,5 % al 30 % porque un formulario nuevo dejó de pedirlo.</li><li><b>Linaje</b> (<i>lineage</i>): qué depende de qué, para saber a quién le importa cada anomalía.</li></ul></div><figure class="fig fig-esquema" id="12-diagrama-1"><div class="lienzo"><svg viewBox="0 0 940 330" style="min-width:740px" role="img" aria-label="Los cinco pilares de la observabilidad de datos aplicados a Tienda Ejemplo: frescura, volumen, esquema, distribución y linaje, cada uno con un gráfico pequeño que muestra cómo se ve una anomalía">
+<text x="20" y="26" class="t t-xs t-b t-m">LO QUE SE MIDE SOLO, CADA DÍA, SIN ESCRIBIR UNA PRUEBA POR TABLA</text>
+
+<rect x="20" y="40" width="168" height="230" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="34" y="64" class="t t-b">Frescura</text>
+<text x="34" y="82" class="t t-s t-m">horas desde la última carga</text>
+<line x1="34" y1="160" x2="176" y2="160" class="ln" style="stroke:var(--line)"/>
+<text x="34" y="154" class="t t-xs t-m">límite 24 h</text>
+<polyline points="34,200 54,190 54,200 74,190 74,200 94,190 94,200 114,186 134,170 154,150 174,128" class="ln" style="stroke-width:2"/>
+<circle cx="174" cy="128" r="4" class="k-warm"/>
+<text x="34" y="230" class="t t-s">la carga de anoche</text>
+<text x="34" y="246" class="t t-s">no corrió: 30 h</text>
+
+<rect x="200" y="40" width="168" height="230" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="214" y="64" class="t t-b">Volumen</text>
+<text x="214" y="82" class="t t-s t-m">filas nuevas por día</text>
+<g class="c-red"><rect x="216" y="140" width="14" height="60"/><rect x="234" y="136" width="14" height="64"/><rect x="252" y="142" width="14" height="58"/><rect x="270" y="130" width="14" height="70"/><rect x="288" y="134" width="14" height="66"/><rect x="306" y="138" width="14" height="62"/></g>
+<rect x="324" y="186" width="14" height="14" style="fill:var(--warm-soft);stroke:var(--warm)"/>
+<text x="214" y="230" class="t t-s">27 pedidos el martes</text>
+<text x="214" y="246" class="t t-s">frente a unos 270</text>
+
+<rect x="380" y="40" width="168" height="230" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="394" y="64" class="t t-b">Esquema</text>
+<text x="394" y="82" class="t t-s t-m">columnas y tipos</text>
+<text x="394" y="118" class="t t-s t-mono">pedido_id   INTEGER</text>
+<text x="394" y="138" class="t t-s t-mono">cantidad    INTEGER</text>
+<text x="394" y="158" class="t t-s t-mono k-warm">precio_unit TEXT</text>
+<text x="394" y="176" class="t t-s t-mono t-m">  antes: DECIMAL</text>
+<text x="394" y="230" class="t t-s">una columna cambió</text>
+<text x="394" y="246" class="t t-s">de tipo en el origen</text>
+
+<rect x="560" y="40" width="168" height="230" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="574" y="64" class="t t-b">Distribución</text>
+<text x="574" y="82" class="t t-s t-m">% de correos nulos</text>
+<polyline points="574,186 594,187 614,185 634,186 654,186 674,185 694,184" class="ln" style="stroke-width:2"/>
+<polyline points="694,184 714,120" class="ln s-warm" style="stroke-width:2"/>
+<circle cx="714" cy="120" r="4" class="k-warm"/>
+<text x="574" y="204" class="t t-xs t-m">0,5 %</text>
+<text x="574" y="230" class="t t-s">un formulario nuevo</text>
+<text x="574" y="246" class="t t-s">ya no pide el correo</text>
+
+<rect x="740" y="40" width="180" height="230" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="754" y="64" class="t t-b">Linaje</text>
+<text x="754" y="82" class="t t-s t-m">qué depende de qué</text>
+<rect x="754" y="104" width="64" height="24" rx="5" class="c-fis"/><text x="786" y="120" class="t t-xs k-fis" text-anchor="middle">pedidos</text>
+<rect x="840" y="104" width="68" height="24" rx="5" class="c-tra"/><text x="874" y="120" class="t t-xs k-tra" text-anchor="middle">fct_ventas</text>
+<rect x="840" y="150" width="68" height="24" rx="5" class="c-apl"/><text x="874" y="166" class="t t-xs k-apl" text-anchor="middle">tablero</text>
+<line x1="818" y1="116" x2="840" y2="116" class="ln"/>
+<line x1="874" y1="128" x2="874" y2="150" class="ln"/>
+<text x="754" y="230" class="t t-s">dice a quién afecta</text>
+<text x="754" y="246" class="t t-s">cada anomalía</text>
+<text x="470" y="300" class="t t-s t-m" text-anchor="middle">Las cuatro primeras detectan que algo cambió; el linaje dice qué cifras toca y a qué dueño avisar.</text>
+</svg></div><figcaption><b>Los cinco pilares de la observabilidad.</b> Cada recuadro es un pilar con una gráfica pequeña de cómo se ve una anomalía en Tienda Ejemplo: la frescura que cruza el límite de 24 horas porque la carga de anoche no corrió, el volumen que cae a 27 pedidos, una columna que cambió de tipo, el porcentaje de correos nulos que se dispara y el linaje que dice qué cifra toca. Los recuadros son punteados porque son operación transversal: no mueven datos, los vigilan.</figcaption></figure><div class="prose"><p>La diferencia práctica con las pruebas es de escala: una plataforma con cientos de tablas no tiene a alguien que escriba un umbral de volumen para cada una. Las herramientas de observabilidad lo calculan solas a partir de la historia (por ejemplo, «alerta si el volumen del día se aleja más de tres desviaciones de las últimas cuatro semanas, para el mismo día de la semana»). En el mercado, a noviembre de 2026, hay bibliotecas abiertas como Great Expectations, Soda o Elementary (sobre dbt) y servicios comerciales que hacen solo esto. La lógica es la misma en todas: una regla por pilar, umbrales aprendidos y alertas que llegan al dueño de la tabla.</p></div></section>
+<section><h2>Linaje: de la columna del tablero a la columna de origen</h2><div class="analogia"><b>Imagínalo así</b><p>Un paquete de pollo en el supermercado trae un código de lote. Si hay una alerta sanitaria, ese código dice de qué planta salió, qué día y de qué granja venían los animales; y en sentido contrario, la granja puede saber en qué supermercados terminó cada lote. Sin ese código, la alerta obliga a retirar todo.</p></div><div class="prose"><p>El <b>linaje de datos</b> (<i>data lineage</i>) es ese código de lote: el registro de qué datos salen de qué otros y por qué transformación. Responde dos preguntas que se hacen todos los días en una plataforma:</p><ul><li><b>Hacia atrás</b> (<i>upstream</i>): «¿de dónde sale esta cifra?». Es la pregunta de Elena en el comité.</li><li><b>Hacia adelante</b> (<i>downstream</i>): «si cambio esta columna, ¿qué se rompe?». Es la pregunta de Diego antes de tocar la base de la tienda, y se llama <b>análisis de impacto</b> (<i>impact analysis</i>).</li></ul><p>El linaje tiene dos niveles de detalle. El <b>linaje por tabla</b> (<i>table-level lineage</i>) dice que <code>fct_ventas</code> lee de <code>stg_pedidos</code>, <code>stg_detalle_pedido</code> y <code>stg_pagos</code> (de pagos toma el método de pago); es el grafo de dbt del capítulo 10. El <b>linaje por columna</b> (<i>column-level lineage</i>) dice que la columna <code>ventas_netas</code> sale de <code>cantidad</code> y <code>precio_unitario</code>, y que no usa ninguna columna de pagos. La diferencia importa: por tabla, un cambio en <code>pagos</code> parece afectar las ventas netas; por columna, se ve que no.</p></div><figure class="fig fig-esquema" id="12-diagrama-2"><div class="lienzo"><svg viewBox="0 0 940 340" style="min-width:760px" role="img" aria-label="Linaje por columna de las ventas netas de octubre: cantidad y precio unitario de detalle_pedido pasan por staging, forman la venta de fct_ventas y se suman en ventas_mensuales; estado y creado_en de pedidos no aportan al valor, solo filtran y agrupan">
+<defs>
+<marker id="c12d2-t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-tra"/></marker>
+<marker id="c12d2-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+</defs>
+<text x="20" y="26" class="t t-xs t-b t-m">BASE DE LA TIENDA</text>
+<text x="226" y="26" class="t t-xs t-b t-m">STAGING</text>
+<text x="432" y="26" class="t t-xs t-b t-m">HECHOS</text>
+<text x="620" y="26" class="t t-xs t-b t-m">AGREGADO</text>
+<text x="800" y="26" class="t t-xs t-b t-m">TABLERO</text>
+
+<rect x="20" y="44" width="180" height="128" rx="8" class="c-fis"/>
+<text x="32" y="64" class="t t-s t-b k-fis">detalle_pedido</text>
+<rect x="32" y="76" width="156" height="26" rx="5" class="caja"/><text x="42" y="93" class="t t-s t-mono">cantidad</text>
+<rect x="32" y="110" width="156" height="26" rx="5" class="caja"/><text x="42" y="127" class="t t-s t-mono">precio_unitario</text>
+<text x="32" y="158" class="t t-xs t-m">dueño: Diego</text>
+
+<rect x="20" y="190" width="180" height="128" rx="8" class="c-fis"/>
+<text x="32" y="210" class="t t-s t-b k-fis">pedidos</text>
+<rect x="32" y="222" width="156" height="26" rx="5" class="caja"/><text x="42" y="239" class="t t-s t-mono">estado</text>
+<rect x="32" y="256" width="156" height="26" rx="5" class="caja"/><text x="42" y="273" class="t t-s t-mono">creado_en</text>
+<text x="32" y="304" class="t t-xs t-m">dueño: Diego</text>
+
+<rect x="226" y="44" width="180" height="128" rx="8" class="c-tra"/>
+<text x="238" y="64" class="t t-s t-b k-tra">stg_detalle_pedido</text>
+<rect x="238" y="76" width="156" height="26" rx="5" class="caja"/><text x="248" y="93" class="t t-s t-mono">cantidad</text>
+<rect x="238" y="110" width="156" height="26" rx="5" class="caja"/><text x="248" y="127" class="t t-s t-mono">precio_unitario</text>
+<text x="238" y="158" class="t t-xs t-m">CAST a DECIMAL</text>
+
+<rect x="226" y="190" width="180" height="128" rx="8" class="c-tra"/>
+<text x="238" y="210" class="t t-s t-b k-tra">stg_pedidos</text>
+<rect x="238" y="222" width="156" height="26" rx="5" class="caja"/><text x="248" y="239" class="t t-s t-mono">estado</text>
+<rect x="238" y="256" width="156" height="26" rx="5" class="caja"/><text x="248" y="273" class="t t-s t-mono">creado_en</text>
+<text x="238" y="304" class="t t-xs t-m">tipos convertidos</text>
+
+<rect x="432" y="96" width="164" height="150" rx="8" class="c-tra"/>
+<text x="444" y="116" class="t t-s t-b k-tra">fct_ventas</text>
+<rect x="444" y="128" width="140" height="26" rx="5" class="caja"/><text x="454" y="145" class="t t-s t-mono">venta</text>
+<rect x="444" y="162" width="140" height="26" rx="5" class="caja"/><text x="454" y="179" class="t t-s t-mono t-m">filtro: estado</text>
+<rect x="444" y="196" width="140" height="26" rx="5" class="caja"/><text x="454" y="213" class="t t-s t-mono">creado_en</text>
+
+<rect x="620" y="110" width="160" height="90" rx="8" class="c-tra"/>
+<text x="632" y="130" class="t t-s t-b k-tra">ventas_mensuales</text>
+<rect x="632" y="142" width="136" height="26" rx="5" class="caja"/><text x="642" y="159" class="t t-s t-mono">ventas_netas</text>
+<text x="632" y="188" class="t t-xs t-m">dueño: Martín</text>
+
+<rect x="800" y="112" width="124" height="86" rx="8" class="c-apl"/>
+<text x="862" y="134" class="t t-s t-b k-apl" text-anchor="middle">Ventas netas</text>
+<text x="862" y="154" class="t t-s t-b" text-anchor="middle">US$ 782.785,77</text>
+<text x="862" y="172" class="t t-xs t-m" text-anchor="middle">octubre de 2026</text>
+<text x="862" y="188" class="t t-xs t-m" text-anchor="middle">dueña: Elena</text>
+
+<line x1="188" y1="89" x2="236" y2="89" class="ln s-tra" style="stroke-width:2" marker-end="url(#c12d2-t)"/>
+<line x1="188" y1="123" x2="236" y2="123" class="ln s-tra" style="stroke-width:2" marker-end="url(#c12d2-t)"/>
+<path d="M394 89 C420 89 420 141 442 141" class="ln s-tra" style="stroke-width:2" marker-end="url(#c12d2-t)"/>
+<path d="M394 123 C420 123 420 141 442 141" class="ln s-tra" style="stroke-width:2" marker-end="url(#c12d2-t)"/>
+<text x="412" y="80" class="t t-xs k-tra">cantidad × precio</text>
+<line x1="584" y1="141" x2="630" y2="155" class="ln s-tra" style="stroke-width:2" marker-end="url(#c12d2-t)"/>
+<text x="599" y="124" class="t t-xs k-tra">SUM</text>
+<line x1="768" y1="155" x2="798" y2="155" class="ln s-tra" style="stroke-width:2" marker-end="url(#c12d2-t)"/>
+
+<line x1="188" y1="235" x2="236" y2="235" class="ln ln-d" marker-end="url(#c12d2-m)"/>
+<line x1="188" y1="269" x2="236" y2="269" class="ln ln-d" marker-end="url(#c12d2-m)"/>
+<path d="M394 235 C420 235 420 175 442 175" class="ln ln-d" marker-end="url(#c12d2-m)"/>
+<path d="M394 269 C420 269 420 209 442 209" class="ln ln-d" marker-end="url(#c12d2-m)"/>
+<path d="M584 209 C612 209 616 170 630 166" class="ln ln-d" marker-end="url(#c12d2-m)"/>
+<text x="606" y="236" class="t t-xs t-m">WHERE estado IN (…) en fct_ventas</text>
+<text x="606" y="252" class="t t-xs t-m">GROUP BY mes de creado_en</text>
+
+<line x1="620" y1="290" x2="660" y2="290" class="ln s-tra" style="stroke-width:2"/><text x="668" y="294" class="t t-s">aporta al valor</text>
+<line x1="780" y1="290" x2="820" y2="290" class="ln ln-d"/><text x="828" y="294" class="t t-s">filtra o agrupa</text>
+</svg></div><figcaption><b>El linaje por columna de las ventas netas.</b> Se lee de izquierda a derecha, de la base de la tienda a la cifra del tablero. Las flechas moradas llenas aportan al valor: <code>cantidad</code> y <code>precio_unitario</code> pasan por staging, se multiplican en la <code>venta</code> de <code>fct_ventas</code> y se suman en <code>ventas_netas</code>. Las punteadas grises no aportan al valor, pero lo cambian: <code>estado</code> filtra en <code>fct_ventas</code> qué pedidos cuentan y <code>creado_en</code> decide a qué mes va cada uno. Cada tabla lleva su dueño; la cifra, a su dueña.</figcaption></figure><div class="prose"><p>Las flechas punteadas merecen atención. Muchas herramientas de linaje por columna solo siguen las columnas que forman el valor y no las que filtran o agrupan. Pero un cambio en <code>estado</code>, como un valor nuevo que el filtro no conoce, mueve las ventas netas tanto como un cambio en el precio. Un linaje que ignora los filtros da una falsa tranquilidad.</p><p>¿Cómo se obtiene el linaje? De dos maneras que se combinan:</p><ol class="steps"><li><span><b>Leyendo el código.</b> Un analizador de SQL recorre cada consulta y anota qué columna sale de cuál. dbt arma el grafo por tabla a partir de sus <code>ref()</code>; bibliotecas como sqlglot llegan al nivel de columna.</span></li><li><span><b>Escuchando las ejecuciones.</b> Cada trabajo, al correr, emite un evento que dice qué leyó y qué escribió. <b>OpenLineage</b> es la especificación abierta de esos eventos: un trabajo (<i>job</i>) tiene ejecuciones (<i>runs</i>) que leen y escriben conjuntos de datos (<i>datasets</i>), y cada ejecución manda un evento al empezar y otro al terminar a un servidor que arma el grafo (Marquez es la implementación de referencia). Airflow, Spark, dbt y Flink tienen integraciones que los emiten sin cambiar el código del pipeline.</span></li></ol><p>El primer camino ve lo que el código dice que hace; el segundo, lo que de verdad pasó, incluido el script que alguien corre a mano fuera del orquestador.</p></div><div class="lab" id="12-lab-1"><div class="lab-title"><span class="tag">Laboratorio</span><h3>El grafo de linaje de una métrica</h3></div><p class="hint">Elige una cifra del tablero de Elena y mira su camino hasta la base de la tienda. Empieza por tabla: cuenta de cuántas tablas de origen depende cada cifra y quién es el dueño de cada paso. Después cambia a «Por columna» con las ventas netas y con el ticket promedio, y mira qué tabla desaparece del camino.</p><style>
+[id="12-lab-1"] .c12l1-rot{font:700 .72rem var(--f-display);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+[id="12-lab-1"] .c12l1-g{display:grid;gap:4px}
+[id="12-lab-1"] .c12l1-lienzo{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+[id="12-lab-1"] .c12l1-lienzo svg{display:block;width:100%;min-width:660px;height:auto}
+[id="12-lab-1"] svg text{font-family:var(--f-display);fill:var(--ink);pointer-events:none;font-size:11px}
+[id="12-lab-1"] svg .m{fill:var(--muted);font-size:10px;letter-spacing:.06em}
+[id="12-lab-1"] svg .ar{stroke:var(--line);stroke-width:1.4;fill:none}
+[id="12-lab-1"] svg .ar.on{stroke:var(--accent);stroke-width:2.6}
+[id="12-lab-1"] svg g.n rect{stroke-width:1.5}
+[id="12-lab-1"] svg g.src rect{fill:var(--c-fis-s);stroke:var(--c-fis)}
+[id="12-lab-1"] svg g.stg rect,[id="12-lab-1"] svg g.mart rect,[id="12-lab-1"] svg g.agg rect{fill:var(--c-tra-s);stroke:var(--c-tra)}
+[id="12-lab-1"] svg g.exp rect{fill:var(--c-apl-s);stroke:var(--c-apl)}
+[id="12-lab-1"] svg g.n.off{opacity:.25}
+[id="12-lab-1"] svg g.n.sel rect{stroke:var(--accent);stroke-width:3}
+[id="12-lab-1"] .c12l1-tab td,[id="12-lab-1"] .c12l1-tab th{font-size:.78rem;vertical-align:top}
+[id="12-lab-1"] .c12l1-tab code{font-size:.74rem;overflow-wrap:anywhere}
+</style>
+<div class="c12l1-g"><span class="c12l1-rot">Cifra del tablero de Elena</span>
+<div class="btns" role="group" aria-label="Cifra del tablero">
+  <button type="button" data-m="M1" aria-pressed="true">Ventas netas de octubre</button>
+  <button type="button" data-m="M2" aria-pressed="false">Ticket promedio</button>
+  <button type="button" data-m="M3" aria-pressed="false">Ventas por categoría</button>
+  <button type="button" data-m="M4" aria-pressed="false">Clientes por ciudad</button>
+</div></div>
+<div class="c12l1-g"><span class="c12l1-rot">Detalle del linaje</span>
+<div class="btns" role="group" aria-label="Nivel del linaje">
+  <button type="button" data-v="tabla" aria-pressed="true">Por tabla</button>
+  <button type="button" data-v="col" aria-pressed="false">Por columna</button>
+</div></div>
+<div class="c12l1-lienzo"><svg id="c12l1-svg" viewBox="0 0 760 296" role="img" aria-label="Grafo de linaje de Tienda Ejemplo, de las tablas de la base a las cifras del tablero, con el camino de la cifra elegida resaltado"></svg></div>
+<div class="legend"><span><i style="background:var(--c-fis)"></i>Base de la tienda</span><span><i style="background:var(--c-tra)"></i>Modelos de dbt</span><span><i style="background:var(--c-apl)"></i>Cifras del tablero</span></div>
+<div class="readout texto" id="c12l1-out" aria-live="polite"></div>
+<div style="overflow-x:auto"><table class="tbl c12l1-tab" id="c12l1-tab"></table></div></div><div class="lab" id="12-lab-2"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Una columna de origen cambia: ¿qué se rompe aguas abajo?</h3></div><p class="hint">Diego va a cambiar una columna de la base de la tienda. Elige el cambio y mira, en el grafo, qué nodos quedan con un dato malo sin que nadie se entere, cuáles fallan con un error y cuáles muestran el dato de ayer. Después activa las defensas una por una (contrato, pruebas, conciliación) y mira en qué punto del grafo se detiene cada cambio y a quién hay que avisar.</p><style>
+[id="12-lab-2"] .c12l2-rot{font:700 .72rem var(--f-display);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+[id="12-lab-2"] .c12l2-g{display:grid;gap:4px}
+[id="12-lab-2"] .c12l2-lienzo{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+[id="12-lab-2"] .c12l2-lienzo svg{display:block;width:100%;min-width:660px;height:auto}
+[id="12-lab-2"] svg text{font-family:var(--f-display);fill:var(--ink);pointer-events:none;font-size:11px}
+[id="12-lab-2"] svg .m{fill:var(--muted);font-size:10px;letter-spacing:.06em}
+[id="12-lab-2"] svg .e{font-size:9.5px;font-weight:700;letter-spacing:.04em}
+[id="12-lab-2"] svg .ar{stroke:var(--line);stroke-width:1.4;fill:none}
+[id="12-lab-2"] svg g.n rect{fill:var(--card);stroke:var(--line);stroke-width:1.5}
+[id="12-lab-2"] svg g.origen rect{stroke:var(--warm);stroke-width:3;fill:var(--c-fis-s)}
+[id="12-lab-2"] svg g.malo rect{fill:var(--warm-soft);stroke:var(--warm);stroke-width:2}
+[id="12-lab-2"] svg g.roto rect{fill:var(--warm-soft);stroke:var(--warm);stroke-width:2.4;stroke-dasharray:5 3}
+[id="12-lab-2"] svg g.det rect{fill:var(--paper);stroke:var(--muted);stroke-width:1.6;stroke-dasharray:3 3}
+[id="12-lab-2"] svg g.alto rect{fill:var(--good-soft);stroke:var(--good);stroke-width:2.6}
+[id="12-lab-2"] svg g.malo .e,[id="12-lab-2"] svg g.roto .e{fill:var(--warm)}
+[id="12-lab-2"] svg g.det .e{fill:var(--muted)}
+[id="12-lab-2"] svg g.alto .e{fill:var(--good)}
+[id="12-lab-2"] .c12l2-def{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:6px}
+[id="12-lab-2"] .c12l2-def label{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--card);font:500 .8rem/1.3 var(--f-display);cursor:pointer}
+[id="12-lab-2"] .c12l2-def input{margin-top:2px;accent-color:var(--accent)}
+[id="12-lab-2"] .c12l2-def small{display:block;color:var(--muted);font-size:.7rem}
+</style>
+<div class="c12l2-g"><span class="c12l2-rot">Qué cambia en la base de la tienda</span>
+<label class="opciones" style="display:block"><select id="c12l2-esc" aria-label="Cambio en una columna de origen">
+  <option value="precio">detalle_pedido.precio_unitario llega como texto: «13,90»</option>
+  <option value="estado">pedidos.estado trae un valor nuevo: «pagado_parcial»</option>
+  <option value="ciudad">clientes.ciudad se renombra a ciudad_envio</option>
+  <option value="pagos">pagos.monto pasa a guardarse en centavos</option>
+</select></label></div>
+<div class="c12l2-g"><span class="c12l2-rot">Defensas de la plataforma</span>
+<div class="c12l2-def">
+  <label><input type="checkbox" data-d="C"><span>Contrato de datos en la ingesta<small>nombres, tipos y valores permitidos de cada columna</small></span></label>
+  <label><input type="checkbox" data-d="T"><span>Pruebas de dbt en staging<small>no nulos, valores aceptados</small></span></label>
+  <label><input type="checkbox" data-d="K"><span>Conciliación en ventas_mensuales<small>ventas netas = pagos aprobados − reembolsos</small></span></label>
+</div></div>
+<div class="c12l2-lienzo"><svg id="c12l2-svg" viewBox="0 0 760 296" role="img" aria-label="Grafo de linaje de Tienda Ejemplo con el impacto de un cambio en una columna de origen: nodos con dato malo, nodos rotos, nodos detenidos por una prueba y nodos intactos"></svg></div>
+<div class="legend"><span><i style="background:var(--warm)"></i>Dato malo o roto</span><span><i style="background:var(--good)"></i>Aquí se detiene</span><span><i style="background:var(--muted)"></i>Detenido: muestra el dato de ayer</span></div>
+<div class="readout texto" id="c12l2-out" aria-live="polite"></div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Saca el linaje por columna de la consulta de las ventas netas</h3></div><p>Vas a pedirle a la biblioteca sqlglot que lea la consulta de las ventas netas por mes y diga de qué columnas de origen sale cada columna del resultado. No necesita la base: trabaja solo con el texto del SQL y el esquema de las tablas. En <code>~/datos-tienda</code>, con el entorno activado, instala sqlglot y guarda este programa como <code>linaje.py</code>:</p><div class="code-copia"><pre><code>"""Linaje por columna: de qué columnas de origen sale cada columna de una consulta."""
+from sqlglot.lineage import lineage
+
+CONSULTA = """
+SELECT strftime(p.creado_en, '%Y-%m') AS mes,
+       ROUND(SUM(d.cantidad * d.precio_unitario), 2) AS ventas_netas,
+       COUNT(DISTINCT p.pedido_id) AS pedidos
+FROM pedidos p
+JOIN detalle_pedido d ON d.pedido_id = p.pedido_id
+WHERE p.estado IN ('pagado', 'enviado', 'entregado')
+GROUP BY 1
+"""
+ESQUEMA = {
+    "pedidos": {"pedido_id": "INT", "cliente_id": "INT", "creado_en": "TIMESTAMP",
+                "estado": "TEXT", "canal": "TEXT", "actualizado_en": "TIMESTAMP"},
+    "detalle_pedido": {"pedido_id": "INT", "linea": "INT", "producto_id": "INT",
+                       "cantidad": "INT", "precio_unitario": "DECIMAL(10,2)"},
+}
+
+for columna in ["mes", "ventas_netas", "pedidos"]:
+    nodo = lineage(columna, CONSULTA, schema=ESQUEMA, dialect="duckdb")
+    origen = sorted({n.name for n in nodo.walk() if not n.downstream})
+    print(f"{columna:13} &lt;- {', '.join(origen)}")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>cd $HOME\datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>.venv\Scripts\activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>pip install sqlglot</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python linaje.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>cd ~/datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>source .venv/bin/activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>pip install sqlglot</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 linaje.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>Anota de qué columnas sale cada una de las tres columnas del resultado.</span></li><li><span>Busca <code>p.estado</code> en la salida.</span></li><li><span>Agrega a la consulta una columna <code>SUM(d.cantidad) AS unidades</code> y su nombre a la lista del <code>for</code>, y vuelve a correr.</span></li></ol><p><b>Qué observar:</b> <code>ventas_netas</code> sale de <code>d.cantidad</code> y <code>d.precio_unitario</code>, <code>pedidos</code> de <code>p.pedido_id</code> y <code>mes</code> de <code>p.creado_en</code>. <code>p.estado</code> no aparece en ninguna: el analizador sigue las columnas que forman el valor, no las del <code>WHERE</code>. Es exactamente el punto ciego de las flechas punteadas de la figura: si un valor nuevo de <code>estado</code> cambiara las ventas, este linaje no lo anunciaría. El linaje sale del texto del SQL, sin ejecutar nada, por eso se puede calcular en la integración continua antes de que el cambio llegue a producción.</p></div></section>
+<section><h2>El catálogo de datos</h2><div class="analogia"><b>Imagínalo así</b><p>Una biblioteca grande sin fichero es un depósito de libros: están ahí, pero nadie los encuentra. El fichero dice qué hay, en qué estante, de qué trata cada libro y si se puede llevar a casa o solo leer en la sala.</p></div><div class="prose"><p>Un <b>catálogo de datos</b> (<i>data catalog</i>) es ese fichero para la plataforma. Para cada tabla y cada columna guarda dos clases de información:</p><ul><li><b>Metadatos técnicos</b> (<i>technical metadata</i>), que se recogen solos: dónde está, columnas y tipos, cuántas filas, cuándo se actualizó, de qué depende (el linaje), qué pruebas tiene y si pasaron.</li><li><b>Metadatos de negocio</b> (<i>business metadata</i>), que escribe una persona: qué significa, quién es su dueño, qué tan sensible es y cuánto tiempo se guarda.</li></ul><p>En el mercado, a noviembre de 2026, hay catálogos abiertos como DataHub y OpenMetadata, y los de cada plataforma en la nube o lakehouse. dbt genera una parte del catálogo a partir de sus archivos YAML (capítulo 10). Natalia empezó por ahí, agregando a cada modelo lo que el catálogo necesita:</p><div class="code-copia"><pre><code>models:
+  - name: ventas_mensuales
+    description: "Ventas netas por mes de creación del pedido. Definición en el glosario: ventas netas."
+    meta: {dueno: elena.vargas, custodio: martin.salas, sensibilidad: confidencial, retencion: analitico}
+    columns:
+      - name: ventas_netas
+        description: "Suma de cantidad × precio_unitario de pedidos pagados, enviados o entregados."
+  - name: stg_clientes
+    meta: {dueno: natalia.herrera, sensibilidad: personal, retencion: personal}
+    columns:
+      - name: email
+        meta: {sensibilidad: personal, enmascarar: true}</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>El valor del catálogo aparece en el capítulo 11: el trabajo de borrado le pregunta qué columnas son personales y quién responde por ellas. Un catálogo que nadie mantiene se vuelve un fichero con libros que ya no están; por eso lo técnico se recoge solo y lo de negocio vive en el mismo repositorio que el código, donde cada cambio pasa por revisión.</p></div></section>
+<section><h2>Clasificar por sensibilidad</h2><div class="prose"><p>No todas las columnas merecen el mismo cuidado. Una <b>clasificación por sensibilidad</b> (<i>data classification</i>) asigna a cada columna un nivel, y cada nivel trae sus reglas de acceso, de retención y de copia. Cuatro niveles alcanzan para empezar:</p></div><figure class="fig fig-comparacion" id="12-diagrama-3"><div class="lienzo"><svg viewBox="0 0 940 360" style="min-width:760px" role="img" aria-label="Matriz de clasificación por sensibilidad: público, interno, confidencial y personal, con ejemplos de columnas de Tienda Ejemplo y lo que le toca a cada nivel en acceso, retención y entornos de prueba">
+<text x="20" y="28" class="t t-xs t-b t-m">NIVEL</text>
+<text x="190" y="28" class="t t-xs t-b t-m">EJEMPLOS EN LA TIENDA</text>
+<text x="430" y="28" class="t t-xs t-b t-m">QUIÉN ACCEDE</text>
+<text x="610" y="28" class="t t-xs t-b t-m">RETENCIÓN</text>
+<text x="770" y="28" class="t t-xs t-b t-m">EN PRUEBAS</text>
+
+<rect x="20" y="40" width="156" height="68" rx="8" class="c-enl"/>
+<text x="98" y="70" class="t t-b k-enl" text-anchor="middle">Público</text>
+<text x="98" y="88" class="t t-s t-m" text-anchor="middle">se puede publicar</text>
+<text x="190" y="66" class="t t-s t-mono">productos.nombre</text>
+<text x="190" y="84" class="t t-s t-mono">productos.categoria, precio</text>
+<text x="430" y="66" class="t t-s">cualquiera</text>
+<text x="610" y="66" class="t t-s">mientras exista</text>
+<text x="610" y="84" class="t t-s">el producto</text>
+<text x="770" y="66" class="t t-s">se copia tal cual</text>
+
+<rect x="20" y="118" width="156" height="68" rx="8" class="c-red"/>
+<text x="98" y="148" class="t t-b k-red" text-anchor="middle">Interno</text>
+<text x="98" y="166" class="t t-s t-m" text-anchor="middle">solo la empresa</text>
+<text x="190" y="144" class="t t-s t-mono">pedidos.estado, canal</text>
+<text x="190" y="162" class="t t-s t-mono">detalle_pedido.cantidad</text>
+<text x="430" y="144" class="t t-s">todo el personal con</text>
+<text x="430" y="162" class="t t-s">cuenta de la empresa</text>
+<text x="610" y="144" class="t t-s">según su tipo</text>
+<text x="610" y="162" class="t t-s">(retencion.yml)</text>
+<text x="770" y="144" class="t t-s">se copia tal cual</text>
+
+<rect x="20" y="196" width="156" height="68" rx="8" class="c-tra"/>
+<text x="98" y="226" class="t t-b k-tra" text-anchor="middle">Confidencial</text>
+<text x="98" y="244" class="t t-s t-m" text-anchor="middle">daña si se filtra</text>
+<text x="190" y="222" class="t t-s t-mono">pagos.monto, metodo</text>
+<text x="190" y="240" class="t t-s t-mono">ventas_mensuales</text>
+<text x="430" y="222" class="t t-s">roles con permiso:</text>
+<text x="430" y="240" class="t t-s">Comercial, Finanzas</text>
+<text x="610" y="222" class="t t-s">la de auditoría</text>
+<text x="610" y="240" class="t t-s">para pagos</text>
+<text x="770" y="222" class="t t-s">datos sintéticos</text>
+
+<rect x="20" y="274" width="156" height="68" rx="8" style="fill:var(--warm-soft);stroke:var(--warm)"/>
+<text x="98" y="304" class="t t-b k-warm" text-anchor="middle">Personal</text>
+<text x="98" y="322" class="t t-s t-m" text-anchor="middle">apunta a una persona</text>
+<text x="190" y="300" class="t t-s t-mono">clientes.nombre, email</text>
+<text x="190" y="318" class="t t-s t-mono">clientes.ciudad + fecha_alta</text>
+<text x="430" y="300" class="t t-s">enmascarado por omisión;</text>
+<text x="430" y="318" class="t t-s">en claro, con motivo y registro</text>
+<text x="610" y="300" class="t t-s">la más corta posible;</text>
+<text x="610" y="318" class="t t-s">borrado a pedido</text>
+<text x="770" y="300" class="t t-s">nunca: sintéticos</text>
+<text x="770" y="318" class="t t-s">o enmascarados</text>
+</svg></div><figcaption><b>Cuatro niveles de sensibilidad y lo que le toca a cada uno.</b> Cada fila es un nivel, del más abierto al más delicado, con columnas reales de Tienda Ejemplo. Lee de izquierda a derecha: quién puede verlo, cuánto tiempo se guarda (la retención del capítulo 11) y qué pasa cuando se arma un entorno de pruebas. La última fila es la que más reglas tiene: los datos personales se ven enmascarados por omisión y nunca se copian a pruebas.</figcaption></figure><div class="prose"><p>Tres detalles hacen que la clasificación funcione en una plataforma real:</p><ul><li><b>Se hereda por el linaje.</b> Si <code>clientes.email</code> es personal, <code>stg_clientes.email</code> y cualquier columna que la copie también lo son. Con el linaje por columna, la etiqueta viaja sola y nadie tiene que acordarse de marcar las tablas nuevas.</li><li><b>Se detecta, además de declararse.</b> Un trabajo que busca patrones (una arroba y un dominio, un número con forma de documento de identidad) en columnas sin clasificar encuentra los datos personales que alguien no marcó.</li><li><b>Se combina.</b> Una columna sola puede no identificar a nadie, pero la ciudad, la fecha de alta y el monto de cada pedido juntos pueden apuntar a una persona. Por eso la figura marca como personal la combinación <code>ciudad + fecha_alta</code>.</li></ul><p>Cada nivel se traduce en mecanismos técnicos del almacén: <b>enmascaramiento dinámico</b> (<i>dynamic data masking</i>), que muestra <code>r*****@ejemplo.com</code> a quien no tiene permiso; <b>seguridad por fila</b> (<i>row-level security</i>), que deja a cada país ver solo sus ventas; y permisos por <b>rol</b> (<i>role-based access control</i>) en lugar de por persona.</p></div></section>
+<section><h2>Gobierno: dueños, glosario y acceso</h2><div class="analogia"><b>Imagínalo así</b><p>En un edificio de departamentos, cada piso tiene su dueño, pero las reglas de la escalera, los horarios de la mudanza y quién tiene llave de la azotea las decide la junta. Sin la junta, cada vecino pone su candado; sin dueños, nadie arregla su piso.</p></div><div class="prose"><p>El <b>gobierno de datos</b> (<i>data governance</i>) es el conjunto de roles, reglas y procesos que deciden quién responde por cada dato, qué significa y quién puede usarlo. Es poco técnico en apariencia, y es justo lo que faltó en el comité del lunes. Tres piezas:</p><ul><li><b>Dueños.</b> Cada dato tiene un <b>dueño</b> (<i>data owner</i>), la persona del negocio que responde por su definición y decide quién lo usa (Elena, por las ventas netas), y un <b>custodio</b> (<i>data steward</i>), quien lo mantiene día a día (Martín, que escribe el SQL de <code>ventas_mensuales</code>). Diego es dueño de las tablas de origen: un cambio en ellas se le pregunta a él.</li><li><b>Glosario</b> (<i>business glossary</i>). Una definición por término de negocio, enlazada a las columnas que la implementan. El conflicto del comité se cerró ahí: «ventas netas» es la suma de las líneas de pedidos pagados, enviados o entregados, que equivale a pagos aprobados menos reembolsos; la cifra de Finanzas pasó a llamarse «pagos aprobados» y quedó como otro término. Dos cifras distintas con dos nombres distintos dejan de pelear.</li><li><b>Acceso.</b> Permisos por rol, con el mínimo necesario, pedidos con un motivo y revisados cada cierto tiempo. El registro de quién leyó qué es un dato de auditoría (capítulo 11).</li></ul><p>Qué exige la ley sobre los datos personales (consentimiento, finalidad, derechos de los titulares) está en <a href="https://aaramirez.github.io/proteccion-de-datos/temario.html" target="_blank" rel="noopener">Protección de datos</a>; aquí va cómo la plataforma lo hace cumplir.</p></div><div class="ml"><b>En la práctica</b><p><b>El contrato entre Diego y Natalia.</b> Después del comité, Natalia y Diego escribieron el primer contrato de datos de la tienda (capítulo 10) para la tabla <code>pedidos</code>: columnas, tipos, la lista cerrada de estados y la frescura esperada. Un mes después, Diego necesitó un estado nuevo, <code>pagado_parcial</code>, para las compras en cuotas. En lugar de agregarlo un viernes, abrió un cambio en el repositorio del contrato. La revisión le mostró, gracias al linaje, que el filtro de las ventas netas no lo conocía; Elena decidió que un pedido con pago parcial no cuenta como venta hasta que se pague completo, y el estado entró con la definición del glosario actualizada el mismo día.</p></div></section>
+<section><h2>Data mesh: dominios dueños de sus datos como producto</h2><div class="analogia"><b>Imagínalo así</b><p>Una ciudad pequeña puede tener una sola oficina municipal que arregla todas las calles. Una ciudad grande no: cada distrito cuida las suyas, con un presupuesto y normas comunes de señalización, y una empresa de servicios les presta las máquinas. La oficina central deja de ser el cuello de botella sin que cada distrito invente su propio tamaño de semáforo.</p></div><div class="prose"><p>En muchas empresas, el equipo central de datos se vuelve ese cuello de botella: todas las áreas le piden tablas, nadie conoce los datos de cada área mejor que el área misma, y el equipo central traduce sin entender. <b>Data mesh</b> (malla de datos), propuesto por Zhamak Dehghani en 2019, reparte el trabajo con cuatro principios:</p><ol class="steps"><li><span><b>Propiedad por dominio</b> (<i>domain ownership</i>): cada área de negocio (Ventas, Pagos, Catálogo) es dueña de sus datos analíticos, no solo de los operativos.</span></li><li><span><b>Datos como producto</b> (<i>data as a product</i>): lo que un dominio publica tiene dueño, contrato, documentación, pruebas, nivel de servicio y usuarios a los que cuidar, como cualquier producto.</span></li><li><span><b>Plataforma de autoservicio</b> (<i>self-serve data platform</i>): un equipo de plataforma (el de Natalia, en este caso) ofrece almacenamiento, ingesta, dbt, orquestación, catálogo y linaje listos para usar, para que cada dominio no tenga que construirlos.</span></li><li><span><b>Gobierno federado</b> (<i>federated computational governance</i>): las reglas comunes (clasificación, nombres, retención, contratos) se acuerdan entre todos y, en lo posible, se verifican de forma automática en la plataforma.</span></li></ol></div><figure class="fig fig-arquitectura" id="12-diagrama-4"><div class="lienzo"><svg viewBox="0 0 940 400" style="min-width:740px" role="img" aria-label="Data mesh en Tienda Ejemplo: tres dominios, Ventas, Pagos y Catálogo, cada uno dueño de su producto de datos con contrato y nivel de servicio; arriba el gobierno federado con reglas comunes; abajo la plataforma de autoservicio que mantiene el equipo de datos; a la derecha los consumidores">
+<defs>
+<marker id="c12d4-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+</defs>
+<rect x="20" y="16" width="700" height="56" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="370" y="38" class="t t-b" text-anchor="middle">Gobierno federado</text>
+<text x="370" y="58" class="t t-s t-m" text-anchor="middle">reglas comunes que todos cumplen: clasificación, nombres, retención, contratos, glosario</text>
+
+<rect x="20" y="92" width="220" height="200" rx="10" class="c-fis"/>
+<text x="130" y="116" class="t t-b k-fis" text-anchor="middle">Dominio Ventas</text>
+<text x="130" y="134" class="t t-s t-m" text-anchor="middle">equipo de la tienda en línea</text>
+<rect x="36" y="148" width="188" height="128" rx="8" class="caja"/>
+<text x="48" y="168" class="t t-s t-b">Producto: pedidos</text>
+<text x="48" y="188" class="t t-s">dueño: Diego</text>
+<text x="48" y="206" class="t t-s">contrato de columnas</text>
+<text x="48" y="224" class="t t-s">fresco antes de las 6:00</text>
+<text x="48" y="242" class="t t-s">pruebas y documentación</text>
+<text x="48" y="262" class="t t-xs t-m">en el catálogo</text>
+
+<rect x="260" y="92" width="220" height="200" rx="10" class="c-fis"/>
+<text x="370" y="116" class="t t-b k-fis" text-anchor="middle">Dominio Pagos</text>
+<text x="370" y="134" class="t t-s t-m" text-anchor="middle">equipo de Finanzas</text>
+<rect x="276" y="148" width="188" height="128" rx="8" class="caja"/>
+<text x="288" y="168" class="t t-s t-b">Producto: pagos netos</text>
+<text x="288" y="188" class="t t-s">aprobados − reembolsos</text>
+<text x="288" y="206" class="t t-s">contrato de columnas</text>
+<text x="288" y="224" class="t t-s">confidencial</text>
+<text x="288" y="242" class="t t-s">conciliado cada día</text>
+<text x="288" y="262" class="t t-xs t-m">en el catálogo</text>
+
+<rect x="500" y="92" width="220" height="200" rx="10" class="c-fis"/>
+<text x="610" y="116" class="t t-b k-fis" text-anchor="middle">Dominio Catálogo</text>
+<text x="610" y="134" class="t t-s t-m" text-anchor="middle">equipo de compras</text>
+<rect x="516" y="148" width="188" height="128" rx="8" class="caja"/>
+<text x="528" y="168" class="t t-s t-b">Producto: productos</text>
+<text x="528" y="188" class="t t-s">sku, categoría, precio</text>
+<text x="528" y="206" class="t t-s">contrato de columnas</text>
+<text x="528" y="224" class="t t-s">público</text>
+<text x="528" y="242" class="t t-s">versiones de precio</text>
+<text x="528" y="262" class="t t-xs t-m">en el catálogo</text>
+
+<rect x="20" y="312" width="700" height="70" rx="10" class="c-red"/>
+<text x="370" y="338" class="t t-b k-red" text-anchor="middle">Plataforma de autoservicio (el equipo de Natalia)</text>
+<text x="370" y="358" class="t t-s t-m" text-anchor="middle">almacenamiento, ingesta, dbt, orquestación, catálogo y linaje listos para usar</text>
+
+<rect x="770" y="120" width="150" height="66" rx="10" class="c-apl"/>
+<text x="845" y="148" class="t t-b k-apl" text-anchor="middle">Tablero</text>
+<text x="845" y="166" class="t t-s t-m" text-anchor="middle">Elena, Martín</text>
+<rect x="770" y="204" width="150" height="66" rx="10" class="c-apl"/>
+<text x="845" y="232" class="t t-b k-apl" text-anchor="middle">Pronóstico</text>
+<text x="845" y="250" class="t t-s t-m" text-anchor="middle">Irene</text>
+<line x1="720" y1="190" x2="766" y2="160" class="ln" marker-end="url(#c12d4-m)"/>
+<line x1="720" y1="200" x2="766" y2="236" class="ln" marker-end="url(#c12d4-m)"/>
+<text x="845" y="300" class="t t-s t-m" text-anchor="middle">consumen productos,</text>
+<text x="845" y="316" class="t t-s t-m" text-anchor="middle">no tablas sueltas</text>
+</svg></div><figcaption><b>Cómo se vería Tienda Ejemplo con data mesh.</b> En el centro, tres dominios en ámbar, cada uno dueño de un producto de datos con su dueño, su contrato, su sensibilidad y su promesa de servicio. Arriba, el gobierno federado con las reglas que todos cumplen; abajo, en azul, la plataforma de autoservicio que mantiene el equipo de Natalia; a la derecha, los consumidores, que leen productos y no tablas sueltas.</figcaption></figure><div class="prose"><p>Data mesh es una forma de organizar personas antes que una tecnología, y no le sirve a todo el mundo. Tienda Ejemplo tiene una ingeniera de datos y pocos dominios: repartir la propiedad hoy sería repartir trabajo que nadie más sabe hacer. Lo que sí adoptó Natalia son las ideas que funcionan a cualquier escala: dueños con nombre, contratos entre productor y consumidor, y reglas comunes que la plataforma verifica sola. El paso completo tiene sentido cuando hay varios equipos con datos propios y el equipo central ya no da abasto.</p></div><div class="caso"><b>Un caso real</b><p><b>Una malla antes de tiempo.</b> Una empresa de comercio en línea de la región decidió adoptar data mesh cuando tenía un equipo de datos de cuatro personas. Cada área recibió la propiedad de sus tablas, pero ninguna tenía a alguien que supiera modelar, probar o documentar, y la plataforma de autoservicio no estaba lista. Al año había cuatro definiciones de «cliente activo» y ningún contrato. Volvieron a un equipo central con dueños de negocio por dominio, contratos y un glosario, y retomaron la idea de los productos de datos cuando el primer dominio tuvo su propio ingeniero.</p></div></section>
+<section><h2>La idea clave</h2><div class="prose"><p>Un dato es confiable cuando se mide en sus dimensiones (completitud, validez, unicidad, frescura, consistencia), una observabilidad vigila lo que ninguna prueba previó, y el linaje por columna, filtros incluidos, lleva cada cifra hasta su origen y cada cambio hasta lo que rompe. El catálogo dice qué hay y qué tan sensible es; el gobierno pone un dueño, una definición y un acceso a cada dato. Data mesh reparte esa propiedad entre dominios cuando la empresa es lo bastante grande para que valga la pena.</p></div></section>
+<section><h2>Pruébate</h2><div class="quiz"><h3>Pruébate</h3><details><summary>¿Por qué <code>Lima</code> en la fila de alguien que vive en Quito es un dato válido pero inexacto?</summary><p>Porque respeta la lista de ciudades permitidas (validez), pero no coincide con la realidad (exactitud). La exactitud solo se comprueba contra otra fuente.</p></details><details><summary>¿Qué detecta la observabilidad que una prueba de dbt no detecta?</summary><p>Lo que nadie previó: una caída de volumen, un cambio de esquema o de distribución que no viola ninguna regla escrita, a partir de umbrales aprendidos de la historia de cada tabla.</p></details><details><summary>Según el linaje por tabla, un cambio en <code>pagos</code> afecta las ventas netas; según el linaje por columna, no. ¿Por qué?</summary><p>Porque <code>fct_ventas</code> lee la tabla de pagos, pero la columna <code>ventas_netas</code> solo usa <code>cantidad</code> y <code>precio_unitario</code>.</p></details><details><summary>¿Por qué un linaje que ignora las columnas del <code>WHERE</code> da una falsa tranquilidad?</summary><p>Porque los filtros cambian el resultado tanto como las columnas del valor: un estado nuevo que el filtro no conoce mueve las ventas netas sin aparecer en ese linaje.</p></details><details><summary>¿Qué resolvió el conflicto entre US$ 782.785,77 y US$ 788.028,47?</summary><p>Un glosario con un dueño: «ventas netas» quedó definida (aprobados menos reembolsos) y la cifra de Finanzas pasó a llamarse «pagos aprobados».</p></details><details><summary>¿Cuándo tiene sentido data mesh y por qué Tienda Ejemplo no lo adopta completo?</summary><p>Cuando hay varios dominios con equipos capaces de mantener sus datos y el equipo central es un cuello de botella; la tienda tiene una sola ingeniera de datos, así que adopta solo dueños, contratos y reglas comunes.</p></details></div></section>
+<section><h2>Para investigar</h2><div class="investiga"><h3>Para investigar</h3><p class="hint">Estas preguntas no se responden en el capítulo: búscalas por tu cuenta.</p><ol><li>¿Qué es la norma ISO 8000 sobre calidad de datos y qué dimensiones define?</li><li>¿Qué son los «facets» de un evento de OpenLineage y qué información agrega cada uno?<small>Pista: busca «OpenLineage facets schema columnLineage».</small></li><li>¿Qué son un SLI, un SLO y un SLA, y cómo se aplican a una tabla de datos (por ejemplo, a su frescura)?<small>Pista: busca «data SLA SLO freshness».</small></li><li>¿Qué es el DAMA-DMBOK y qué áreas del gobierno de datos describe?<small>Pista: busca «DAMA wheel».</small></li><li>¿Qué es la k-anonimidad y cómo se usa para decidir si una combinación de columnas identifica a una persona?</li></ol></div></section>
+<section><h2>Para saber más</h2><div class="vids"><span>Para saber más</span><a class="vid" href="https://openlineage.io/" target="_blank" rel="noopener">OpenLineage <small>la especificación abierta de eventos de linaje, en inglés</small></a><a class="vid" href="https://martinfowler.com/articles/data-mesh-principles.html" target="_blank" rel="noopener">Data Mesh Principles and Logical Architecture <small>el artículo de Zhamak Dehghani, en inglés</small></a><a class="vid" href="https://github.com/tobymao/sqlglot" target="_blank" rel="noopener">sqlglot <small>el analizador de SQL de la práctica, con su módulo de linaje, en inglés</small></a><a class="vid" href="https://aaramirez.github.io/proteccion-de-datos/temario.html" target="_blank" rel="noopener">Protección de datos <small>lo legal sobre los datos personales, curso del sitio</small></a></div></section>
+<label class="got"><input type="checkbox" id="got"> Lo tengo claro</label>
+<nav class="pager" id="pager" aria-label="Capítulo anterior y siguiente"></nav>
+</main>
+</div>
+<footer><span>Curso abierto de aaramirez.github.io.</span><span>Sitio publicado: <a href="https://github.com/aaramirez/ingenieria-de-datos" target="_blank" rel="noopener">github.com/aaramirez/ingenieria-de-datos</a></span></footer>
+</div>
+<script src="assets/lab.js"></script>
+<script>
+(function(){
+  const raiz=document.querySelector('[id="12-lab-1"]');
+  const {$}=window.Lab;
+  const svg=$('#c12l1-svg'),NS='http://www.w3.org/2000/svg';
+  const nf=(n,d=0)=>{const s=Math.abs(n).toFixed(d).split('.');s[0]=s[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.');return (n<0?'−':'')+s.join(',');};
+  // id, tipo, columna, fila, dependencias, dueño, prueba
+  const N=[
+    ['tienda.clientes','src',0,0,[],'Diego','—'],['tienda.pedidos','src',0,1,[],'Diego','—'],['tienda.detalle_pedido','src',0,2,[],'Diego','—'],['tienda.pagos','src',0,3,[],'Diego','—'],['tienda.productos','src',0,4,[],'Diego','—'],
+    ['stg_clientes','stg',1,0,['tienda.clientes'],'Natalia','ciudad en la lista de 10'],['stg_pedidos','stg',1,1,['tienda.pedidos'],'Natalia','pedido_id único; estado en valores aceptados'],['stg_detalle_pedido','stg',1,2,['tienda.detalle_pedido'],'Natalia','cantidad > 0; precio no nulo'],['stg_pagos','stg',1,3,['tienda.pagos'],'Natalia','estado en valores aceptados'],['stg_productos','stg',1,4,['tienda.productos'],'Natalia','categoría en la lista de 6'],
+    ['dim_clientes','mart',2,0.3,['stg_clientes'],'Natalia','cliente_id único'],['fct_ventas','mart',2,1.8,['stg_pedidos','stg_detalle_pedido','stg_pagos'],'Natalia','relación con dim_clientes; venta no nula'],['dim_productos','mart',2,3.6,['stg_productos'],'Natalia','producto_id único'],
+    ['ventas_mensuales','agg',3,1.2,['fct_ventas'],'Martín','conciliación con pagos netos'],['ventas_por_categoria','agg',3,2.8,['fct_ventas','dim_productos'],'Martín','suma igual a ventas_mensuales'],
+    ['Ventas netas','exp',4,0.6,['ventas_mensuales'],'Elena','—'],['Ticket promedio','exp',4,1.6,['ventas_mensuales'],'Elena','—'],['Ventas por categoría','exp',4,2.8,['ventas_por_categoria'],'Elena','—'],['Clientes por ciudad','exp',4,3.8,['dim_clientes'],'Elena','—']
+  ];
+  const P={};N.forEach(n=>P[n[0]]={id:n[0],t:n[1],c:n[2],f:n[3],dep:n[4],duen:n[5],pr:n[6]});
+  const M={
+    M1:{nodo:'Ventas netas',cifra:'US$ '+nf(782785.77,2),
+      col:[['Ventas netas','ventas_mensuales.ventas_netas','la cifra de octubre'],
+           ['ventas_mensuales','ventas_netas = SUM(fct_ventas.venta)','agrupado por mes de creado_en'],
+           ['fct_ventas','venta = cantidad × precio_unitario; creado_en','filtro: estado pagado, enviado o entregado'],
+           ['stg_detalle_pedido','cantidad, precio_unitario','tipos convertidos'],
+           ['stg_pedidos','estado, creado_en','fecha sin hora'],
+           ['tienda.detalle_pedido','cantidad, precio_unitario','origen'],
+           ['tienda.pedidos','estado, creado_en','origen']]},
+    M2:{nodo:'Ticket promedio',cifra:'US$ '+nf(93.46,2),
+      col:[['Ticket promedio','ventas_netas / pedidos','dos columnas de ventas_mensuales'],
+           ['ventas_mensuales','ventas_netas; pedidos = COUNT(DISTINCT fct_ventas.pedido_id)',''],
+           ['fct_ventas','venta, pedido_id, creado_en','mismo filtro de estado'],
+           ['stg_detalle_pedido','cantidad, precio_unitario',''],
+           ['stg_pedidos','pedido_id, estado, creado_en',''],
+           ['tienda.detalle_pedido','cantidad, precio_unitario','origen'],
+           ['tienda.pedidos','pedido_id, estado, creado_en','origen']]},
+    M3:{nodo:'Ventas por categoría',cifra:'6 barras',
+      col:[['Ventas por categoría','ventas_por_categoria.ventas',''],
+           ['ventas_por_categoria','SUM(fct_ventas.venta) por dim_productos.categoria','une por producto_id'],
+           ['fct_ventas','venta, producto_id','filtro de estado'],
+           ['dim_productos','categoria',''],
+           ['stg_detalle_pedido','cantidad, precio_unitario, producto_id',''],
+           ['stg_pedidos','estado',''],
+           ['stg_productos','categoria',''],
+           ['tienda.detalle_pedido','cantidad, precio_unitario, producto_id','origen'],
+           ['tienda.pedidos','estado','origen'],
+           ['tienda.productos','categoria','origen']]},
+    M4:{nodo:'Clientes por ciudad',cifra:'10 ciudades',
+      col:[['Clientes por ciudad','COUNT(*) por dim_clientes.ciudad',''],
+           ['dim_clientes','ciudad','versión vigente (SCD 2)'],
+           ['stg_clientes','ciudad = corrección de TRIM, mayúsculas y tildes','aquí se limpian las 64 mal escritas'],
+           ['tienda.clientes','ciudad','origen']]}
+  };
+  let m='M1',v='tabla';
+  const pos=n=>({x:8+n.c*152,y:30+n.f*56});
+  const W=136,H=32;
+  function el(n,a,t,p){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(t!==undefined)e.textContent=t;(p||svg).appendChild(e);return e;}
+  function arriba(id){const s=new Set([id]);const r=i=>P[i].dep.forEach(j=>{if(!s.has(j)){s.add(j);r(j);}});r(id);return s;}
+  function pintar(){
+    svg.innerHTML='';
+    ['BASE DE LA TIENDA','STAGING (dbt)','HECHOS Y DIMENSIONES','AGREGADOS','TABLERO'].forEach((t,i)=>el('text',{x:8+i*152,y:16,class:'m'},t));
+    const sel=v==='tabla'?arriba(M[m].nodo):new Set(M[m].col.map(c=>c[0]));
+    N.forEach(n=>{const a=P[n[0]];a.dep.forEach(d=>{const b=P[d],p1=pos(b),p2=pos(a);const on=sel.has(a.id)&&sel.has(d);
+      const x1=p1.x+W,y1=p1.y+H/2,x2=p2.x,y2=p2.y+H/2,mx=(x1+x2)/2;
+      el('path',{d:'M'+x1+' '+y1+' C'+mx+' '+y1+' '+mx+' '+y2+' '+x2+' '+y2,class:'ar'+(on?' on':'')});});});
+    N.forEach(n=>{const a=P[n[0]],p=pos(a);const g=el('g',{class:'n '+a.t+(sel.has(a.id)?(a.id===M[m].nodo?' sel':''):' off')});
+      el('rect',{x:p.x,y:p.y,width:W,height:H,rx:7},undefined,g);
+      el('text',{x:p.x+8,y:p.y+20},a.id,g);});
+    const tab=$('#c12l1-tab');
+    const fuentes=[...sel].filter(i=>P[i].t==='src');
+    let t='<span class="big">'+M[m].nodo+': '+M[m].cifra+'</span>';
+    if(v==='tabla'){
+      t+='<span>Por tabla, la cifra depende de '+(sel.size-1)+' nodos y de '+fuentes.length+' tablas de origen: '+fuentes.join(', ')+'.</span>';
+      if(m==='M1'||m==='M2')t+='<span>Aparece tienda.pagos porque fct_ventas la lee. Cambia a «Por columna» para ver si la cifra la usa de verdad.</span>';
+      tab.innerHTML='<tr><th>Nodo</th><th>Dueño</th><th>Prueba que lo protege</th></tr>'+[...sel].reverse().map(i=>'<tr><td><code>'+i+'</code></td><td>'+P[i].duen+'</td><td>'+P[i].pr+'</td></tr>').join('');
+    }else{
+      t+='<span>Por columna, el camino baja a '+fuentes.length+' tabla(s) de origen: '+fuentes.join(', ')+'.</span>';
+      if(m==='M1'||m==='M2')t+='<span class="ok">tienda.pagos no está: la cifra no usa ninguna columna de pagos. Un cambio en pagos no la mueve, aunque el linaje por tabla dijera que sí.</span>';
+      if(m==='M4')t+='<span>Un solo camino recto: si la ciudad sale mal, el error está en el origen o en la limpieza de stg_clientes.</span>';
+      tab.innerHTML='<tr><th>Nodo</th><th>Columnas que usa</th><th>Nota</th></tr>'+M[m].col.map(c=>'<tr><td><code>'+c[0]+'</code></td><td><code>'+c[1]+'</code></td><td>'+c[2]+'</td></tr>').join('');
+    }
+    $('#c12l1-out').innerHTML=t;
+  }
+  raiz.querySelectorAll('[data-m]').forEach(b=>b.addEventListener('click',()=>{m=b.dataset.m;raiz.querySelectorAll('[data-m]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));pintar();}));
+  raiz.querySelectorAll('[data-v]').forEach(b=>b.addEventListener('click',()=>{v=b.dataset.v;raiz.querySelectorAll('[data-v]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));pintar();}));
+  pintar();
+})();
+</script>
+<script>
+(function(){
+  const raiz=document.querySelector('[id="12-lab-2"]');
+  const {$}=window.Lab;
+  const svg=$('#c12l2-svg'),NS='http://www.w3.org/2000/svg';
+  const N=[
+    ['tienda.clientes','src',0,0,[],'Diego'],['tienda.pedidos','src',0,1,[],'Diego'],['tienda.detalle_pedido','src',0,2,[],'Diego'],['tienda.pagos','src',0,3,[],'Diego'],['tienda.productos','src',0,4,[],'Diego'],
+    ['stg_clientes','stg',1,0,['tienda.clientes'],'Natalia'],['stg_pedidos','stg',1,1,['tienda.pedidos'],'Natalia'],['stg_detalle_pedido','stg',1,2,['tienda.detalle_pedido'],'Natalia'],['stg_pagos','stg',1,3,['tienda.pagos'],'Natalia'],['stg_productos','stg',1,4,['tienda.productos'],'Natalia'],
+    ['dim_clientes','mart',2,0.3,['stg_clientes'],'Natalia'],['fct_ventas','mart',2,1.8,['stg_pedidos','stg_detalle_pedido','stg_pagos'],'Natalia'],['dim_productos','mart',2,3.6,['stg_productos'],'Natalia'],
+    ['ventas_mensuales','agg',3,1.2,['fct_ventas'],'Martín'],['ventas_por_categoria','agg',3,2.8,['fct_ventas','dim_productos'],'Martín'],
+    ['Ventas netas','exp',4,0.6,['ventas_mensuales'],'Elena'],['Ticket promedio','exp',4,1.6,['ventas_mensuales'],'Elena'],['Ventas por categoría','exp',4,2.8,['ventas_por_categoria'],'Elena'],['Clientes por ciudad','exp',4,3.8,['dim_clientes'],'Elena']
+  ];
+  const P={};N.forEach(n=>P[n[0]]={id:n[0],t:n[1],c:n[2],f:n[3],dep:n[4],duen:n[5]});
+  const CIFRAS=['Ventas netas','Ticket promedio','Ventas por categoría','Clientes por ciudad'];
+  // camino por columna, en orden; modo: silencioso o roto; T: nodo con la prueba que lo ataja; K: si la conciliación lo ve
+  const E={
+    precio:{orig:'tienda.detalle_pedido',camino:['stg_detalle_pedido','fct_ventas','ventas_mensuales','ventas_por_categoria','Ventas netas','Ticket promedio','Ventas por categoría'],modo:'silencioso',T:'stg_detalle_pedido',K:true,
+      sin:'stg_detalle_pedido convierte con TRY_CAST y «13,90» se vuelve NULL: las líneas del día suman cero. Las ventas netas bajan sin un solo error.',
+      C:'El contrato dice DECIMAL(10,2): la ingesta rechaza el lote y le avisa a Diego antes de que entre una fila.',
+      T:'La prueba «precio no nulo» falla en stg_detalle_pedido y dbt no construye lo que sigue.',
+      K:'Las ventas netas ya no cuadran con los pagos aprobados: la conciliación frena el agregado.'},
+    estado:{orig:'tienda.pedidos',camino:['stg_pedidos','fct_ventas','ventas_mensuales','ventas_por_categoria','Ventas netas','Ticket promedio','Ventas por categoría'],modo:'silencioso',T:'stg_pedidos',K:true,
+      sin:'El filtro «estado IN (pagado, enviado, entregado)» no conoce «pagado_parcial»: esos pedidos quedan fuera y las ventas salen bajas, sin error.',
+      C:'El contrato enumera los estados permitidos: el valor nuevo se detiene en la ingesta y Diego tiene que acordarlo con Natalia.',
+      T:'La prueba de valores aceptados de estado falla en stg_pedidos.',
+      K:'Los pagos de esos pedidos sí están aprobados: ventas y pagos dejan de cuadrar y la conciliación lo ataja.'},
+    ciudad:{orig:'tienda.clientes',camino:['stg_clientes','dim_clientes','Clientes por ciudad'],modo:'roto',T:null,K:false,
+      sin:'stg_clientes falla al ejecutarse: la columna ciudad ya no existe. Es un error ruidoso; lo que depende de él queda con el dato de ayer.',
+      C:'El contrato exige la columna ciudad: el cambio se rechaza en la ingesta, con un mensaje que nombra la columna.',
+      T:'',K:''},
+    pagos:{orig:'tienda.pagos',camino:['stg_pagos','fct_ventas'],modo:'silencioso',T:null,K:true,cifras:[],
+      sin:'Los montos de pago se multiplican por 100 en stg_pagos y en la columna de pago de fct_ventas. Ninguna cifra del tablero los usa: el tablero no cambia, pero quien analice pagos verá cifras cien veces más grandes.',
+      C:'El contrato fija un rango para monto (hasta 10.000): los montos en centavos lo superan y la ingesta los detiene.',
+      T:'',
+      K:'Ventas netas de US$ 782.785,77 contra pagos netos cien veces mayores: la conciliación lo ve aunque la cifra no dependa de pagos.'}
+  };
+  let esc='precio';const on={};
+  const pos=n=>({x:8+n.c*152,y:30+n.f*56});const W=136,H=34;
+  function el(n,a,t,p){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(t!==undefined)e.textContent=t;(p||svg).appendChild(e);return e;}
+  function estados(){
+    const s=E[esc],st={};st[s.orig]='origen';
+    if(on.C){s.camino.forEach(i=>st[i]='det');return {st,donde:'la ingesta',por:'C'};}
+    if(s.modo==='roto'){st[s.camino[0]]='roto';s.camino.slice(1).forEach(i=>st[i]='det');return {st,donde:null,por:'roto'};}
+    let corte=-1,por=null;
+    if(on.T&&s.T){corte=s.camino.indexOf(s.T);por='T';}
+    else if(on.K&&s.K){corte=s.camino.indexOf('ventas_mensuales');por='K';if(corte<0)corte=s.camino.length;}
+    if(corte<0){s.camino.forEach(i=>st[i]='malo');return {st,donde:null,por:null};}
+    s.camino.forEach((i,k)=>{st[i]=k<corte?'malo':(k===corte?'alto':'det');});
+    if(por==='K'&&s.camino.indexOf('ventas_mensuales')<0){st['ventas_mensuales']='alto';['Ventas netas','Ticket promedio'].forEach(i=>st[i]='det');}
+    return {st,donde:s.camino[corte]||'ventas_mensuales',por};
+  }
+  const ET={origen:'CAMBIÓ',malo:'DATO MALO',roto:'FALLA',det:'DETENIDO',alto:'SE DETIENE AQUÍ'};
+  function pintar(){
+    const s=E[esc],r=estados(),st=r.st;
+    svg.innerHTML='';
+    ['BASE DE LA TIENDA','STAGING (dbt)','HECHOS Y DIMENSIONES','AGREGADOS','TABLERO'].forEach((t,i)=>el('text',{x:8+i*152,y:16,class:'m'},t));
+    N.forEach(n=>{const a=P[n[0]];a.dep.forEach(d=>{const p1=pos(P[d]),p2=pos(a);const x1=p1.x+W,y1=p1.y+H/2,x2=p2.x,y2=p2.y+H/2,mx=(x1+x2)/2;
+      el('path',{d:'M'+x1+' '+y1+' C'+mx+' '+y1+' '+mx+' '+y2+' '+x2+' '+y2,class:'ar'});});});
+    N.forEach(n=>{const a=P[n[0]],p=pos(a),e=st[a.id];const g=el('g',{class:'n '+(e||'')});
+      el('rect',{x:p.x,y:p.y,width:W,height:H,rx:7},undefined,g);
+      el('text',{x:p.x+8,y:p.y+(e?14:21)},a.id,g);
+      if(e)el('text',{x:p.x+8,y:p.y+27,class:'e'},ET[e],g);});
+    const malas=CIFRAS.filter(c=>st[c]==='malo'),viejas=CIFRAS.filter(c=>st[c]==='det');
+    const afect=Object.keys(st).filter(i=>st[i]!=='origen');
+    const duenos=[...new Set(afect.map(i=>P[i].duen).concat([P[s.orig].duen]))];
+    let t='<span class="big">'+malas.length+' cifra(s) del tablero con dato malo · '+viejas.length+' con el dato de ayer</span>';
+    if(on.C)t+='<span class="ok">'+s.C+'</span>';
+    else if(r.por==='roto')t+='<span class="warn">'+s.sin+'</span>';
+    else if(r.por==='T')t+='<span class="ok">'+s.T+'</span><span>Elena ve el dato de ayer con un aviso de frescura, no una cifra equivocada.</span>';
+    else if(r.por==='K')t+='<span class="ok">'+s.K+'</span>'+(malas.length?'':'<span>Hasta ahí, los nodos anteriores ya tienen el dato malo: la conciliación protege el tablero, no las tablas intermedias.</span>');
+    else t+='<span class="warn">'+s.sin+'</span>';
+    if(!on.C&&r.por!=='roto'&&!r.por&&(s.T||s.K))t+='<span>Prueba las defensas: cada una ataja el problema en un punto distinto del grafo.</span>';
+    if(esc==='ciudad'&&!on.C)t+='<span>Un error que rompe la ejecución es el mejor caso sin defensas: nadie lee una cifra equivocada. Las pruebas no agregan nada aquí; solo el contrato lo frena antes.</span>';
+    t+='<span>A quién avisar (dueños en el catálogo): '+duenos.join(', ')+'.</span>';
+    $('#c12l2-out').innerHTML=t;
+  }
+  $('#c12l2-esc').addEventListener('change',e=>{esc=e.target.value;pintar();});
+  raiz.querySelectorAll('[data-d]').forEach(c=>c.addEventListener('change',()=>{on[c.dataset.d]=c.checked;pintar();}));
+  pintar();
+})();
+</script>
+</body>
+</html>

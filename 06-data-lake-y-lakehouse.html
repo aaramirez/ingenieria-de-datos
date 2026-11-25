@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="es">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-KX76XF8R');</script>
+<!-- End Google Tag Manager -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Data lake y lakehouse · Ingeniería de datos · Ingeniería de datos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Cómo viaja un dato desde la base de una aplicación hasta el tablero que lee la gerencia: ingesta, formatos, ETL y ELT, data warehouse, lakehouse, Spark, Kafka, orquestación, dbt, calidad y linaje, con laboratorios donde se ve cada pipeline funcionar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400;1,8..60,600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KX76XF8R"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<div class="wrap" data-page="data-lake-y-lakehouse">
+<header class="topbar"><a class="brand" href="index.html">Ingeniería de <b>datos</b></a><span class="eyebrow">Curso visual e interactivo · Datos e inteligencia artificial</span><a class="al-sitio" href="https://aaramirez.github.io/">← Todos los cursos</a></header>
+<div class="layout">
+<nav class="toc" id="toc" aria-label="Ruta de aprendizaje"></nav>
+<main>
+<header class="page-head"><span class="num">CAPÍTULO 06 DE 14</span><h1>Data lake, lakehouse y arquitectura medallón</h1><p class="lede">Irene quiere los clics de la app y las fotos de los productos para su modelo de demanda, y nada de eso cabe en la estrella del almacén. Este capítulo arma el lago de Tienda Ejemplo en archivos baratos, lo ordena en capas bronce, plata y oro para que no se vuelva un pantano, y le suma transacciones y viaje en el tiempo con los formatos de tabla.</p></header>
+<section><h2>El <i>data lake</i>: almacenamiento de objetos y esquema al leer</h2><div class="prose"><p>Irene Castro, la científica de datos de la tienda, le pidió a Natalia Herrera tres cosas para pronosticar la demanda por categoría: todos los pedidos con su detalle, los eventos de la app (qué productos mira cada cliente antes de comprar) y las fotos de los productos. El almacén del capítulo 05 tiene lo primero, bien ordenado. Los eventos de la app son millones de filas por mes con campos que cambian en cada versión de la app. Y las fotos no son filas de nada.</p></div><div class="analogia"><b>Imagínalo así</b><p>Un almacén de datos es una biblioteca: cada libro se cataloga antes de entrar, tiene su estante y su ficha, y por eso cualquiera lo encuentra. Un lago de datos es un depósito de mudanzas: entra cualquier caja, sin abrirla, a un costo bajísimo por metro cúbico. Es perfecto para guardar todo lo que algún día puede servir. El problema aparece el día que alguien busca algo y nadie anotó qué había en cada caja.</p></div><div class="prose"><p>Un <b>lago de datos</b> (<i>data lake</i>) es un repositorio central que guarda datos de cualquier tipo, estructurados o no, en archivos abiertos y en un almacenamiento barato. El término se popularizó hacia 2010, y hoy casi todos los lagos viven en un <b>almacenamiento de objetos</b> (<i>object storage</i>): Amazon S3, Google Cloud Storage, Azure Blob Storage o alternativas compatibles como MinIO. Un almacenamiento de objetos no es un disco: guarda <b>objetos</b> (un archivo con sus metadatos) bajo una <b>clave</b> (<i>key</i>) larga, como <code>plata/pedidos/mes=2026-10/data_0.parquet</code>. Las barras parecen carpetas, pero solo sirven para listar por prefijo. Y ofrece pocas operaciones: subir un objeto entero, leerlo, listarlos y borrarlos. No se puede cambiar una fila dentro de un archivo.</p><p>La idea central del lago es el <b>esquema al leer</b> (<i>schema-on-read</i>). En un almacén manda el <b>esquema al escribir</b> (<i>schema-on-write</i>): primero se crea la tabla con sus columnas y tipos, y la fila que no cumple se rechaza. En el lago se guarda el archivo tal como llegó, y cada programa que lo lee decide cómo interpretarlo: qué columnas espera, de qué tipo, qué hacer con lo que falta.</p></div><figure class="fig fig-arquitectura" id="06-diagrama-1"><div class="lienzo"><svg viewBox="0 0 900 430" style="min-width:760px" role="img" aria-label="Un lago de datos en almacenamiento de objetos: a la izquierda, las claves de los objetos de Tienda Ejemplo, con archivos JSON, Parquet, imágenes y registros comprimidos; debajo, las únicas operaciones que ofrece el almacenamiento de objetos; a la derecha, tres programas que leen los mismos archivos y aplican cada uno su esquema al leer. Abajo, la comparación entre esquema al escribir y esquema al leer">
+<defs>
+<marker id="c6d1-t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-tra"/></marker>
+</defs>
+<text x="20" y="24" class="t t-xs t-b t-m">ALMACENAMIENTO DE OBJETOS · s3://tienda-ejemplo-lago/</text>
+<rect x="20" y="36" width="420" height="214" rx="10" class="c-red"/>
+<text x="36" y="60" class="t t-s t-mono">aterrizaje/pedidos/2026-11-01.jsonl</text>
+<text x="36" y="82" class="t t-s t-mono">bronce/pedidos/fecha_carga=2026-11-25/datos.json</text>
+<text x="36" y="104" class="t t-s t-mono">plata/pedidos/mes=2026-10/data_0.parquet</text>
+<text x="36" y="126" class="t t-s t-mono">plata/pedidos/mes=2026-11/data_0.parquet</text>
+<text x="36" y="148" class="t t-s t-mono">oro/ventas_mensuales.parquet</text>
+<text x="36" y="170" class="t t-s t-mono">imagenes/productos/SKU-00017.jpg</text>
+<text x="36" y="192" class="t t-s t-mono">logs/app/2026-11-01.log.gz</text>
+<text x="36" y="222" class="t t-s k-red">No hay carpetas de verdad: cada objeto tiene una clave</text>
+<text x="36" y="238" class="t t-s k-red">larga, y las «/» solo ayudan a listar por prefijo.</text>
+
+<rect x="20" y="262" width="420" height="44" rx="8" class="caja"/>
+<text x="36" y="281" class="t t-xs t-b t-m">LO QUE OFRECE</text>
+<text x="36" y="297" class="t t-s t-mono">PUT · GET · LIST · DELETE (no hay UPDATE de una fila)</text>
+
+<text x="520" y="24" class="t t-xs t-b t-m">CADA LECTOR TRAE SU ESQUEMA</text>
+<rect x="520" y="40" width="360" height="62" rx="10" class="c-tra"/>
+<text x="536" y="62" class="t t-b">DuckDB</text>
+<text x="536" y="80" class="t t-s t-mono">read_json_auto(...)</text>
+<text x="536" y="95" class="t t-s t-m">infiere: total es DOUBLE</text>
+<rect x="520" y="114" width="360" height="62" rx="10" class="c-tra"/>
+<text x="536" y="136" class="t t-b">Spark</text>
+<text x="536" y="154" class="t t-s t-mono">spark.read.schema(esquema).json(...)</text>
+<text x="536" y="169" class="t t-s t-m">declara: total es DECIMAL(10,2)</text>
+<rect x="520" y="188" width="360" height="62" rx="10" class="c-tra"/>
+<text x="536" y="210" class="t t-b">Un script de pandas</text>
+<text x="536" y="228" class="t t-s t-mono">pd.read_json(..., dtype=str)</text>
+<text x="536" y="243" class="t t-s k-warm">lee todo como texto</text>
+<path d="M440 104H480V71H516" class="ln s-tra" style="stroke-width:1.6" marker-end="url(#c6d1-t)"/>
+<path d="M480 104V145H516" class="ln s-tra" style="stroke-width:1.6" marker-end="url(#c6d1-t)"/>
+<path d="M480 145V219H516" class="ln s-tra" style="stroke-width:1.6" marker-end="url(#c6d1-t)"/>
+<text x="520" y="276" class="t t-s">Los mismos bytes, tres tablas distintas: nadie</text>
+<text x="520" y="292" class="t t-s">garantiza que coincidan.</text>
+
+<rect x="20" y="322" width="420" height="96" rx="10" class="caja"/>
+<text x="36" y="344" class="t t-xs t-b t-m">ESQUEMA AL ESCRIBIR · ALMACÉN</text>
+<text x="36" y="364" class="t t-s">CREATE TABLE primero; la fila que no cumple se rechaza.</text>
+<text x="36" y="382" class="t t-s">+ todos leen lo mismo · − hay que decidir antes de guardar,</text>
+<text x="36" y="400" class="t t-s t-m">y lo que no tiene tabla (una imagen, un log) queda fuera.</text>
+<rect x="460" y="322" width="420" height="96" rx="10" class="c-red"/>
+<text x="476" y="344" class="t t-xs t-b k-red">ESQUEMA AL LEER · LAGO</text>
+<text x="476" y="364" class="t t-s">Se guarda cualquier archivo; la estructura se aplica al leer.</text>
+<text x="476" y="382" class="t t-s">+ barato, flexible, sin esperar · − cada lector interpreta</text>
+<text x="476" y="400" class="t t-s t-m">a su modo, y los errores se descubren tarde.</text>
+</svg></div><figcaption><b>Un lago de datos y el esquema al leer.</b> A la izquierda, en azul (almacenamiento), las claves de algunos objetos del lago de la tienda: JSON de la zona de aterrizaje, Parquet particionado por mes, una foto y un registro comprimido. Debajo, las únicas cuatro operaciones del almacenamiento de objetos. A la derecha, tres lectores (morado, transformación) leen los mismos archivos y cada uno aplica su propio esquema: DuckDB infiere tipos, Spark los declara, un script los lee como texto. Abajo, lo que gana y lo que cuesta cada forma de imponer el esquema.</figcaption></figure><div class="prose"><p>Lo que el lago le da a Irene es exactamente lo que el almacén no le daba: guardar los eventos de la app aunque su forma cambie cada mes, guardar las fotos junto a los datos, y leer todo con su herramienta favorita (Spark, Python, DuckDB) sin pasar por un motor único. El precio es que la estructura ya no la garantiza nadie. En la práctica del capítulo 03 ya escribiste Parquet en <code>datos-tienda/lago</code>: ese directorio es, en pequeño, un lago.</p></div></section>
+<section><h2>Cómo un lago se vuelve pantano</h2><div class="prose"><p>La promesa del lago («guarda todo, decide después») tiene una trampa: si nadie decide después, el lago se llena de archivos que nadie entiende. La industria le puso nombre: <b>pantano de datos</b> (<i>data swamp</i>), un lago donde hay muchos datos y poca confianza.</p></div><div class="analogia"><b>Imagínalo así</b><p>Un trastero de la casa empieza ordenado: «lo pongo aquí un momento». Dos años después hay tres cajas con la etiqueta «varios», dos impresoras rotas y nadie se atreve a tirar nada porque no sabe qué es. Todo está guardado y nada se puede usar.</p></div><div class="prose"><p>Los síntomas son siempre parecidos:</p><ul><li><b>Nadie sabe qué hay.</b> Carpetas como <code>pedidos_final/</code>, <code>pedidos_final_v2/</code> y <code>copia_martin/</code>, sin dueño ni descripción. Falta un <b>catálogo</b> (<i>data catalog</i>) que diga qué tabla es cuál y quién responde por ella (capítulo 12).</li><li><b>No se sabe cuál es la versión buena.</b> Dos pipelines escriben la misma carpeta, uno a medias, y un lector toma archivos de los dos.</li><li><b>Lecturas a medias.</b> Mientras un proceso reescribe una partición, otro la lee y obtiene la mitad de los archivos viejos y la mitad de los nuevos. El almacenamiento de objetos no tiene transacciones.</li><li><b>El esquema se mueve en silencio.</b> La app empezó a mandar <code>total</code> como texto en vez de número, y los informes que lo leen lo interpretan cada uno a su manera.</li><li><b>Miles de archivos diminutos.</b> Cada carga escribe archivos de pocos kilobytes y las lecturas se vuelven lentas.</li><li><b>Datos personales sin control.</b> Correos y nombres copiados en diez carpetas, sin saber quién puede verlos ni cuándo se borran (capítulos 11 y 12).</li></ul><p>Ninguno de estos problemas es técnico en origen: son de orden y de responsabilidad. Pero dos de ellos, las lecturas a medias y el esquema que se mueve, sí tienen una solución técnica, y es la que cambió el lago en la última década.</p></div><div class="caso"><b>Un caso real</b><p><b>El lago que nadie quería usar.</b> La historia se repite en empresas de muchos sectores: entre 2012 y 2016, con la ola del <i>big data</i>, se montaron grandes lagos sobre Hadoop con la idea de guardar todo. Pocos años después, los analistas seguían pidiendo extractos al almacén, porque en el lago no sabían qué carpeta era la confiable, las consultas tardaban horas y un mismo número salía distinto según quién lo calculara. Varios de esos proyectos se cerraron o se migraron. La lección no fue «los lagos no sirven», sino que un lago necesita lo mismo que un almacén: tablas con dueño, esquemas, capas de calidad y transacciones. De ahí salen el resto de este capítulo y los capítulos 10 y 12.</p></div></section>
+<section><h2>Formatos de tabla: Delta Lake, Apache Iceberg y Hudi</h2><div class="prose"><p>Un archivo Parquet es un archivo, no una tabla. Una tabla, para un motor de base de datos, es algo más: un esquema conocido, un conjunto exacto de filas en cada momento, y la garantía de que una escritura se ve entera o no se ve. Los <b>formatos de tabla abiertos</b> (<i>open table formats</i>) agregan eso sobre los mismos archivos del lago, con una idea simple: además de los archivos de datos, guardan <b>metadatos</b> que dicen qué archivos forman la tabla en cada versión.</p></div><div class="analogia"><b>Imagínalo así</b><p>Un libro de contabilidad no se corrige con borrador. Cada movimiento es un asiento nuevo, numerado, que dice qué se agrega y qué se anula. Para saber el saldo de hoy se leen todos los asientos en orden; para saber el saldo del 31 de octubre, se leen hasta ese día. Los formatos de tabla llevan un libro así, pero sus asientos dicen qué archivos entran y salen de la tabla.</p></div><div class="prose"><p>Los tres formatos abiertos más usados, a noviembre de 2026:</p><div class="tbl"><table><thead><tr><th>Formato</th><th>Origen</th><th>Cómo guarda la historia</th><th>En qué se destaca</th></tr></thead><tbody><tr><td><b>Delta Lake</b></td><td>Databricks, abierto en 2019, hoy en la Linux Foundation</td><td>Una carpeta <code>_delta_log/</code> con un archivo JSON numerado por cada commit: qué archivos se agregan (<code>add</code>) y cuáles se quitan (<code>remove</code>)</td><td>Muy integrado con Spark y Databricks; bibliotecas sin Spark como <code>delta-rs</code>, que usa la práctica</td></tr><tr><td><b>Apache Iceberg</b></td><td>Netflix, donado a Apache en 2018</td><td>Un árbol de metadatos: un archivo de metadatos por versión que apunta a listas de manifiestos, que apuntan a los archivos de datos; un <b>catálogo</b> guarda cuál es el archivo de metadatos vigente</td><td>Pensado para muchos motores a la vez; lo leen y escriben Spark, Flink, Trino, DuckDB y varios almacenes en la nube</td></tr><tr><td><b>Apache Hudi</b></td><td>Uber, donado a Apache en 2019</td><td>Una línea de tiempo de acciones en la carpeta <code>.hoodie/</code></td><td>Actualizaciones frecuentes por clave (<i>upserts</i>) y lecturas incrementales, al estilo de un CDC sobre el lago</td></tr></tbody></table></div><p>Los tres resuelven lo mismo y se parecen cada vez más; hay incluso proyectos para que una misma tabla se lea con los metadatos de otro formato. Lo que conviene mirar al elegir es qué motores de tu plataforma leen y escriben cada uno y qué catálogo vas a usar. Para Tienda Ejemplo, Natalia elige Delta Lake con la biblioteca <code>deltalake</code> de Python, porque funciona sin Spark ni servidores; la misma tabla la puede leer DuckDB.</p></div></section>
+<section><h2>Transacciones, versiones y viaje en el tiempo sobre archivos</h2><div class="prose"><p>El registro de metadatos es lo que convierte una carpeta en una tabla con <b>transacciones ACID</b>: atómicas (una escritura se ve entera o nada), consistentes (la tabla siempre cumple su esquema), aisladas (dos escritores no se pisan) y durables (lo confirmado no se pierde). La forma de lograrlo en Delta se ve en el flujo de una escritura.</p></div><figure class="fig fig-flujo" id="06-diagrama-2"><div class="lienzo"><svg viewBox="0 0 900 470" style="min-width:760px" role="img" aria-label="Diagrama de secuencia de una escritura en una tabla Delta Lake: el escritor sube un archivo Parquet nuevo que todavía nadie ve, después crea el archivo de la versión siguiente en el registro de transacciones solo si no existe; un segundo escritor que intenta la misma versión falla y reintenta con la siguiente; el lector lee el registro, arma la lista de archivos de la última versión y lee solo esos; para viajar en el tiempo, reproduce el registro hasta una versión anterior">
+<defs>
+<marker id="c6d2-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-red"/></marker>
+<marker id="c6d2-t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-tra"/></marker>
+<marker id="c6d2-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-warm"/></marker>
+</defs>
+<rect x="20" y="14" width="150" height="50" rx="10" class="c-tra"/>
+<text x="95" y="35" class="t t-b" text-anchor="middle" style="font-size:12px">Escritor</text>
+<text x="95" y="53" class="t t-s t-m" text-anchor="middle">el pipeline de oro</text>
+<line x1="95" y1="64" x2="95" y2="456" class="vida"/>
+<rect x="205" y="14" width="160" height="50" rx="10" class="c-red"/>
+<text x="285" y="35" class="t t-b" text-anchor="middle" style="font-size:12px">Archivos de datos</text>
+<text x="285" y="53" class="t t-s t-m" text-anchor="middle">part-*.parquet</text>
+<line x1="285" y1="64" x2="285" y2="456" class="vida"/>
+<rect x="400" y="14" width="160" height="50" rx="10" class="c-red"/>
+<text x="480" y="35" class="t t-b" text-anchor="middle" style="font-size:12px">Registro</text>
+<text x="480" y="53" class="t t-s t-m" text-anchor="middle">_delta_log/*.json</text>
+<line x1="480" y1="64" x2="480" y2="456" class="vida"/>
+<rect x="595" y="14" width="140" height="50" rx="10" class="c-tra"/>
+<text x="665" y="35" class="t t-b" text-anchor="middle" style="font-size:12px">Lector</text>
+<text x="665" y="53" class="t t-s t-m" text-anchor="middle">DuckDB, Spark…</text>
+<line x1="665" y1="64" x2="665" y2="456" class="vida"/>
+
+<line x1="99" y1="100" x2="279" y2="100" class="ln s-red" style="stroke-width:1.8" marker-end="url(#c6d2-r)"/>
+<text x="189" y="93" class="t t-s" text-anchor="middle"><tspan class="t-b">①</tspan> PUT part-0002.parquet</text>
+<text x="189" y="115" class="t t-s t-m" text-anchor="middle">existe, pero nadie lo ve todavía</text>
+<line x1="99" y1="156" x2="474" y2="156" class="ln s-red" style="stroke-width:1.8" marker-end="url(#c6d2-r)"/>
+<text x="287" y="149" class="t t-s" text-anchor="middle"><tspan class="t-b">②</tspan> crea 00…02.json «solo si no existe»</text>
+<text x="287" y="171" class="t t-s t-m" text-anchor="middle">add part-0002 · el commit es este archivo</text>
+<line x1="476" y1="212" x2="101" y2="212" class="ln ln-d s-warm" style="stroke-width:1.6" marker-end="url(#c6d2-w)"/>
+<text x="287" y="205" class="t t-s" text-anchor="middle"><tspan class="t-b">③</tspan> otro escritor quiso crear 00…02.json: ya existe</text>
+<text x="287" y="227" class="t t-s k-warm" text-anchor="middle">relee, revisa conflictos y reintenta como 00…03</text>
+<line x1="661" y1="278" x2="486" y2="278" class="ln s-tra" style="stroke-width:1.8" marker-end="url(#c6d2-t)"/>
+<text x="573" y="271" class="t t-s" text-anchor="middle"><tspan class="t-b">④</tspan> LIST y lee el log</text>
+<text x="573" y="293" class="t t-s t-m" text-anchor="middle">versión 2: archivos 0000, 0001, 0002</text>
+<line x1="661" y1="340" x2="291" y2="340" class="ln s-tra" style="stroke-width:1.8" marker-end="url(#c6d2-t)"/>
+<text x="476" y="333" class="t t-s" text-anchor="middle"><tspan class="t-b">⑤</tspan> GET solo los archivos de esa lista</text>
+<text x="476" y="355" class="t t-s t-m" text-anchor="middle">ignora cualquier otro archivo de la carpeta</text>
+<line x1="661" y1="410" x2="486" y2="410" class="ln ln-d s-tra" style="stroke-width:1.6" marker-end="url(#c6d2-t)"/>
+<text x="573" y="403" class="t t-s" text-anchor="middle"><tspan class="t-b">⑥</tspan> VERSION AS OF 1</text>
+<text x="573" y="425" class="t t-s t-m" text-anchor="middle">reproduce el log hasta 00…01</text>
+
+<rect x="760" y="80" width="124" height="52" rx="8" class="c-red"/>
+<text x="770" y="100" class="t t-xs t-b k-red">ESCRIBIR</text>
+<text x="770" y="118" class="t t-s">① datos nuevos</text>
+<rect x="760" y="138" width="124" height="104" rx="8" class="c-red"/>
+<text x="770" y="158" class="t t-xs t-b k-red">CONFIRMAR</text>
+<text x="770" y="176" class="t t-s">② un archivo</text>
+<text x="770" y="191" class="t t-s">atómico; ③ quien</text>
+<text x="770" y="206" class="t t-s">pierde, reintenta</text>
+<rect x="760" y="250" width="124" height="190" rx="8" class="c-tra"/>
+<text x="770" y="270" class="t t-xs t-b k-tra">LEER</text>
+<text x="770" y="288" class="t t-s">④ ⑤ una versión</text>
+<text x="770" y="303" class="t t-s">entera o nada</text>
+<text x="770" y="330" class="t t-s">⑥ cualquier versión</text>
+<text x="770" y="345" class="t t-s">cuyos archivos</text>
+<text x="770" y="360" class="t t-s">sigan existiendo</text>
+</svg></div><figcaption><b>Cómo se escribe y se lee una tabla Delta.</b> Los participantes están arriba y el tiempo corre hacia abajo. ① El escritor sube un archivo Parquet nuevo, que todavía ningún lector ve. ② Confirma creando el archivo de la versión siguiente del registro «solo si no existe»: ese archivo es el commit. ③ Si otro escritor ya creó esa versión, el segundo pierde, revisa si hay conflicto y reintenta con el número siguiente (flecha roja punteada). ④ El lector lee el registro, toma la última versión y arma la lista de archivos que la forman; ⑤ lee solo esos archivos. ⑥ Para viajar en el tiempo, reproduce el registro hasta una versión anterior.</figcaption></figure><div class="prose"><p>Tres consecuencias prácticas:</p><ul><li><b>No hay lecturas a medias.</b> Un lector usa la lista de archivos de una versión confirmada. Los archivos que un escritor está subiendo, o que dejó un proceso caído, no están en ninguna lista y se ignoran.</li><li><b>Se puede actualizar y borrar.</b> Como un archivo no se modifica, un <code>UPDATE</code> o un <code>DELETE</code> escribe archivos nuevos con las filas cambiadas y anota en el registro cuáles reemplazan a cuáles. Se pueden hacer <code>MERGE</code> por clave, como en el capítulo 04.</li><li><b>La historia queda.</b> Cada versión sigue descrita en el registro, y mientras sus archivos existan se puede leer la tabla «como estaba». Es el <b>viaje en el tiempo</b> (<i>time travel</i>): en SQL, <code>SELECT ... VERSION AS OF 1</code> o <code>TIMESTAMP AS OF '2026-11-02 08:00'</code>, según el motor.</li></ul><p>El viaje en el tiempo tiene un límite que conviene conocer. Los archivos que ninguna versión reciente usa siguen ocupando espacio, y una operación de limpieza, <code>VACUUM</code> en Delta o <code>expire_snapshots</code> en Iceberg, los borra pasado un plazo de retención (en Delta, siete días por omisión). Después de esa limpieza, las versiones viejas siguen anotadas pero ya no se pueden leer. Esto importa mucho cuando un cliente pide que borren sus datos: borrar la fila no basta mientras las versiones anteriores la sigan teniendo, y ese es tema del capítulo 11.</p><p>La regla para escribir en el almacenamiento de objetos también importa: el commit funciona solo si crear el archivo del registro «solo si no existe» es una operación atómica. Algunos almacenamientos la ofrecen de forma nativa y otros necesitan un servicio de coordinación aparte; las bibliotecas de cada formato documentan cuál usar en cada nube.</p></div><div class="lab" id="06-lab-2"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Viaje en el tiempo: consulta la tabla como estaba antes de una carga mala</h3></div><p class="hint">La tabla <code>oro/ventas_diarias</code> tiene tres versiones: la carga de octubre, la del 1 de noviembre y una recarga a mano de la semana de descuentos que la duplicó. Haz clic en cada versión para leer la tabla como estaba y mira qué archivos la forman. Después restaura la versión 1, vuelve a leer la 2 y aplica VACUUM.</p><style>
+[id="06-lab-2"] .c6l2-rot{font:600 .72rem var(--f-display);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+[id="06-lab-2"] .c6l2-log{display:grid;gap:6px}
+[id="06-lab-2"] .c6l2-v{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--card);font:500 .8rem/1.4 var(--f-display);cursor:pointer;text-align:left;color:var(--ink)}
+[id="06-lab-2"] .c6l2-v b{font:700 .82rem var(--f-mono);color:var(--c-red)}
+[id="06-lab-2"] .c6l2-v code{font-size:.74rem;color:var(--muted)}
+[id="06-lab-2"] .c6l2-v.sel{border-color:var(--accent);background:var(--accent-soft)}
+[id="06-lab-2"] .c6l2-v.mala b{color:var(--warm)}
+[id="06-lab-2"] .c6l2-arch{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,190px),1fr));gap:6px}
+[id="06-lab-2"] .c6l2-a{border:1.5px solid var(--c-red);background:var(--c-red-s);border-radius:8px;padding:6px 9px;font:500 .76rem/1.4 var(--f-mono);color:var(--ink)}
+[id="06-lab-2"] .c6l2-a.inactivo{border-style:dashed;border-color:var(--line);background:var(--paper);color:var(--muted)}
+[id="06-lab-2"] .c6l2-a.borrado{border-color:var(--warm);background:var(--warm-soft);text-decoration:line-through}
+[id="06-lab-2"] .c6l2-a.mala{border-color:var(--warm)}
+</style>
+<p class="c6l2-rot">Historial de la tabla oro/ventas_diarias (_delta_log): clic en una versión para leer la tabla como estaba</p>
+<div class="c6l2-log" id="c6l2-log"></div>
+<div class="btns">
+  <button type="button" class="primary" id="c6l2-rest">RESTORE a la versión 1</button>
+  <button type="button" id="c6l2-vac">VACUUM: borrar archivos sin referencia</button>
+  <button type="button" id="c6l2-ini">Volver al principio</button>
+</div>
+<p class="c6l2-rot" id="c6l2-atit"></p>
+<div class="c6l2-arch" id="c6l2-arch"></div>
+<div class="readout texto" id="c6l2-out" aria-live="polite"></div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Una carga mala, el viaje en el tiempo y la restauración con Delta Lake</h3></div><p>Vas a guardar las ventas netas por día como una tabla Delta en el lago, simular una recarga que duplica la semana de descuentos, leer la versión anterior y restaurarla. Trabaja en <code>datos-tienda</code> con el entorno activado; instala la biblioteca <code>deltalake</code> (ocupa unos 170 MB instalada y no necesita Spark ni Java). La base debe estar recién creada, sin <code>--avanzar</code> (si la avanzaste en el capítulo 05, vuelve a crearla con <code>generar_tienda.py</code>).</p><div class="code-copia"><pre><code>"""Una tabla Delta en el lago: una carga mala, viaje en el tiempo y restauración."""
+import shutil
+
+import duckdb
+from deltalake import DeltaTable, write_deltalake
+
+RUTA = "lago/oro/ventas_diarias"
+shutil.rmtree(RUTA, ignore_errors=True)
+
+
+def usd(x):
+    return "US$ " + f"{x:,.2f}".replace(",", " ").replace(".", ",").replace(" ", ".")
+
+
+def ventas(tabla):
+    """Ventas netas de octubre según la tabla Delta, en la versión que se le pase."""
+    datos = tabla.to_pyarrow_dataset()
+    total = duckdb.sql("""SELECT SUM(ventas_netas) FROM datos
+        WHERE dia BETWEEN DATE '2026-10-01' AND DATE '2026-10-31'""").fetchall()[0][0]
+    return usd(total)
+
+
+# Versión 0: la tabla buena, ventas netas por día calculadas desde la base de la tienda
+con = duckdb.connect()
+con.execute("INSTALL sqlite; LOAD sqlite;")
+con.execute("ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")
+buena = con.sql("""
+    SELECT CAST(CAST(p.creado_en AS TIMESTAMP) AS DATE) AS dia,
+           CAST(SUM(d.cantidad * d.precio_unitario) AS DOUBLE) AS ventas_netas
+    FROM tienda.pedidos p JOIN tienda.detalle_pedido d ON d.pedido_id = p.pedido_id
+    WHERE p.estado IN ('pagado', 'enviado', 'entregado')
+    GROUP BY 1""").to_arrow_table()
+write_deltalake(RUTA, buena)
+print(f"v0  octubre = {ventas(DeltaTable(RUTA))}")
+
+# Versión 1: alguien vuelve a cargar la semana de descuentos con modo «agregar»
+mala = duckdb.sql("""SELECT * FROM buena
+    WHERE dia BETWEEN DATE '2026-10-19' AND DATE '2026-10-25'""").to_arrow_table()
+write_deltalake(RUTA, mala, mode="append")
+print(f"v1  octubre = {ventas(DeltaTable(RUTA))}   &lt;- la carga mala")
+
+# Viaje en el tiempo: leer la tabla como estaba en la versión 0
+print(f"Viaje a v0: {ventas(DeltaTable(RUTA, version=0))}")
+for h in DeltaTable(RUTA).history():
+    print(f"  versión {h['version']}: {h['operation']} {h.get('operationParameters')}")
+
+# Restaurar: una versión nueva (v2) que vuelve al contenido de la v0
+DeltaTable(RUTA).restore(0)
+tabla = DeltaTable(RUTA)
+print(f"v{tabla.version()}  octubre = {ventas(tabla)}   &lt;- restaurada")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda el script como <code>delta.py</code>, instala la biblioteca, córrelo y mira el registro de transacciones:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>pip install deltalake</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python delta.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dir lago\oro\ventas_diarias</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dir lago\oro\ventas_diarias\_delta_log</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>type lago\oro\ventas_diarias\_delta_log\00000000000000000001.json</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>pip install deltalake</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 delta.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>ls lago/oro/ventas_diarias</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>ls lago/oro/ventas_diarias/_delta_log</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>cat lago/oro/ventas_diarias/_delta_log/00000000000000000001.json</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>En el JSON de la versión 1, busca la línea <code>add</code> y el nombre del archivo Parquet que agregó. Después abre el de la versión 2 y busca el <code>remove</code>.</span></li></ol><p><b>Qué observar:</b> la versión 0 da <b>US$ 782.785,77</b>, la cifra del tablero. La recarga de la versión 1 la sube a US$ 1.014.905,34: la semana de descuentos (US$ 232.119,57) quedó contada dos veces. Leer la versión 0 devuelve la cifra correcta sin tocar nada, y <code>restore(0)</code> escribe una versión 2 que vuelve a dar US$ 782.785,77. En la carpeta hay dos archivos Parquet: la restauración no borró el de la carga mala, solo anotó en <code>00000000000000000002.json</code> que ya no forma parte de la tabla. Por eso la versión 1 se puede seguir leyendo, hasta que una limpieza borre ese archivo.</p></div></section>
+<section><h2>La arquitectura medallón: bronce, plata y oro</h2><div class="prose"><p>Con tablas confiables sobre el lago falta un orden. La <b>arquitectura medallón</b> (<i>medallion architecture</i>), un nombre que popularizó Databricks, organiza los datos en tres capas según cuánto trabajo tienen encima y cuánto se les puede creer:</p></div><div class="analogia"><b>Imagínalo así</b><p>Una planta de tratamiento de agua recibe el agua del río tal como viene, con barro y hojas, y la guarda así en un estanque. Después la filtra y la potabiliza, y la analiza antes de dejarla pasar. Al final la embotella en el formato que pide cada cliente. Si algo sale mal en el filtrado, el agua del estanque sigue ahí: se vuelve a filtrar sin volver al río.</p></div><div class="prose"><ul><li><b>Bronce</b> (<i>bronze</i>): la copia fiel de lo que llegó de las fuentes, sin limpiar, con la fecha de carga y el archivo de origen. Solo se agrega, nunca se corrige. Si cambia una regla de negocio o aparece un error, todo lo demás se reconstruye desde aquí. Es el esquema <code>crudo</code> del ELT del capítulo 04, ahora en el lago.</li><li><b>Plata</b> (<i>silver</i>): los mismos datos limpios y confiables. Un registro por entidad (la última versión de cada pedido), tipos correctos, ciudades normalizadas, las mismas claves en todas las tablas. Las filas que no cumplen las reglas no se borran: van a una <b>cuarentena</b> para revisarlas. Todavía con el detalle de cada evento.</li><li><b>Oro</b> (<i>gold</i>): tablas pensadas para el negocio. La estrella del capítulo 05, las ventas netas ya definidas, los agregados que lee el tablero. Es lo que consume Elena sin preguntarse de dónde salió.</li></ul></div><figure class="fig fig-arquitectura" id="06-diagrama-3"><div class="lienzo"><svg viewBox="0 0 900 400" style="min-width:760px" role="img" aria-label="La arquitectura medallón de Tienda Ejemplo: las fuentes entran a bronce, la copia fiel del origen; bronce pasa a plata, donde se deduplica, se ponen tipos, se limpia y se apartan a cuarentena las filas que no cumplen; plata pasa a oro, con las tablas de negocio que leen el tablero, Martín e Irene. Debajo de cada capa, quién la usa y cuánto se le cree">
+<defs>
+<marker id="c6d3-t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-tra"/></marker>
+<marker id="c6d3-e" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-enl"/></marker>
+<marker id="c6d3-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-warm"/></marker>
+</defs>
+<rect x="20" y="40" width="110" height="200" rx="10" class="c-fis"/>
+<text x="75" y="64" class="t t-xs t-b k-fis" text-anchor="middle">FUENTES</text>
+<text x="75" y="92" class="t t-s" text-anchor="middle">tienda.db</text>
+<text x="75" y="112" class="t t-s" text-anchor="middle">API de pagos</text>
+<text x="75" y="132" class="t t-s" text-anchor="middle">eventos de</text>
+<text x="75" y="147" class="t t-s" text-anchor="middle">la app</text>
+<path d="M130 140H160" class="ln s-enl" style="stroke-width:1.8" marker-end="url(#c6d3-e)"/>
+
+<rect x="164" y="40" width="200" height="200" rx="10" class="c-fis" style="stroke-width:2"/>
+<text x="180" y="64" class="t t-xs t-b k-fis">BRONCE · TAL COMO LLEGÓ</text>
+<text x="180" y="88" class="t t-s">copia fiel, solo se agrega</text>
+<text x="180" y="106" class="t t-s">JSON tal cual, sin tipos fijos</text>
+<text x="180" y="124" class="t t-s">+ fecha_carga y archivo</text>
+<text x="180" y="142" class="t t-s">duplicados y errores incluidos</text>
+<text x="180" y="168" class="t t-s t-mono">bronce/pedidos/</text>
+<text x="194" y="184" class="t t-s t-mono">fecha_carga=…/</text>
+<text x="180" y="214" class="t t-s t-m">Se guarda meses o años:</text>
+<text x="180" y="229" class="t t-s t-m">desde aquí se reconstruye todo</text>
+<path d="M364 140H394" class="ln s-tra" style="stroke-width:1.8" marker-end="url(#c6d3-t)"/>
+
+<rect x="398" y="40" width="210" height="200" rx="10" class="caja" style="stroke-width:2"/>
+<text x="414" y="64" class="t t-xs t-b t-m">PLATA · LIMPIA Y CONFIABLE</text>
+<text x="414" y="88" class="t t-s">un registro por pedido</text>
+<text x="414" y="106" class="t t-s">tipos correctos (DECIMAL, fechas)</text>
+<text x="414" y="124" class="t t-s">ciudades normalizadas</text>
+<text x="414" y="142" class="t t-s">mismas claves en todas las tablas</text>
+<text x="414" y="168" class="t t-s t-mono">plata/pedidos/mes=…/</text>
+<text x="414" y="184" class="t t-s t-mono">plata/clientes.parquet</text>
+<text x="414" y="214" class="t t-s t-m">Todavía con el detalle:</text>
+<text x="414" y="229" class="t t-s t-m">una fila por evento</text>
+<path d="M608 140H638" class="ln s-tra" style="stroke-width:1.8" marker-end="url(#c6d3-t)"/>
+
+<rect x="642" y="40" width="238" height="200" rx="10" class="c-apl" style="stroke-width:2"/>
+<text x="658" y="64" class="t t-xs t-b k-apl">ORO · LISTA PARA EL NEGOCIO</text>
+<text x="658" y="88" class="t t-s">tablas por pregunta o por proceso</text>
+<text x="658" y="106" class="t t-s">la estrella del capítulo 05</text>
+<text x="658" y="124" class="t t-s">ventas netas ya definidas</text>
+<text x="658" y="142" class="t t-s">agregados para el tablero</text>
+<text x="658" y="168" class="t t-s t-mono">oro/ventas_mensuales</text>
+<text x="658" y="184" class="t t-s t-mono">oro/fact_ventas, dim_*</text>
+<text x="658" y="214" class="t t-s t-m">octubre:</text>
+<text x="658" y="229" class="t t-s t-mono">US$ 782.785,77</text>
+
+<rect x="398" y="256" width="210" height="44" rx="8" class="caja" style="stroke:var(--warm);stroke-dasharray:5 4"/>
+<text x="414" y="275" class="t t-xs t-b k-warm">CUARENTENA</text>
+<text x="414" y="291" class="t t-s">filas que no cumplen, para revisar</text>
+<path d="M503 240V252" class="ln s-warm" style="stroke-width:1.6" marker-end="url(#c6d3-w)"/>
+
+<text x="20" y="334" class="t t-xs t-b t-m">QUIÉN LA USA</text>
+<text x="164" y="334" class="t t-s">Natalia, para reprocesar</text>
+<text x="164" y="352" class="t t-s">y auditar el origen</text>
+<text x="398" y="334" class="t t-s">Irene y Martín, para análisis</text>
+<text x="398" y="352" class="t t-s">que necesitan detalle</text>
+<text x="642" y="334" class="t t-s">Elena y el tablero,</text>
+<text x="642" y="352" class="t t-s">sin saber de dónde vino</text>
+<text x="20" y="384" class="t t-xs t-b t-m">CONFIANZA</text>
+<rect x="164" y="372" width="716" height="14" rx="7" class="caja"/>
+<rect x="164" y="372" width="200" height="14" rx="7" class="c-fis"/>
+<rect x="398" y="372" width="210" height="14" rx="7" style="fill:var(--line)"/>
+<rect x="642" y="372" width="238" height="14" rx="7" class="c-apl"/>
+</svg></div><figcaption><b>La arquitectura medallón de Tienda Ejemplo.</b> Las fuentes (ámbar) entran por la ingesta (flecha verde) a bronce, la copia fiel de lo que llegó. Las transformaciones (flechas moradas) suben los datos a plata, limpia y con tipos, y de ahí a oro, en rosa porque es lo que se consume. Las filas que no cumplen las reglas de plata caen a la cuarentena, con borde rojo punteado. Debajo, quién usa cada capa, y la franja de confianza que crece de izquierda a derecha.</figcaption></figure><div class="prose"><p>Las capas no son una regla rígida. Hay equipos con una capa más (una zona de aterrizaje antes de bronce, como la del capítulo 02) y equipos que llaman <code>raw</code>, <code>staging</code> y <code>marts</code> a lo mismo, como hace dbt en el capítulo 10. Lo que importa son tres principios: lo crudo se conserva, la limpieza se hace una vez y en un solo lugar, y el consumo lee solo de la capa final.</p></div><div class="lab" id="06-lab-1"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Sube los datos de la tienda de bronce a plata y a oro, con lo que cambia en cada capa</h3></div><p class="hint">Nueve filas de pedidos del 14 de octubre tal como llegaron a bronce, con errores a propósito: el pedido 59521 de Renata llegó dos veces, un total trae coma decimal y hay ciudades mal escritas. Mira cada capa. Después apaga, de a una, las reglas de plata y mira cómo se equivoca el oro que lee el tablero.</p><style>
+[id="06-lab-1"] .c6l1-rot{font:600 .72rem var(--f-display);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+[id="06-lab-1"] .c6l1-capas button[data-c="bronce"][aria-pressed="true"]{background:var(--c-fis);border-color:var(--c-fis)}
+[id="06-lab-1"] .c6l1-capas button[data-c="plata"][aria-pressed="true"]{background:var(--muted);border-color:var(--muted)}
+[id="06-lab-1"] .c6l1-capas button[data-c="oro"][aria-pressed="true"]{background:var(--c-apl);border-color:var(--c-apl)}
+[id="06-lab-1"] .c6l1-reglas{display:grid;gap:6px}
+[id="06-lab-1"] .c6l1-reglas label{display:flex;gap:8px;align-items:flex-start;font:500 .86rem/1.35 var(--f-display)}
+[id="06-lab-1"] .c6l1-reglas input{margin-top:3px;accent-color:var(--accent)}
+[id="06-lab-1"] table{width:100%;border-collapse:collapse;font:500 .74rem var(--f-mono)}
+[id="06-lab-1"] th,[id="06-lab-1"] td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+[id="06-lab-1"] th{font:600 .7rem var(--f-display);color:var(--muted)}
+[id="06-lab-1"] td.n{text-align:right}
+[id="06-lab-1"] tr.mal td{background:var(--warm-soft)}
+[id="06-lab-1"] tr.cambio td{background:var(--mark)}
+[id="06-lab-1"] tr.fuera td{color:var(--muted);text-decoration:line-through}
+[id="06-lab-1"] .c6l1-bar{display:grid;grid-template-columns:120px 1fr 80px;gap:8px;align-items:center;font:500 .8rem var(--f-display);margin:3px 0}
+[id="06-lab-1"] .c6l1-bar i{display:block;height:14px;border-radius:4px;background:var(--c-apl);min-width:2px}
+[id="06-lab-1"] .c6l1-bar i.mal{background:var(--warm)}
+[id="06-lab-1"] .c6l1-bar b{font:600 .78rem var(--f-mono);text-align:right}
+</style>
+<p class="c6l1-rot">Reglas de la capa plata</p>
+<div class="c6l1-reglas">
+  <label><input type="checkbox" id="c6l1-dup" checked> Quedarse con la última versión de cada pedido (por <code>actualizado_en</code>)</label>
+  <label><input type="checkbox" id="c6l1-tip" checked> Tipar columnas y mandar a cuarentena lo que no cumple el esquema</label>
+  <label><input type="checkbox" id="c6l1-ciu" checked> Normalizar la ciudad (mayúsculas, tildes y espacios)</label>
+</div>
+<p class="c6l1-rot">Capa que miras</p>
+<div class="btns c6l1-capas" role="group" aria-label="Capa del lago">
+  <button type="button" data-c="bronce" aria-pressed="true">Bronce: tal como llegó</button>
+  <button type="button" data-c="plata" aria-pressed="false">Plata: limpia y con tipos</button>
+  <button type="button" data-c="oro" aria-pressed="false">Oro: lista para el tablero</button>
+</div>
+<p class="c6l1-rot" id="c6l1-tit"></p>
+<div id="c6l1-vista" aria-live="polite"></div>
+<div class="readout texto" id="c6l1-out" aria-live="polite"></div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Bronce, plata y oro en el lago de la tienda</h3></div><p>Vas a subir los datos de la tienda por las tres capas: JSON en bronce, Parquet particionado por mes en plata y una tabla de ventas mensuales en oro, y a consultarlas directamente sobre los archivos. Sigue en <code>datos-tienda</code> con el entorno activado; solo necesitas <code>duckdb</code>.</p><div class="code-copia"><pre><code>"""Sube los datos de la tienda por las capas del lago: bronce (JSON), plata y oro (Parquet)."""
+import datetime as dt
+import shutil
+from pathlib import Path
+
+import duckdb
+
+LAGO = Path("lago")
+hoy = dt.date.today().isoformat()
+con = duckdb.connect()
+con.execute("INSTALL sqlite; LOAD sqlite;")
+con.execute("ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")
+
+# BRONCE: copia fiel del origen en JSON, sin tipos declarados, una carpeta por fecha de carga
+for tabla in ("pedidos", "detalle_pedido", "clientes", "productos"):
+    destino = LAGO / "bronce" / tabla / f"fecha_carga={hoy}"
+    destino.mkdir(parents=True, exist_ok=True)
+    con.execute(f"COPY (SELECT * FROM tienda.{tabla}) TO '{destino}/datos.json' (FORMAT json)")
+
+# PLATA: tipos correctos, sin duplicados, ciudades limpias; Parquet particionado por mes
+for carpeta in ("plata", "oro"):
+    shutil.rmtree(LAGO / carpeta, ignore_errors=True)
+    (LAGO / carpeta).mkdir(parents=True)
+bronce = lambda t: f"read_json_auto('{LAGO}/bronce/{t}/*/*.json', hive_partitioning = true)"
+con.execute(f"""
+    COPY (
+        SELECT pedido_id, cliente_id, CAST(creado_en AS TIMESTAMP) AS creado_en, estado, canal,
+               CAST(actualizado_en AS TIMESTAMP) AS actualizado_en,
+               strftime(CAST(creado_en AS TIMESTAMP), '%Y-%m') AS mes
+        FROM {bronce('pedidos')}
+        QUALIFY row_number() OVER (PARTITION BY pedido_id ORDER BY actualizado_en DESC) = 1
+    ) TO '{LAGO}/plata/pedidos' (FORMAT parquet, PARTITION_BY (mes))""")
+con.execute(f"""
+    COPY (SELECT DISTINCT pedido_id, linea, producto_id, cantidad,
+                 CAST(precio_unitario AS DECIMAL(10,2)) AS precio_unitario
+          FROM {bronce('detalle_pedido')})
+    TO '{LAGO}/plata/detalle_pedido.parquet' (FORMAT parquet)""")
+con.execute(f"""
+    COPY (
+        WITH canon(ciudad) AS (VALUES ('Lima'), ('Bogotá'), ('Ciudad de México'), ('Santiago'),
+             ('Quito'), ('Guadalajara'), ('Medellín'), ('Guayaquil'), ('Santo Domingo'), ('Panamá'))
+        SELECT b.cliente_id, b.nombre, b.email, coalesce(k.ciudad, trim(b.ciudad)) AS ciudad
+        FROM {bronce('clientes')} b
+        LEFT JOIN canon k ON strip_accents(lower(trim(b.ciudad))) = strip_accents(lower(k.ciudad))
+        QUALIFY row_number() OVER (PARTITION BY b.cliente_id ORDER BY b.fecha_carga DESC) = 1
+    ) TO '{LAGO}/plata/clientes.parquet' (FORMAT parquet)""")
+
+# ORO: la tabla que lee el tablero, ya agregada
+con.execute(f"""
+    COPY (
+        SELECT p.mes, SUM(d.cantidad * d.precio_unitario) AS ventas_netas,
+               COUNT(DISTINCT p.pedido_id) AS pedidos
+        FROM read_parquet('{LAGO}/plata/pedidos/*/*.parquet', hive_partitioning = true) p
+        JOIN '{LAGO}/plata/detalle_pedido.parquet' d USING (pedido_id)
+        WHERE p.estado IN ('pagado', 'enviado', 'entregado')
+        GROUP BY p.mes ORDER BY p.mes
+    ) TO '{LAGO}/oro/ventas_mensuales.parquet' (FORMAT parquet)""")
+
+for capa in ("bronce", "plata", "oro"):
+    archivos = [f for f in (LAGO / capa).rglob("*") if f.is_file()]
+    mb = sum(f.stat().st_size for f in archivos) / 1e6
+    print(f"{capa:&lt;7}{len(archivos):&gt;4} archivos {mb:&gt;8.1f} MB")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="code-copia"><pre><code>"""Consulta las tres capas del lago directamente sobre los archivos."""
+import duckdb
+
+print("Bronce: el esquema lo adivina quien lee")
+duckdb.sql("""DESCRIBE SELECT * FROM read_json_auto('lago/bronce/pedidos/*/*.json',
+                                                   hive_partitioning = true)""").show()
+
+print("Plata: solo se lee la carpeta del mes que pide el filtro")
+duckdb.sql("""
+    SELECT estado, COUNT(*) AS pedidos
+    FROM read_parquet('lago/plata/pedidos/*/*.parquet', hive_partitioning = true)
+    WHERE mes = '2026-10' GROUP BY estado ORDER BY pedidos DESC""").show()
+
+print("Oro: lo que lee el tablero")
+duckdb.sql("SELECT * FROM 'lago/oro/ventas_mensuales.parquet' ORDER BY mes").show()</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda los scripts como <code>medallon.py</code> y <code>consultar_lago.py</code> y córrelos:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python medallon.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python consultar_lago.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dir lago\plata\pedidos</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 medallon.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 consultar_lago.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>ls lago/plata/pedidos</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Corre <code>medallon.py</code> una segunda vez el mismo día y mira si cambia el número de archivos de bronce.</span></li></ol><p><b>Qué observar:</b> bronce ocupa unos 20 MB en 4 archivos JSON; plata, unos 2 MB en 12 archivos Parquet, con una carpeta <code>mes=2026-01</code> … <code>mes=2026-10</code> para los pedidos; el tamaño exacto puede variar un poco. Al describir bronce, DuckDB adivinó que <code>creado_en</code> es un <code>TIMESTAMP</code> y agregó la columna <code>fecha_carga</code> desde el nombre de la carpeta: ese es el esquema al leer, y otro lector podría adivinar distinto. Plata es la que fija los tipos para todos. El conteo de octubre en plata da los estados del tablero (entregado 7.122, enviado 912, pagado 342…) y el oro repite la serie mensual con <b>US$ 782.785,77 en 8.376 pedidos</b> en octubre. La segunda corrida del mismo día no agrega archivos: bronce se escribe en la carpeta de la fecha de carga y plata y oro se reconstruyen enteros, así que el script es idempotente dentro de un día.</p></div></section>
+<section><h2>El <i>lakehouse</i>: el almacén y el lago en una sola plataforma</h2><div class="prose"><p>Durante una década, muchas empresas mantuvieron las dos cosas: un lago para guardar todo y para los científicos de datos, y un almacén para los tableros, con un pipeline que copiaba del uno al otro. Dos copias, dos costos, dos versiones de cada número. En 2021, un artículo académico de investigadores de Databricks, Berkeley y Stanford propuso el nombre <b><i>lakehouse</b></i> para la alternativa: una sola plataforma sobre el lago, con las garantías del almacén.</p></div><div class="analogia"><b>Imagínalo así</b><p>Antes, una ciudad tenía la bodega del puerto, enorme y barata, donde llegaba todo, y un supermercado ordenado en el centro, adonde se llevaban en camión solo algunas cosas. El <i>lakehouse</i> es poner pasillos, etiquetas y cajas registradoras dentro de la bodega del puerto: se compra ahí mismo, sin camiones de por medio.</p></div><div class="prose"><p>Un <i>lakehouse</i> se arma con piezas que ya conoces:</p><ol class="steps"><li><span><b>Almacenamiento de objetos</b> barato, como en el lago.</span></li><li><span><b>Archivos abiertos por columnas</b>, Parquet, del capítulo 03.</span></li><li><span><b>Un formato de tabla</b> con registro de transacciones (Delta Lake, Iceberg o Hudi): esquema, ACID, versiones y viaje en el tiempo.</span></li><li><span><b>Un catálogo</b> que dice qué tablas existen, dónde están y quién puede leerlas.</span></li><li><span><b>Varios motores</b> encima de los mismos datos: SQL para los tableros, Spark para el procesamiento grande (capítulo 07), Python para Irene, y también los almacenes del capítulo 05, que a noviembre de 2026 pueden leer tablas Iceberg o Delta guardadas fuera de ellos.</span></li></ol></div><figure class="fig fig-capas" id="06-diagrama-4"><div class="lienzo"><svg viewBox="0 0 900 420" style="min-width:760px" role="img" aria-label="Tres arquitecturas por capas. El almacén: almacenamiento propio, formato propio y un solo motor, con transacciones. El lago: almacenamiento de objetos y archivos abiertos, con muchos motores pero sin transacciones. El lakehouse: almacenamiento de objetos, archivos Parquet, un formato de tabla con registro de transacciones como Delta Lake o Iceberg, y muchos motores encima, incluidos almacenes, para tableros y aprendizaje automático">
+<text x="20" y="24" class="t t-xs t-b t-m">ALMACÉN (DESDE LOS 90)</text>
+<text x="320" y="24" class="t t-xs t-b t-m">LAGO (DESDE 2010)</text>
+<text x="620" y="24" class="t t-xs t-b t-m">LAKEHOUSE (DESDE 2020)</text>
+
+<rect x="20" y="36" width="260" height="44" rx="8" class="c-apl"/>
+<text x="150" y="63" class="t t-s" text-anchor="middle">tableros y SQL</text>
+<rect x="20" y="88" width="260" height="190" rx="8" class="c-red"/>
+<text x="150" y="110" class="t t-xs t-b k-red" text-anchor="middle">UN SOLO PRODUCTO CERRADO</text>
+<text x="150" y="140" class="t t-s" text-anchor="middle">motor SQL propio</text>
+<text x="150" y="164" class="t t-s" text-anchor="middle">transacciones ACID</text>
+<text x="150" y="188" class="t t-s" text-anchor="middle">formato propio</text>
+<text x="150" y="212" class="t t-s" text-anchor="middle">almacenamiento propio</text>
+<text x="150" y="250" class="t t-s t-m" text-anchor="middle">solo ese motor lee los datos</text>
+<rect x="20" y="290" width="260" height="70" rx="8" class="caja"/>
+<text x="34" y="310" class="t t-s">+ confiable, rápido, simple</text>
+<text x="34" y="328" class="t t-s">− caro para guardar todo</text>
+<text x="34" y="346" class="t t-s">− mal para imágenes y para ML</text>
+
+<rect x="320" y="36" width="260" height="44" rx="8" class="c-apl"/>
+<text x="450" y="63" class="t t-s" text-anchor="middle">ML, Spark, scripts… (pocos tableros)</text>
+<rect x="320" y="88" width="260" height="48" rx="8" class="c-tra"/>
+<text x="450" y="117" class="t t-s" text-anchor="middle">muchos motores: Spark, Presto, Python</text>
+<rect x="320" y="144" width="260" height="40" rx="8" class="caja" style="stroke:var(--warm);stroke-dasharray:5 4"/>
+<text x="450" y="169" class="t t-s k-warm" text-anchor="middle">sin transacciones ni versiones</text>
+<rect x="320" y="192" width="260" height="40" rx="8" class="caja"/>
+<text x="450" y="217" class="t t-s" text-anchor="middle">archivos abiertos: CSV, JSON, Parquet</text>
+<rect x="320" y="240" width="260" height="38" rx="8" class="c-red"/>
+<text x="450" y="264" class="t t-s" text-anchor="middle">almacenamiento de objetos barato</text>
+<rect x="320" y="290" width="260" height="70" rx="8" class="caja"/>
+<text x="334" y="310" class="t t-s">+ barato, guarda cualquier cosa</text>
+<text x="334" y="328" class="t t-s">− lecturas a medias, sin UPDATE</text>
+<text x="334" y="346" class="t t-s">− se vuelve pantano</text>
+
+<rect x="620" y="36" width="260" height="44" rx="8" class="c-apl"/>
+<text x="750" y="63" class="t t-s" text-anchor="middle">tableros, SQL y ML sobre lo mismo</text>
+<rect x="620" y="88" width="260" height="48" rx="8" class="c-tra"/>
+<text x="750" y="108" class="t t-s" text-anchor="middle">muchos motores: Spark, DuckDB,</text>
+<text x="750" y="124" class="t t-s" text-anchor="middle">Trino, almacenes que leen Iceberg</text>
+<rect x="620" y="144" width="260" height="40" rx="8" class="c-red" style="stroke-width:2.2"/>
+<text x="750" y="169" class="t t-s t-b" text-anchor="middle">formato de tabla: Delta, Iceberg</text>
+<rect x="620" y="192" width="260" height="40" rx="8" class="caja"/>
+<text x="750" y="217" class="t t-s" text-anchor="middle">archivos Parquet</text>
+<rect x="620" y="240" width="260" height="38" rx="8" class="c-red"/>
+<text x="750" y="264" class="t t-s" text-anchor="middle">almacenamiento de objetos barato</text>
+<rect x="620" y="290" width="260" height="70" rx="8" class="caja"/>
+<text x="634" y="310" class="t t-s">+ transacciones y versiones</text>
+<text x="634" y="328" class="t t-s">+ datos abiertos, varios motores</text>
+<text x="634" y="346" class="t t-s">− más piezas que operar</text>
+<text x="20" y="396" class="t t-s t-m">La capa nueva del lakehouse es una sola: un registro de transacciones sobre los mismos archivos del lago.</text>
+</svg></div><figcaption><b>Almacén, lago y <i>lakehouse</i>, por capas.</b> Cada columna es una arquitectura, con el consumo arriba (rosa) y el almacenamiento abajo (azul). El almacén es un solo producto cerrado: transacciones y rapidez, pero caro para guardar todo y un solo motor. El lago pone archivos abiertos sobre objetos baratos, con muchos motores pero sin transacciones (recuadro rojo punteado). El <i>lakehouse</i> agrega una sola capa al lago, el formato de tabla (borde azul grueso), y con eso sirve a tableros, SQL y aprendizaje automático desde los mismos datos.</figcaption></figure><div class="prose"><p>El <i>lakehouse</i> no hace desaparecer al almacén ni al modelado dimensional: la capa oro de un <i>lakehouse</i> suele ser, justamente, una estrella. Lo que cambia es dónde viven los datos y cuántas copias hay. A noviembre de 2026, ejemplos públicos de plataformas que se describen así son Databricks, Microsoft Fabric con OneLake, y combinaciones abiertas como Iceberg con un catálogo y motores como Trino, Spark o DuckDB. Los almacenes en la nube (Snowflake, BigQuery, Redshift) ofrecen a su vez tablas Iceberg administradas, y la frontera entre unos y otros es cada vez más borrosa.</p><p>Para Tienda Ejemplo, el plan de Natalia queda así: el esquema <code>crudo</code> del almacén pasa a ser bronce en el lago, plata y oro se escriben como tablas Delta, y el tablero sigue leyendo la estrella, ahora en oro. Mientras los datos quepan en una máquina, DuckDB lee todas las capas; si la tienda multiplica su tamaño, Spark puede leer las mismas tablas sin migrar nada.</p></div><div class="ml"><b>En la práctica</b><p><b>La recarga del 2 de noviembre.</b> Una tarde, Martín volvió a cargar a mano la semana de descuentos para corregir un dato y lo hizo en modo «agregar». A las cinco, Elena llamó: el tablero decía que octubre había vendido más de un millón de dólares. Antes del lakehouse, eso habría significado una noche reconstruyendo tablas. Natalia leyó la tabla con <code>VERSION AS OF</code> la versión anterior a la recarga, confirmó la cifra de siempre, la restauró en dos minutos y dejó el registro con la versión mala a la vista para revisarla con Martín al día siguiente. Esa semana, la carga manual pasó a ser una tarea del orquestador con reemplazo de partición, como manda el capítulo 04.</p></div></section>
+<section><h2>La idea clave</h2><div class="prose"><p>El lago guarda todo, barato y en archivos abiertos, con el esquema al leer; sin orden se vuelve pantano. Los formatos de tabla (Delta Lake, Iceberg, Hudi) le agregan un registro de transacciones que da ACID, versiones y viaje en el tiempo sobre los mismos archivos, y la arquitectura medallón ordena los datos en bronce (lo que llegó), plata (lo limpio) y oro (lo que consume el negocio). Juntas, esas piezas son el <i>lakehouse</i>: el almacén y el lago en una sola plataforma.</p></div></section>
+<section><h2>Pruébate</h2><div class="quiz"><h3>Pruébate</h3><details><summary>¿Qué diferencia hay entre esquema al escribir y esquema al leer?</summary><p>Con esquema al escribir, la tabla y sus tipos se definen antes de guardar y lo que no cumple se rechaza (almacén). Con esquema al leer, se guarda el archivo tal como llegó y cada lector aplica su estructura al consultarlo (lago).</p></details><details><summary>¿Por qué un lector de una tabla Delta nunca ve una escritura a medias?</summary><p>Porque solo lee los archivos que figuran en la lista de una versión confirmada del registro, y una escritura solo queda confirmada cuando se crea, de una vez, el archivo de esa versión en <code>_delta_log</code>.</p></details><details><summary>Después de un <code>RESTORE</code> a la versión 0, ¿por qué todavía se puede leer la versión 1 con la carga mala?</summary><p>Porque la restauración no borra archivos: escribe una versión nueva que deja de usar el archivo malo. El archivo sigue en la carpeta y la versión 1 sigue en el registro, hasta que una limpieza como <code>VACUUM</code> lo borre.</p></details><details><summary>En la capa plata, un pedido trae el total «68,60» con coma. ¿Qué debería pasar con esa fila y por qué no conviene leerla como 68?</summary><p>Debe ir a cuarentena para revisarla. Leerla como 68 cambia el número sin avisar a nadie; la cuarentena deja la fila visible y fuera del oro hasta que se corrija.</p></details><details><summary>¿Por qué la capa bronce no se corrige nunca, aunque tenga duplicados y errores?</summary><p>Porque es la copia fiel de lo que llegó: si cambia una regla o se descubre un error en plata, se reconstruye todo desde bronce sin volver a pedir los datos a las fuentes.</p></details></div></section>
+<section><h2>Para investigar</h2><div class="investiga"><h3>Para investigar</h3><p class="hint">Estas preguntas no se responden en el capítulo: búscalas por tu cuenta.</p><ol><li>¿Qué es un <i>checkpoint</i> en el <code>_delta_log</code> de Delta Lake y por qué el lector no necesita leer todos los JSON desde la versión 0?<small>Pista: busca «Delta checkpoint Parquet» en el protocolo de Delta.</small></li><li>¿Qué son los vectores de borrado (<i>deletion vectors</i>) y en qué se diferencian las estrategias <i>copy-on-write</i> y <i>merge-on-read</i> al borrar una fila?</li><li>¿Qué especifica el catálogo REST de Apache Iceberg y por qué varios motores pueden escribir la misma tabla a través de él?</li><li>¿Por qué un lago con miles de archivos pequeños se lee más lento que uno con pocos archivos grandes, y qué hace una operación de compactación como <code>OPTIMIZE</code>?</li><li>¿Qué garantías de consistencia da hoy Amazon S3 al leer después de escribir, y desde cuándo ofrece escrituras condicionales?<small>Pista: busca los anuncios oficiales de AWS sobre «strong consistency» y «conditional writes».</small></li></ol></div></section>
+<section><h2>Para saber más</h2><div class="vids"><span>Para saber más</span><a class="vid" href="https://github.com/delta-io/delta/blob/master/PROTOCOL.md" target="_blank" rel="noopener">Protocolo de Delta Lake <small>cómo se escriben el registro y los commits, en inglés</small></a><a class="vid" href="https://iceberg.apache.org/spec/" target="_blank" rel="noopener">Especificación de Apache Iceberg <small>metadatos, manifiestos y snapshots, en inglés</small></a><a class="vid" href="https://delta-io.github.io/delta-rs/" target="_blank" rel="noopener">Documentación de delta-rs <small>la biblioteca <code>deltalake</code> de Python que usa la práctica, en inglés</small></a><a class="vid" href="https://duckdb.org/docs/stable/data/partitioning/hive_partitioning" target="_blank" rel="noopener">Particiones Hive en DuckDB <small>leer y escribir carpetas <code>mes=…</code>, en inglés</small></a></div></section>
+<label class="got"><input type="checkbox" id="got"> Lo tengo claro</label>
+<nav class="pager" id="pager" aria-label="Capítulo anterior y siguiente"></nav>
+</main>
+</div>
+<footer><span>Curso abierto de aaramirez.github.io.</span><span>Sitio publicado: <a href="https://github.com/aaramirez/ingenieria-de-datos" target="_blank" rel="noopener">github.com/aaramirez/ingenieria-de-datos</a></span></footer>
+</div>
+<script src="assets/lab.js"></script>
+<script>
+(function(){
+  const {$}=window.Lab;
+  const raiz=document.querySelector('[id="06-lab-2"]');
+  const nf=(n,d=0)=>{const s=Math.abs(n).toFixed(d).split('.');s[0]=s[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.');return (n<0?'−':'')+s.join(',');};
+  const usd=n=>'US$ '+nf(n,2);
+  // Archivos Parquet de la tabla (cifras de la tienda con semilla 42)
+  const ARCH={
+    'part-0000.parquet':{d:'1 al 31 de octubre · 31 filas',oct:782785.77,nov:0},
+    'part-0001.parquet':{d:'1 de noviembre · 1 fila',oct:0,nov:34215.40},
+    'part-0002.parquet':{d:'19 al 25 de octubre otra vez · 7 filas',oct:232119.57,nov:0,mala:true}
+  };
+  const BASE=[
+    {v:0,cuando:'01/11 02:00',op:'WRITE (crear)',add:['part-0000.parquet'],rem:[]},
+    {v:1,cuando:'02/11 02:00',op:'WRITE (append)',add:['part-0001.parquet'],rem:[]},
+    {v:2,cuando:'02/11 15:40',op:'WRITE (append) · recarga a mano',add:['part-0002.parquet'],rem:[],mala:true}
+  ];
+  let log,sel,borrados;
+  function reiniciar(){log=BASE.map(x=>Object.assign({},x));sel=2;borrados=[];}
+  // Los archivos vivos en una versión: se reproduce el log desde la 0
+  const vivos=v=>{const s=new Set();log.filter(e=>e.v<=v).forEach(e=>{e.add.forEach(a=>s.add(a));e.rem.forEach(a=>s.delete(a));});return Array.from(s);};
+  const ultima=()=>log[log.length-1].v;
+  function pintar(){
+    $('#c6l2-log').innerHTML=log.slice().reverse().map(e=>'<button type="button" class="c6l2-v'+(e.v===sel?' sel':'')+(e.mala?' mala':'')+'" data-v="'+e.v+'" aria-pressed="'+(e.v===sel)+'"><b>v'+e.v+'</b><span>'+e.cuando+' · '+e.op+'<br><code>'+String(e.v).padStart(20,'0')+'.json: '+e.add.map(a=>'add '+a).concat(e.rem.map(a=>'remove '+a)).join(', ')+'</code></span></button>').join('');
+    raiz.querySelectorAll('.c6l2-v').forEach(b=>b.addEventListener('click',()=>{sel=+b.dataset.v;pintar();}));
+    const vs=vivos(sel),faltan=vs.filter(a=>borrados.includes(a));
+    $('#c6l2-atit').textContent='Archivos en la carpeta de la tabla · en azul, los que forman la versión '+sel;
+    $('#c6l2-arch').innerHTML=Object.keys(ARCH).filter(a=>log.some(e=>e.add.includes(a))).map(a=>{const cls=borrados.includes(a)?'borrado':(vs.includes(a)?(ARCH[a].mala?'mala':''):'inactivo');return '<div class="c6l2-a '+cls+'">'+a+'<br>'+ARCH[a].d+(borrados.includes(a)?'<br>borrado por VACUUM':'')+'</div>';}).join('');
+    $('#c6l2-rest').disabled=log.some(e=>e.op.indexOf('RESTORE')===0);
+    let o;
+    if(faltan.length){
+      o='<span class="big">La versión '+sel+' ya no se puede leer</span><span class="warn">El log todavía la describe, pero VACUUM borró '+faltan.join(', ')+'. El viaje en el tiempo solo llega hasta donde llegan los archivos que se conservan.</span>';
+    }else{
+      const oct=vs.reduce((s,a)=>s+ARCH[a].oct,0),nov=vs.reduce((s,a)=>s+ARCH[a].nov,0);
+      o='<span class="big">Versión '+sel+': octubre '+usd(oct)+(nov?' · 1 de noviembre '+usd(nov):'')+'</span>';
+      if(vs.some(a=>ARCH[a].mala))o+='<span class="warn">Esta versión lee la semana de descuentos dos veces: octubre infla en '+usd(232119.57)+'. Es lo que vio Elena en el tablero la tarde del 2 de noviembre.</span>';
+      else if(sel===ultima())o+='<span class="ok">La versión actual vuelve a dar la cifra correcta. RESTORE no borró nada: escribió una versión nueva que deja de usar part-0002 y conserva el historial, incluida la versión mala.</span>';
+      else o+='<span class="ok">Así estaba la tabla antes de la carga mala. Leerla no cambia nada: es una consulta, no una corrección. Para corregir la tabla actual, usa RESTORE.</span>';
+      if(sel===ultima()&&!log.some(e=>e.op.indexOf('RESTORE')===0))o+='<span>Lee la versión 1 (antes de la recarga) y después restaura.</span>';
+      if(log.some(e=>e.op.indexOf('RESTORE')===0)&&!borrados.length&&sel===ultima())o+='<span>Ahora prueba VACUUM y vuelve a leer la versión 2.</span>';
+    }
+    $('#c6l2-out').innerHTML=o;
+  }
+  $('#c6l2-rest').addEventListener('click',()=>{
+    const nueva=ultima()+1,act=vivos(ultima()),obj=vivos(1);
+    log.push({v:nueva,cuando:'02/11 16:05',op:'RESTORE a la versión 1',add:obj.filter(a=>!act.includes(a)),rem:act.filter(a=>!obj.includes(a))});
+    sel=nueva;pintar();});
+  $('#c6l2-vac').addEventListener('click',()=>{
+    // Borra los archivos que la versión actual no usa (como VACUUM con retención 0, solo para la demostración)
+    const act=vivos(ultima());
+    Object.keys(ARCH).forEach(a=>{if(log.some(e=>e.add.includes(a))&&!act.includes(a)&&!borrados.includes(a))borrados.push(a);});
+    pintar();
+    if(!borrados.length)$('#c6l2-out').innerHTML='<span class="big">Nada que borrar</span><span>Todos los archivos están en uso por la versión actual.</span>';
+  });
+  $('#c6l2-ini').addEventListener('click',()=>{reiniciar();pintar();});
+  reiniciar();pintar();
+})();
+</script>
+<script>
+(function(){
+  const {$}=window.Lab;
+  const raiz=document.querySelector('[id="06-lab-1"]');
+  const nf=(n,d=0)=>{const s=Math.abs(n).toFixed(d).split('.');s[0]=s[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.');return (n<0?'−':'')+s.join(',');};
+  const usd=n=>'US$ '+nf(n,2);
+  // Bronce: archivos JSON de la zona de aterrizaje, todo como texto. Basado en pedidos del 14 de octubre,
+  // con errores agregados a propósito (una segunda versión de un pedido, un total con coma, ciudades sucias).
+  const PED=[
+    ['2026-10-14','59521','1042','2026-10-14 19:32:05','pagado','173.70','2026-10-14 19:35:05'],
+    ['2026-10-14','59522','5376','2026-10-14 00:57:12','entregado','35.80','2026-10-19 10:02:41'],
+    ['2026-10-14','59523','1802','2026-10-14 01:38:40','entregado','104.60','2026-10-20 08:11:09'],
+    ['2026-10-14','59524','5586','2026-10-14 03:52:18','entregado','48.80','2026-10-19 16:40:22'],
+    ['2026-10-14','59526','2573','2026-10-14 04:20:03','entregado','57.70','2026-10-20 12:31:50'],
+    ['2026-10-14','59528','3406','2026-10-14 05:57:31','entregado','143.70','2026-10-18 09:27:14'],
+    ['2026-10-14','59536','5718','2026-10-14 06:42:55','cancelado','351.70','2026-10-14 20:05:33'],
+    ['2026-10-14','59529','3657','2026-10-14 05:57:48','entregado','68,60','2026-10-19 11:15:00'],
+    ['2026-10-21','59521','1042','2026-10-14 19:32:05','entregado','173.70','2026-10-21 01:45:05']
+  ].map(r=>({fecha_carga:r[0],pedido_id:r[1],cliente_id:r[2],creado_en:r[3],estado:r[4],total:r[5],actualizado_en:r[6]}));
+  const CLI={'1042':'Quito','5376':'BOGOTÁ','1802':'Guadalajara','5586':'quito ','2573':'Santo Domingo','5718':'Lima','3406':'Lima','3657':'Lima'};
+  const CANON=['Lima','Bogotá','Ciudad de México','Santiago','Quito','Guadalajara','Medellín','Guayaquil','Santo Domingo','Panamá'];
+  const llano=s=>s.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const VENTA=['pagado','enviado','entregado'];
+  let capa='bronce';
+  function plata(){
+    const dup=$('#c6l1-dup').checked,tip=$('#c6l1-tip').checked,ciu=$('#c6l1-ciu').checked;
+    let filas=PED.map(p=>Object.assign({},p));
+    const fuera=[];
+    if(dup){
+      const ult={};filas.forEach(p=>{if(!ult[p.pedido_id]||p.actualizado_en>ult[p.pedido_id].actualizado_en)ult[p.pedido_id]=p;});
+      filas.forEach(p=>{if(ult[p.pedido_id]!==p)fuera.push({p,por:'versión vieja del pedido'});});
+      filas=filas.filter(p=>ult[p.pedido_id]===p);
+    }
+    const cuarentena=[];
+    filas=filas.filter(p=>{
+      if(tip&&!/^\d+\.\d{2}$/.test(p.total)){cuarentena.push(p);fuera.push({p,por:'cuarentena: «'+p.total+'» no es un DECIMAL(10,2)'});return false;}
+      return true;});
+    filas=filas.map(p=>{
+      const bruto=CLI[p.cliente_id];let ciudad=bruto;
+      if(ciu){const k=CANON.find(c=>llano(c)===llano(bruto));if(k)ciudad=k;}
+      return {pedido_id:+p.pedido_id,cliente_id:+p.cliente_id,ciudad:ciudad,creado_en:p.creado_en,estado:p.estado,total:tip?Number(p.total):parseFloat(p.total),_cambio:ciudad!==bruto,_texto:!tip};
+    });
+    return {filas,fuera,cuarentena};
+  }
+  function oro(pl){
+    const m={};pl.filas.filter(p=>VENTA.includes(p.estado)).forEach(p=>m[p.ciudad]=Math.round(((m[p.ciudad]||0)+p.total)*100)/100);
+    return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  }
+  const VERDAD={'Quito':222.50,'Lima':143.70,'Guadalajara':104.60,'Santo Domingo':57.70,'Bogotá':35.80};
+  function tabla(cols,filas,cls){
+    return '<div class="tbl" style="overflow-x:auto"><table><thead><tr>'+cols.map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody>'+filas.map(f=>'<tr class="'+(cls?cls(f):'')+'">'+cols.map(c=>{const v=f[c];return '<td class="'+(typeof v==='number'&&!/_id/.test(c)?'n':'')+'">'+(typeof v==='number'&&c==='total'?nf(v,2):v)+'</td>';}).join('')+'</tr>').join('')+'</tbody></table></div>';
+  }
+  function pintar(){
+    raiz.querySelectorAll('.c6l1-capas button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.c===capa));
+    const pl=plata(),or=oro(pl);
+    const total=or.reduce((s,e)=>s+e[1],0);
+    const bien=or.length===Object.keys(VERDAD).length&&or.every(e=>Math.abs((VERDAD[e[0]]||-1)-e[1])<0.005);
+    if(capa==='bronce'){
+      $('#c6l1-tit').textContent='bronce/pedidos: '+PED.length+' filas en 2 archivos JSON, todas las columnas como texto';
+      $('#c6l1-vista').innerHTML=tabla(['fecha_carga','pedido_id','cliente_id','estado','total','actualizado_en'],PED,f=>(f.total.indexOf(',')>-1||(f.pedido_id==='59521'))?'mal':'')+'<p class="c6l1-rot" style="margin-top:8px">bronce/clientes (ciudad tal como llegó): '+Object.entries(CLI).map(e=>e[0]+' «'+e[1]+'»').join(' · ')+'</p>';
+    }else if(capa==='plata'){
+      $('#c6l1-tit').textContent='plata/pedidos: '+pl.filas.length+' filas con tipos'+(pl.cuarentena.length?' · '+pl.cuarentena.length+' en cuarentena':'');
+      $('#c6l1-vista').innerHTML=tabla(['pedido_id','cliente_id','ciudad','estado','total'],pl.filas,f=>f._cambio?'cambio':(f._texto&&f.pedido_id===59529?'mal':''))+(pl.fuera.length?'<p class="c6l1-rot" style="margin-top:8px">Apartadas de plata</p>'+tabla(['pedido_id','estado','total','por'],pl.fuera.map(x=>({pedido_id:x.p.pedido_id,estado:x.p.estado,total:x.p.total,por:x.por})),()=> 'fuera'):'');
+    }else{
+      $('#c6l1-tit').textContent='oro/ventas_por_ciudad del 14 de octubre (solo pedidos pagados, enviados o entregados)';
+      const mx=Math.max.apply(null,or.map(e=>e[1]));
+      $('#c6l1-vista').innerHTML=or.map(e=>{const ok=Math.abs((VERDAD[e[0]]||-1)-e[1])<0.005;return '<div class="c6l1-bar"><span>«'+e[0]+'»</span><i class="'+(ok?'':'mal')+'" style="width:'+(100*e[1]/mx)+'%"></i><b>'+nf(e[1],2)+'</b></div>';}).join('');
+    }
+    let o='<span class="big">Oro: '+usd(total)+' en '+or.length+' ciudades</span>';
+    const avisos=[];
+    if(!$('#c6l1-dup').checked)avisos.push('el pedido 59521 de Renata llegó dos veces (pagado el 14 y entregado el 21) y Quito lo cuenta doble');
+    if(!$('#c6l1-tip').checked)avisos.push('el total «68,60» se leyó como 68,00 y se sumó a Lima sin avisar: un número mal escrito pasó en silencio, con un valor que nadie revisó');
+    if(!$('#c6l1-ciu').checked)avisos.push('«quito » y «BOGOTÁ» quedaron como ciudades distintas: Quito aparece partida en dos barras');
+    if(avisos.length)o+='<span class="warn">Sin esa regla de plata, el oro está mal: '+avisos.join('; ')+'.</span>';
+    else if(bien)o+='<span class="ok">Las tres reglas de plata están activas: un registro por pedido, tipos correctos y ciudades limpias. Bronce no se tocó: si mañana cambia una regla, plata y oro se reconstruyen desde ahí.</span>';
+    if($('#c6l1-tip').checked)o+='<span>El pedido 59529 quedó en cuarentena, no se perdió: espera a que alguien corrija el origen o la regla. Mientras, el oro lo deja fuera y lo dice.</span>';
+    $('#c6l1-out').innerHTML=o;
+  }
+  raiz.querySelectorAll('.c6l1-capas button').forEach(b=>b.addEventListener('click',()=>{capa=b.dataset.c;pintar();}));
+  ['#c6l1-dup','#c6l1-tip','#c6l1-ciu'].forEach(s=>$(s).addEventListener('change',pintar));
+  pintar();
+})();
+</script>
+</body>
+</html>

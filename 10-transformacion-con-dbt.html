@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="es">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-KX76XF8R');</script>
+<!-- End Google Tag Manager -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>dbt y pruebas de datos · Ingeniería de datos · Ingeniería de datos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Cómo viaja un dato desde la base de una aplicación hasta el tablero que lee la gerencia: ingesta, formatos, ETL y ELT, data warehouse, lakehouse, Spark, Kafka, orquestación, dbt, calidad y linaje, con laboratorios donde se ve cada pipeline funcionar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400;1,8..60,600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KX76XF8R"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<div class="wrap" data-page="transformacion-con-dbt">
+<header class="topbar"><a class="brand" href="index.html">Ingeniería de <b>datos</b></a><span class="eyebrow">Curso visual e interactivo · Datos e inteligencia artificial</span><a class="al-sitio" href="https://aaramirez.github.io/">← Todos los cursos</a></header>
+<div class="layout">
+<nav class="toc" id="toc" aria-label="Ruta de aprendizaje"></nav>
+<main>
+<header class="page-head"><span class="num">CAPÍTULO 10 DE 14</span><h1>Transformación con dbt y pruebas de datos</h1><p class="lede">Las transformaciones son el lugar donde vive la definición de cada cifra, y merecen el mismo cuidado que el código de una aplicación. Este capítulo lleva el SQL de la tienda a dbt: modelos que se referencian entre sí, materializaciones, pruebas que detienen un dato malo antes de que llegue al tablero, contratos, documentación generada y cambios revisados en Git.</p></header>
+<section><div class="prose"><p>Un miércoles, el tablero de Elena Vargas mostró que las ventas netas del 14 de octubre habían subido US$ 173,70 respecto de la víspera, cuando el día ya estaba cerrado. Nadie había vendido nada nuevo ese día. Natalia Herrera tardó una mañana en encontrar la causa: un reintento de la ingesta había traído dos veces el pedido 59521 de Renata, y la transformación lo sumó dos veces. El SQL estaba bien. Lo que no había era una prueba que dijera «un pedido aparece una sola vez».</p><p>A esas alturas, la plataforma tenía unas treinta consultas SQL: las del pipeline del capítulo 04, las tablas del modelo dimensional del capítulo 05, las capas del lakehouse del capítulo 06. Vivían en archivos sueltos, el orden en que se corrían estaba escrito a mano en el DAG del capítulo 09 y ninguna tenía pruebas. Martín Salas, que escribía la mitad de ellas, a veces cambiaba una sin saber qué otra se rompía. Este capítulo ordena todo eso con <b>dbt</b>.</p></div></section>
+<section><h2>dbt: modelos en SQL, referencias y el grafo que se arma solo</h2><div class="prose"><p><b>dbt</b> (<i>data build tool</i>, herramienta para construir datos) nació en 2016 en una consultora de analítica, hoy dbt Labs, con una idea: tratar las transformaciones en SQL como se trata el código de una aplicación, con archivos versionados, pruebas, documentación y revisión. Su núcleo, dbt Core, es de código abierto y se instala con <code>pip</code>; a noviembre de 2026 hay además un servicio administrado y un motor nuevo escrito en Rust, y la herramienta funciona con la mayoría de los almacenes del mercado (BigQuery, Snowflake, Redshift, Databricks, PostgreSQL, DuckDB) mediante <b>adaptadores</b> (<i>adapters</i>).</p></div><div class="analogia"><b>Imagínalo así</b><p>Una receta de cocina profesional no dice «toma la salsa que está en el tercer frasco de la nevera»: dice «usa la salsa base de la página 12». Si alguien mejora la salsa base, todas las recetas que la nombran se benefician, y cualquiera puede saber qué platos cambian si la salsa cambia. dbt hace eso con las tablas: cada consulta nombra a las otras por su receta, no por dónde están guardadas.</p></div><div class="prose"><p>En dbt, cada transformación es un <b>modelo</b> (<i>model</i>): un archivo <code>.sql</code> con un solo <code>SELECT</code>. dbt se encarga de convertirlo en una vista o una tabla en el almacén. Las piezas clave son dos funciones que se escriben entre llaves dobles, en el lenguaje de plantillas Jinja:</p><ul><li><code>{{ source('tienda', 'pedidos') }}</code> apunta a una <b>fuente</b> (<i>source</i>), una tabla que dbt no construye: la copia cruda que trajo la ingesta.</li><li><code>{{ ref('stg_pedidos') }}</code> apunta a otro modelo del proyecto.</li></ul><div class="code-copia"><pre><code>-- models/marts/fct_ventas.sql
+select p.pedido_id, d.linea, p.cliente_id, p.creado_en,
+       d.producto_id, d.cantidad * d.precio_unitario as venta
+from {{ ref('stg_pedidos') }} p
+join {{ ref('stg_detalle_pedido') }} d using (pedido_id)
+where p.estado in ('pagado', 'enviado', 'entregado')</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>Esas referencias hacen dos cosas. Primero, dbt las reemplaza por el nombre real de la tabla en el entorno donde corre: la misma consulta escribe en el esquema de desarrollo de Martín o en el de producción, sin cambiar una línea. Segundo, y más importante, dbt lee todos los <code>ref()</code> del proyecto y arma solo el <b>grafo de dependencias</b>: sabe que <code>fct_ventas</code> necesita a <code>stg_pedidos</code> y a <code>stg_detalle_pedido</code>, y los construye en ese orden. Nadie escribe el DAG a mano.</p><p>Los proyectos suelen organizarse en capas, como las de la arquitectura medallón del capítulo 06:</p><ul><li><b>Staging</b> (<code>stg_</code>): un modelo por tabla de origen, que solo renombra, cambia tipos y limpia (por ejemplo, quita los espacios de <code>Quito </code>). Sin uniones.</li><li><b>Intermedios</b> (<code>int_</code>): pasos de preparación que no se exponen.</li><li><b>Marts</b> (<code>fct_</code> y <code>dim_</code>): los hechos y dimensiones del modelo dimensional, listos para el consumo. Por eso la <code>fact_ventas</code> del capítulo 05 se llama aquí <code>fct_ventas</code>, y <code>dim_cliente</code>, <code>dim_clientes</code>.</li></ul></div><figure class="fig fig-flujo" id="10-diagrama-1"><div class="lienzo"><svg viewBox="0 0 900 440" style="min-width:720px" role="img" aria-label="Qué hace dbt build. A la izquierda, tres archivos SQL con sus llamadas a ref y source. En el centro, dbt lee los archivos, arma el grafo de dependencias a partir de las referencias y compila cada modelo a SQL puro con los nombres reales de las tablas. A la derecha, el almacén ejecuta los modelos en orden, y después de cada modelo corren sus pruebas; si una prueba falla, lo que depende de ese modelo se omite">
+<defs>
+<marker id="c10d1-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+<marker id="c10d1-t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-tra"/></marker>
+</defs>
+<text x="20" y="24" class="t t-xs t-b t-m">1 · LO QUE ESCRIBES</text>
+<text x="330" y="24" class="t t-xs t-b t-m">2 · LO QUE HACE DBT</text>
+<text x="640" y="24" class="t t-xs t-b t-m">3 · LO QUE CORRE EN EL ALMACÉN</text>
+
+<rect x="20" y="40" width="270" height="92" rx="8" class="caja"/>
+<text x="32" y="60" class="t t-s t-b">stg_pedidos.sql</text>
+<text x="32" y="80" class="t t-s t-mono">select pedido_id, estado, …</text>
+<text x="32" y="98" class="t t-s t-mono">from {{ source('tienda',</text>
+<text x="32" y="116" class="t t-s t-mono">            'pedidos') }}</text>
+<rect x="20" y="146" width="270" height="92" rx="8" class="caja"/>
+<text x="32" y="166" class="t t-s t-b">fct_ventas.sql</text>
+<text x="32" y="186" class="t t-s t-mono">select … from {{ ref('stg_pedidos') }}</text>
+<text x="32" y="204" class="t t-s t-mono">join {{ ref('stg_detalle_pedido') }}</text>
+<text x="32" y="222" class="t t-s t-mono">where estado in (…)</text>
+<rect x="20" y="252" width="270" height="74" rx="8" class="caja"/>
+<text x="32" y="272" class="t t-s t-b">staging.yml</text>
+<text x="32" y="292" class="t t-s t-mono">pedido_id: [unique, not_null]</text>
+<text x="32" y="310" class="t t-s t-mono">estado: accepted_values</text>
+
+<rect x="330" y="40" width="270" height="70" rx="8" class="c-tra"/>
+<text x="345" y="62" class="t t-s t-b k-tra">a · leer el proyecto</text>
+<text x="345" y="82" class="t t-s">modelos, fuentes, pruebas y</text>
+<text x="345" y="98" class="t t-s">configuración (manifest.json)</text>
+<rect x="330" y="122" width="270" height="104" rx="8" class="c-tra"/>
+<text x="345" y="144" class="t t-s t-b k-tra">b · armar el grafo con los ref()</text>
+<rect x="345" y="156" width="96" height="24" rx="5" class="caja"/><text x="393" y="172" class="t t-s" text-anchor="middle">stg_pedidos</text>
+<rect x="345" y="190" width="96" height="24" rx="5" class="caja"/><text x="393" y="206" class="t t-s" text-anchor="middle">stg_detalle</text>
+<rect x="490" y="173" width="96" height="24" rx="5" class="caja"/><text x="538" y="189" class="t t-s" text-anchor="middle">fct_ventas</text>
+<line x1="441" y1="168" x2="488" y2="182" class="ln" marker-end="url(#c10d1-m)"/>
+<line x1="441" y1="202" x2="488" y2="190" class="ln" marker-end="url(#c10d1-m)"/>
+<rect x="330" y="238" width="270" height="88" rx="8" class="c-tra"/>
+<text x="345" y="260" class="t t-s t-b k-tra">c · compilar a SQL puro</text>
+<text x="345" y="280" class="t t-s t-mono">{{ ref('stg_pedidos') }}</text>
+<text x="345" y="298" class="t t-s">se vuelve</text>
+<text x="345" y="316" class="t t-s t-mono">"analitica"."main"."stg_pedidos"</text>
+
+<g>
+<rect x="640" y="40" width="240" height="40" rx="8" class="c-red"/><text x="652" y="64" class="t t-s">① crea la vista stg_pedidos</text>
+<rect x="660" y="86" width="220" height="30" rx="6" style="fill:var(--good-soft);stroke:var(--good)"/><text x="672" y="106" class="t t-s">pruebas de stg_pedidos ✓</text>
+<rect x="640" y="126" width="240" height="40" rx="8" class="c-red"/><text x="652" y="150" class="t t-s">② crea stg_detalle_pedido</text>
+<rect x="660" y="172" width="220" height="30" rx="6" style="fill:var(--good-soft);stroke:var(--good)"/><text x="672" y="192" class="t t-s">pruebas de stg_detalle ✓</text>
+<rect x="640" y="212" width="240" height="40" rx="8" class="c-red"/><text x="652" y="236" class="t t-s">③ crea la tabla fct_ventas</text>
+<rect x="660" y="258" width="220" height="30" rx="6" style="fill:var(--warm-soft);stroke:var(--warm)"/><text x="672" y="278" class="t t-s k-warm">prueba falla ✗</text>
+<rect x="640" y="298" width="240" height="40" rx="8" class="caja" style="stroke-dasharray:4 3"/><text x="652" y="322" class="t t-s t-m">④ ventas_mensuales: omitido</text>
+</g>
+<line x1="290" y1="86" x2="328" y2="76" class="ln" marker-end="url(#c10d1-m)"/>
+<line x1="290" y1="192" x2="328" y2="176" class="ln" marker-end="url(#c10d1-m)"/>
+<line x1="290" y1="290" x2="328" y2="282" class="ln" marker-end="url(#c10d1-m)"/>
+<line x1="600" y1="282" x2="638" y2="60" class="ln s-tra" marker-end="url(#c10d1-t)"/>
+
+<rect x="20" y="356" width="860" height="70" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="36" y="380" class="t t-s">dbt no guarda ni mueve datos: genera el SQL y se lo pide al almacén (DuckDB, BigQuery, Snowflake, …) en el orden del grafo.</text>
+<text x="36" y="402" class="t t-s t-m">Con dbt build, las pruebas de cada modelo corren apenas se construye; si una falla, lo que depende de él no se construye.</text>
+</svg></div><figcaption><b>Qué hace <code>dbt build</code>.</b> A la izquierda, lo que escribes: modelos SQL con <code>source()</code> y <code>ref()</code>, y un archivo YAML con las pruebas. En el centro, en morado, lo que hace dbt: lee el proyecto, arma el grafo a partir de las referencias y compila cada modelo a SQL puro con los nombres reales de las tablas. A la derecha, lo que corre en el almacén, en orden: cada modelo (azul) y enseguida sus pruebas (verde si pasan); cuando una falla (rojo), el modelo que depende de él queda omitido (punteado). La franja de abajo recuerda que dbt no mueve datos: le pide al almacén que ejecute.</figcaption></figure></section>
+<section><h2>Materializaciones: vistas, tablas e incrementales</h2><div class="prose"><p>Un modelo es un <code>SELECT</code>; la <b>materialización</b> (<i>materialization</i>) decide qué queda guardado en el almacén. Se configura por modelo o por carpeta, y cambiarla no cambia el SQL.</p><ul><li><b>Vista</b> (<code>view</code>): se guarda solo la consulta. Construirla es instantáneo, pero cada vez que alguien la lee se recalcula. Buena para staging, que es liviano.</li><li><b>Tabla</b> (<code>table</code>): se guarda el resultado completo, que se recalcula entero en cada corrida. Leerla es rápido. Buena para marts y dimensiones de tamaño razonable.</li><li><b>Incremental</b> (<code>incremental</code>): una tabla que en cada corrida solo procesa las filas nuevas o cambiadas y las agrega o fusiona con las que ya estaban. Buena para hechos grandes.</li><li><b>Efímera</b> (<code>ephemeral</code>): no se guarda nada; dbt la incrusta como una subconsulta en los modelos que la usan.</li></ul><p>Un modelo incremental tiene que decir qué es «nuevo». Para la tienda, lo natural es la columna <code>actualizado_en</code>, la misma de la marca de agua del capítulo 02:</p><div class="code-copia"><pre><code>{{ config(materialized='incremental', unique_key=['pedido_id', 'linea']) }}
+
+select p.pedido_id, d.linea, p.creado_en, p.actualizado_en,
+       d.cantidad * d.precio_unitario as venta
+from {{ ref('stg_pedidos') }} p
+join {{ ref('stg_detalle_pedido') }} d using (pedido_id)
+where p.estado in ('pagado', 'enviado', 'entregado')
+{% if is_incremental() %}
+  and p.actualizado_en &gt; (select max(actualizado_en) from {{ this }})
+{% endif %}</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>La primera vez, <code>is_incremental()</code> es falso y se construye todo. Las siguientes, solo entran los pedidos actualizados después del último que ya está en la tabla (<code>{{ this }}</code>), y <code>unique_key</code> hace que una línea que ya existía se reemplace en lugar de duplicarse: es el <code>MERGE</code> idempotente del capítulo 04, escrito una vez. El precio es la lógica de «qué es nuevo», que puede fallar en casos borde (un pedido que deja de estar pagado, por ejemplo, no se borra solo). Por eso los modelos incrementales se reconstruyen completos de vez en cuando con <code>dbt build --full-refresh</code>.</p></div><figure class="fig fig-comparacion" id="10-diagrama-2"><div class="lienzo"><svg viewBox="0 0 900 380" style="min-width:720px" role="img" aria-label="Las cuatro materializaciones de dbt comparadas en columnas: vista, tabla, incremental y efímera. Para cada una, qué queda guardado en el almacén, cuánto cuesta cada corrida, cuánto cuesta cada consulta y para qué capa conviene">
+<text x="20" y="24" class="t t-xs t-b t-m">LA MISMA CONSULTA, CUATRO FORMAS DE GUARDARLA</text>
+<g>
+<rect x="160" y="40" width="175" height="60" rx="8" class="c-tra"/><text x="247" y="64" class="t t-b k-tra" text-anchor="middle">view</text><text x="247" y="84" class="t t-s" text-anchor="middle">vista</text>
+<rect x="345" y="40" width="175" height="60" rx="8" class="c-red"/><text x="432" y="64" class="t t-b k-red" text-anchor="middle">table</text><text x="432" y="84" class="t t-s" text-anchor="middle">tabla completa</text>
+<rect x="530" y="40" width="175" height="60" rx="8" class="c-red"/><text x="617" y="64" class="t t-b k-red" text-anchor="middle">incremental</text><text x="617" y="84" class="t t-s" text-anchor="middle">tabla que solo agrega</text>
+<rect x="715" y="40" width="175" height="60" rx="8" class="caja" style="stroke-dasharray:4 3"/><text x="802" y="64" class="t t-b" text-anchor="middle">ephemeral</text><text x="802" y="84" class="t t-s" text-anchor="middle">efímera</text>
+</g>
+<g class="t t-s">
+<text x="20" y="134" class="t t-s t-b">Qué se guarda</text>
+<text x="247" y="134" class="t t-s" text-anchor="middle">solo la consulta</text>
+<text x="432" y="134" class="t t-s" text-anchor="middle">el resultado entero</text>
+<text x="617" y="134" class="t t-s" text-anchor="middle">el resultado; agrega lo nuevo</text>
+<text x="802" y="134" class="t t-s" text-anchor="middle">nada: se incrusta en otros</text>
+<line x1="20" y1="150" x2="890" y2="150" class="ln"/>
+<text x="20" y="180" class="t t-s t-b">Costo de cada corrida</text>
+<text x="247" y="180" class="t t-s" text-anchor="middle" style="fill:var(--good)">casi cero</text>
+<text x="432" y="180" class="t t-s k-warm" text-anchor="middle">recalcula todo</text>
+<text x="617" y="180" class="t t-s" text-anchor="middle" style="fill:var(--good)">solo filas nuevas</text>
+<text x="802" y="180" class="t t-s" text-anchor="middle" style="fill:var(--good)">cero</text>
+<line x1="20" y1="196" x2="890" y2="196" class="ln"/>
+<text x="20" y="226" class="t t-s t-b">Costo de cada consulta</text>
+<text x="247" y="226" class="t t-s k-warm" text-anchor="middle">recalcula al leer</text>
+<text x="432" y="226" class="t t-s" text-anchor="middle" style="fill:var(--good)">lee lo guardado</text>
+<text x="617" y="226" class="t t-s" text-anchor="middle" style="fill:var(--good)">lee lo guardado</text>
+<text x="802" y="226" class="t t-s t-m" text-anchor="middle">no se consulta sola</text>
+<line x1="20" y1="242" x2="890" y2="242" class="ln"/>
+<text x="20" y="272" class="t t-s t-b">El riesgo</text>
+<text x="247" y="272" class="t t-s" text-anchor="middle">lenta si se apilan</text>
+<text x="432" y="272" class="t t-s" text-anchor="middle">cara si es enorme</text>
+<text x="617" y="272" class="t t-s" text-anchor="middle">lógica de «qué es nuevo»</text>
+<text x="802" y="272" class="t t-s" text-anchor="middle">difícil de depurar</text>
+<line x1="20" y1="288" x2="890" y2="288" class="ln"/>
+<text x="20" y="318" class="t t-s t-b">Conviene en</text>
+<text x="247" y="318" class="t t-s" text-anchor="middle">staging liviano</text>
+<text x="432" y="318" class="t t-s" text-anchor="middle">marts y dimensiones</text>
+<text x="617" y="318" class="t t-s" text-anchor="middle">hechos grandes por fecha</text>
+<text x="802" y="318" class="t t-s" text-anchor="middle">pasos intermedios cortos</text>
+</g>
+<text x="20" y="362" class="t t-s t-m">En Tienda Ejemplo: las stg_ como vistas, dim_clientes como tabla y fct_ventas como incremental por fecha de actualización.</text>
+</svg></div><figcaption><b>Las cuatro materializaciones.</b> Cada columna es una forma de guardar la misma consulta: vista (morado, solo la consulta), tabla e incremental (azul, guardan datos) y efímera (punteada, no guarda nada). Las filas comparan qué se guarda, cuánto cuesta cada corrida, cuánto cuesta cada consulta, el riesgo y en qué capa conviene; en verde lo barato y en rojo lo caro. Abajo, la elección para Tienda Ejemplo.</figcaption></figure></section>
+<section><h2>Pruebas de datos: únicos, no nulos, relaciones y valores aceptados</h2><div class="prose"><p>Una <b>prueba de datos</b> (<i>data test</i>) es una consulta que busca filas que no deberían existir. Si encuentra alguna, la prueba falla. En dbt se declaran en archivos YAML, junto a los modelos, y vienen cuatro pruebas genéricas listas para usar:</p><ul><li><code>unique</code>: la columna no tiene valores repetidos (un <code>pedido_id</code> aparece una vez).</li><li><code>not_null</code>: la columna no tiene vacíos.</li><li><code>accepted_values</code>: la columna solo tiene los valores de una lista (<code>estado</code> en <code>creado</code>, <code>pagado</code>, <code>enviado</code>, <code>entregado</code>, <code>cancelado</code>, <code>devuelto</code>).</li><li><code>relationships</code>: cada valor existe en otra tabla (cada <code>pagos.pedido_id</code> está en <code>stg_pedidos</code>), la integridad referencial que el almacén no siempre impone.</li></ul></div><div class="analogia"><b>Imagínalo así</b><p>Es el control de calidad de una fábrica de botellas: antes de que la caja salga del depósito, alguien revisa que ninguna botella esté rota, que todas tengan tapa y que la etiqueta sea de este producto. Si una caja falla, no se despacha, y las cajas que dependían de ella para armar un pedido tampoco.</p></div><div class="prose"><p>Además de las genéricas, se pueden escribir <b>pruebas singulares</b> (<i>singular tests</i>): un archivo SQL en la carpeta <code>tests/</code> que devuelve las filas problemáticas. Por ejemplo, «ninguna línea de pedido aparece dos veces en <code>fct_ventas</code>». Y desde la versión 1.8, dbt tiene <b>pruebas unitarias</b> (<i>unit tests</i>) que prueban la lógica de un modelo con unas pocas filas inventadas, como las pruebas de cualquier programa.</p><p>Cada prueba tiene una <b>severidad</b> (<i>severity</i>): <code>error</code>, que detiene lo que depende del modelo, o <code>warn</code>, que solo avisa. La base de la tienda tiene 26 clientes sin email: una prueba <code>not_null</code> sobre el email con severidad <code>error</code> frenaría las ventas, que no usan el email. Ese caso merece un aviso y un ticket para el equipo de Diego, no un tablero detenido.</p><p>Lo que hace que las pruebas sirvan es <code>dbt build</code>: construye cada modelo y corre sus pruebas apenas termina, antes de seguir con los que dependen de él. Si una prueba con severidad <code>error</code> falla, todo lo que está aguas abajo se <b>omite</b> (<i>skip</i>). El tablero no se actualiza y conserva la cifra de ayer, atrasada pero correcta, que es mejor que una cifra nueva y equivocada.</p></div><div class="lab" id="10-lab-1"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Pruebas que detienen un pipeline</h3></div><p class="hint">Mete un problema en los datos de origen (el pedido 59521 duplicado, un estado nuevo que nadie avisó o un pago de un pedido que no existe) y pulsa «Correr». Con <code>dbt build</code>, mira qué prueba falla, qué modelos quedan omitidos y qué cifra muestra el tablero. Después corre lo mismo con <code>dbt run</code>, sin pruebas, y cambia la severidad de la prueba del email.</p><style>
+[id="10-lab-1"] .c10l1-rot{font:700 .72rem var(--f-display);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+[id="10-lab-1"] .c10l1-g{display:grid;gap:4px}
+[id="10-lab-1"] .c10l1-lista{display:grid;gap:6px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+[id="10-lab-1"] .c10l1-fila{display:grid;grid-template-columns:minmax(0,170px) minmax(0,1fr);gap:8px;align-items:start}
+@media (max-width:560px){[id="10-lab-1"] .c10l1-fila{grid-template-columns:minmax(0,1fr)}}
+[id="10-lab-1"] .c10l1-mod{border:2px solid var(--line);border-left:6px solid var(--c-tra);border-radius:8px;padding:4px 8px;font:600 .8rem var(--f-mono);color:var(--ink);background:var(--paper);display:grid}
+[id="10-lab-1"] .c10l1-mod.cons{border-left-color:var(--c-apl)}
+[id="10-lab-1"] .c10l1-mod small{font:600 .66rem var(--f-display);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+[id="10-lab-1"] .c10l1-mod.ok{border-color:var(--good)} [id="10-lab-1"] .c10l1-mod.ok small{color:var(--good)}
+[id="10-lab-1"] .c10l1-mod.run{border-color:var(--accent);background:var(--accent-soft)}
+[id="10-lab-1"] .c10l1-mod.skip{opacity:.5;border-style:dashed}
+[id="10-lab-1"] .c10l1-pruebas{display:flex;flex-wrap:wrap;gap:4px}
+[id="10-lab-1"] .c10l1-p{border:1px solid var(--line);border-radius:999px;padding:2px 8px;font:500 .72rem var(--f-mono);color:var(--muted);background:var(--card)}
+[id="10-lab-1"] .c10l1-p.pass{border-color:var(--good);color:var(--good);background:var(--good-soft)}
+[id="10-lab-1"] .c10l1-p.fail{border-color:var(--warm);color:var(--warm);background:var(--warm-soft);font-weight:700}
+[id="10-lab-1"] .c10l1-p.warn{border-color:var(--warm);color:var(--warm);border-style:dashed}
+[id="10-lab-1"] .c10l1-p.skip{opacity:.45;border-style:dashed}
+[id="10-lab-1"] .c10l1-cifra{border:2px solid var(--line);border-radius:10px;padding:8px 12px;background:var(--card);display:grid;gap:2px}
+[id="10-lab-1"] .c10l1-cifra span{font:600 .72rem var(--f-display);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+[id="10-lab-1"] .c10l1-cifra b{font:700 1.2rem var(--f-mono);color:var(--ink)}
+[id="10-lab-1"] .c10l1-cifra.mala{border-color:var(--warm)} [id="10-lab-1"] .c10l1-cifra.mala b{color:var(--warm)}
+[id="10-lab-1"] .c10l1-cifra.vieja b{color:var(--muted)}
+[id="10-lab-1"] .c10l1-cifra.buena{border-color:var(--good)} [id="10-lab-1"] .c10l1-cifra.buena b{color:var(--good)}
+</style>
+<div class="c10l1-g"><span class="c10l1-rot">Mete un problema en los datos de origen</span>
+<div class="btns" role="group" aria-label="Problemas en los datos">
+  <button type="button" data-x="dup" aria-pressed="true">Pedido 59521 duplicado</button>
+  <button type="button" data-x="est" aria-pressed="false">Estado nuevo «en_ruta»</button>
+  <button type="button" data-x="huer" aria-pressed="false">Pago de un pedido que no existe</button>
+</div></div>
+<div class="c10l1-g"><span class="c10l1-rot">Cómo corre</span>
+<div class="btns" role="group" aria-label="Cómo corre">
+  <button type="button" data-m="build" aria-pressed="true">dbt build (modelos y pruebas)</button>
+  <button type="button" data-m="run" aria-pressed="false">dbt run (sin pruebas)</button>
+  <button type="button" id="c10l1-sev" aria-pressed="true">Email vacío: solo aviso (severity: warn)</button>
+</div></div>
+<div class="btns"><button type="button" class="primary" id="c10l1-go">Correr</button></div>
+<div class="c10l1-lista" id="c10l1-lista" aria-label="Modelos de dbt en orden y sus pruebas"></div>
+<div class="c10l1-cifra" id="c10l1-cifra"><span>Ventas netas de octubre en el tablero</span><b id="c10l1-v">US$ 782.785,77</b><small id="c10l1-vs" class="hint">la cifra de ayer, ya publicada</small></div>
+<div class="readout texto" id="c10l1-out" aria-live="polite">Elige un problema y pulsa «Correr».</div></div><div class="prose"><p>dbt no es la única herramienta de pruebas de datos. <b>Great Expectations</b> y <b>Soda</b> son ejemplos del mercado que se usan también fuera de dbt, por ejemplo para revisar los archivos que llegan a bronce antes de cualquier transformación, con reglas de distribución y volumen más ricas. La observabilidad de datos a escala de toda la plataforma es el tema del capítulo 12.</p></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Un proyecto dbt para la tienda, con pruebas que se detienen</h3></div><p>Vas a crear un proyecto dbt con cuatro modelos de staging, <code>fct_ventas</code> y <code>ventas_mensuales</code>, sobre tu <code>tienda.db</code>, con doce pruebas, y a romperlo con un pedido duplicado. Usa la carpeta <code>datos-tienda</code> con su entorno virtual activado. Instala el adaptador de DuckDB para dbt (trae dbt Core) y crea las carpetas del proyecto:</p><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>pip install dbt-duckdb</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>mkdir tienda_dbt\models\staging</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>mkdir tienda_dbt\models\marts</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>mkdir tienda_dbt\tests</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>cd tienda_dbt</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>pip install dbt-duckdb</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>mkdir -p tienda_dbt/models/staging tienda_dbt/models/marts tienda_dbt/tests</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>cd tienda_dbt</code><button type="button" class="copiar">Copiar</button></div></div></div><p>Crea estos archivos dentro de <code>tienda_dbt</code>, cada uno con su nombre. Primero la configuración del proyecto, <code>dbt_project.yml</code>:</p><div class="code-copia"><pre><code>name: tienda
+version: "1.0.0"
+profile: tienda
+models:
+  tienda:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>La conexión, <code>profiles.yml</code>: dbt escribe en <code>analitica.duckdb</code> y lee la base de la tienda en modo de solo lectura.</p><div class="code-copia"><pre><code>tienda:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: analitica.duckdb
+      attach:
+        - path: ../tienda.db
+          type: sqlite
+          alias: tienda
+          read_only: true</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>Las fuentes, <code>models/staging/fuentes.yml</code>:</p><div class="code-copia"><pre><code>sources:
+  - name: tienda
+    schema: main
+    database: tienda
+    tables:
+      - name: clientes
+      - name: pedidos
+      - name: detalle_pedido
+      - name: pagos</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>Los cuatro modelos de staging. <code>models/staging/stg_pedidos.sql</code> trae un interruptor para simular que la ingesta duplicó el pedido 59521:</p><div class="code-copia"><pre><code>select pedido_id, cliente_id, cast(creado_en as timestamp) as creado_en, estado, canal
+from {{ source('tienda', 'pedidos') }}
+{% if var('romper', false) %}
+union all  -- simula que la ingesta trajo dos veces el pedido 59521
+select pedido_id, cliente_id, cast(creado_en as timestamp), estado, canal
+from {{ source('tienda', 'pedidos') }} where pedido_id = 59521
+{% endif %}</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p><code>models/staging/stg_detalle_pedido.sql</code>:</p><div class="code-copia"><pre><code>select pedido_id, linea, producto_id, cantidad, cast(precio_unitario as decimal(10, 2)) as precio_unitario
+from {{ source('tienda', 'detalle_pedido') }}</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p><code>models/staging/stg_clientes.sql</code>:</p><div class="code-copia"><pre><code>select cliente_id, nombre, email, trim(ciudad) as ciudad
+from {{ source('tienda', 'clientes') }}</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p><code>models/staging/stg_pagos.sql</code>:</p><div class="code-copia"><pre><code>select pago_id, pedido_id, metodo, cast(monto as decimal(10, 2)) as monto, estado
+from {{ source('tienda', 'pagos') }}</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>Las pruebas de staging, <code>models/staging/staging.yml</code>:</p><div class="code-copia"><pre><code>models:
+  - name: stg_pedidos
+    columns:
+      - name: pedido_id
+        data_tests: [unique, not_null]
+      - name: estado
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [creado, pagado, enviado, entregado, cancelado, devuelto]
+  - name: stg_clientes
+    columns:
+      - name: cliente_id
+        data_tests: [unique, not_null]
+      - name: email
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+  - name: stg_pagos
+    columns:
+      - name: pago_id
+        data_tests: [unique]
+      - name: pedido_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_pedidos')
+                field: pedido_id</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>Los dos marts. <code>models/marts/fct_ventas.sql</code>:</p><div class="code-copia"><pre><code>select p.pedido_id, d.linea, p.cliente_id, p.creado_en,
+       d.producto_id, d.cantidad * d.precio_unitario as venta
+from {{ ref('stg_pedidos') }} p
+join {{ ref('stg_detalle_pedido') }} d using (pedido_id)
+where p.estado in ('pagado', 'enviado', 'entregado')</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p><code>models/marts/ventas_mensuales.sql</code>:</p><div class="code-copia"><pre><code>select strftime(creado_en, '%Y-%m') as mes, sum(venta) as ventas_netas,
+       count(distinct pedido_id) as pedidos
+from {{ ref('fct_ventas') }}
+group by 1</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>Su documentación y pruebas, <code>models/marts/marts.yml</code>:</p><div class="code-copia"><pre><code>models:
+  - name: fct_ventas
+    description: "Una fila por línea vendida: pedidos pagados, enviados o entregados."
+    columns:
+      - name: venta
+        description: "cantidad × precio_unitario, en US$"
+        data_tests: [not_null]
+  - name: ventas_mensuales
+    description: "La cifra del tablero: ventas netas por mes."
+    columns:
+      - name: mes
+        data_tests: [unique, not_null]</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>Y una prueba singular, <code>tests/fct_ventas_una_fila_por_linea.sql</code>:</p><div class="code-copia"><pre><code>-- Falla si una línea de pedido aparece más de una vez en fct_ventas
+select pedido_id, linea, count(*) as veces
+from {{ ref('fct_ventas') }}
+group by pedido_id, linea
+having count(*) &gt; 1</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>Construye y prueba todo, mira la cifra de octubre y después rompe el pedido 59521:</p><div class="cmds"><div class="cmd-panel" data-so="win mac linux"><div class="cmd-l"><code>dbt build --profiles-dir .</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dbt show --profiles-dir . --inline "select * from {{ ref('ventas_mensuales') }} where mes = '2026-10'"</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dbt build --profiles-dir . --vars "{romper: true}"</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>En el primer <code>dbt build</code>, cuenta los modelos y pruebas y busca el aviso amarillo.</span></li><li><span>Compara la cifra de <code>dbt show</code> con la del tablero del capítulo 01.</span></li><li><span>En el segundo <code>dbt build</code>, busca la prueba que falla (<code>FAIL</code>) y las líneas <code>SKIP</code>.</span></li></ol><p><b>Qué observar:</b> el primer <code>build</code> corre 6 modelos y 12 pruebas en el orden del grafo, sin que hayas escrito ese orden: termina con 17 aprobadas y 1 aviso, los 26 clientes sin email, que no detiene nada porque su severidad es <code>warn</code>. <code>dbt show</code> muestra octubre con 782,785.77 (dbt usa el formato de números en inglés: es US$ 782.785,77) y 8.376 pedidos. Con <code>romper</code>, falla <code>unique_stg_pedidos_pedido_id</code> con una fila, y <code>fct_ventas</code>, <code>ventas_mensuales</code> y sus pruebas quedan en <code>SKIP</code>: el pedido duplicado no llega a las ventas. Como <code>ventas_mensuales</code> no se reconstruyó, sigue con la cifra correcta de la corrida anterior. Antes de terminar, vuelve a correr <code>dbt build --profiles-dir .</code> sin <code>romper</code>.</p></div></section>
+<section><h2>Contratos de datos entre productores y consumidores</h2><div class="prose"><p>Las pruebas atrapan un problema después de que ocurrió. Muchos problemas se pueden evitar antes, poniéndose de acuerdo. Un <b>contrato de datos</b> (<i>data contract</i>) es un acuerdo explícito entre quien produce un conjunto de datos y quienes lo consumen: qué columnas tiene, con qué tipos, qué significan, qué garantías de calidad y frescura ofrece, quién es su dueño y cómo se avisan los cambios.</p></div><div class="analogia"><b>Imagínalo así</b><p>Un enchufe es un contrato: la forma, el voltaje y la frecuencia están fijados por una norma. El fabricante de la lámpara y el de la central eléctrica nunca se conocieron, y aun así la lámpara funciona. Si alguien quiere cambiar el voltaje, no lo hace un martes en silencio: lo anuncia con años de anticipación y durante un tiempo conviven los dos.</p></div><div class="prose"><p>En Tienda Ejemplo hay dos fronteras donde un contrato ayuda:</p><ul><li><b>Entre Diego y la plataforma.</b> Si la app empieza a guardar el estado <code>en_ruta</code>, o renombra <code>canal</code> a <code>origen</code>, la ingesta y todos los modelos se rompen o, peor, siguen corriendo con datos incompletos. Un contrato sobre los eventos que publica la app (o sobre las tablas que la ingesta copia) convierte ese cambio en una conversación previa, verificada en la integración continua del propio equipo de Diego.</li><li><b>Entre la plataforma y sus consumidores.</b> El tablero de Elena, las consultas de Martín y el modelo de Irene dependen de <code>fct_ventas</code>. Su contrato dice qué columnas y tipos tiene, y que no cambiarán sin una versión nueva.</li></ul><p>dbt implementa la segunda frontera con los <b>contratos de modelo</b> (<i>model contracts</i>): en el YAML del modelo se declara <code>contract: {enforced: true}</code> y cada columna con su <code>data_type</code>, y dbt se niega a construir el modelo si el <code>SELECT</code> no produce exactamente esas columnas con esos tipos. Para cambios que rompen, los modelos pueden tener <b>versiones</b> (<code>v1</code>, <code>v2</code>) que conviven un tiempo, mientras los consumidores migran. Para la primera frontera hay especificaciones abiertas, como el estándar de contratos de datos de la fundación Bitol (ODCS), y registros de esquemas como el del capítulo 08.</p></div></section>
+<section><h2>Documentación generada y la capa semántica de métricas</h2><div class="prose"><p>Cada modelo, columna y prueba del proyecto puede llevar una descripción en el YAML. Con <code>dbt docs generate</code>, dbt arma un sitio web con todo el proyecto: cada modelo con su SQL, sus columnas, sus pruebas, los tipos reales leídos del almacén y un grafo interactivo de <b>linaje</b> (<i>lineage</i>) que muestra de qué fuentes sale cada tabla y qué depende de ella. Como se genera del mismo código que corre, no se desactualiza como una página de un wiki. El linaje de toda la plataforma, más allá de dbt, es el tema del capítulo 12.</p><p>El último paso resuelve el problema del capítulo 01: dos personas que calculan «ventas netas» de forma distinta. Una <b>capa semántica</b> (<i>semantic layer</i>) define cada métrica una sola vez, en código: qué medida suma, sobre qué modelo, con qué filtros y por qué dimensiones se puede abrir. En dbt se hace con MetricFlow: se declara <code>ventas_netas</code> como la suma de <code>venta</code> en <code>fct_ventas</code>, y el tablero, la hoja de cálculo de Martín y una pregunta en lenguaje natural a un asistente consultan la métrica por su nombre, sin reescribir el SQL. Otras herramientas del mercado tienen capas semánticas propias, como LookML en Looker o el modelo semántico de Power BI.</p><p>Además, un proyecto dbt puede declarar <b>exposiciones</b> (<i>exposures</i>): los tableros, informes y modelos de aprendizaje automático que consumen sus tablas, con su dueño. Así el grafo llega hasta el tablero de Elena, y cualquiera puede ver qué consumidores toca un cambio.</p></div></section>
+<section><h2>Transformaciones en Git, con revisión y CI</h2><div class="prose"><p>Con los modelos en archivos, el proyecto dbt vive en un repositorio de Git, y cada cambio sigue el camino de cualquier código: una rama, una <b>solicitud de cambio</b> (<i>pull request</i>) con revisión de otra persona y una <b>integración continua</b> (<i>continuous integration</i>, CI) que corre automáticamente las pruebas antes de aceptar el cambio. Los fundamentos de Git y de CI/CD están en <a href="https://aaramirez.github.io/devops/temario.html" target="_blank" rel="noopener">DevOps</a>; aquí interesa lo propio de los datos.</p><p>Correr todo el proyecto en cada cambio sería lento y caro cuando hay cientos de modelos. dbt permite seleccionar: <code>stg_pedidos+</code> es el modelo y todo lo que depende de él; <code>+fct_ventas</code>, el modelo y todo lo que necesita. Y con <code>state:modified+</code>, comparando el proyecto con el estado de producción (<code>--state</code>), dbt elige solo los modelos que cambiaron en la rama y sus descendientes. La CI los construye en un esquema temporal, con datos reales o una muestra, corre sus pruebas y verifica los contratos; con <code>--defer</code>, los modelos que no cambiaron se leen directamente de producción en lugar de reconstruirse.</p></div><figure class="fig fig-flujo" id="10-diagrama-3"><div class="lienzo"><svg viewBox="0 0 900 430" style="min-width:720px" role="img" aria-label="Diagrama de secuencia de un cambio en un modelo de dbt. Participantes: Martín, el repositorio Git, la integración continua, Natalia como revisora y el almacén de producción. Uno, Martín sube una rama con el cambio; dos, abre una solicitud de cambio; tres, la integración continua corre dbt build solo para lo modificado y lo que depende de ello, en un esquema temporal; cuatro, publica el resultado de las pruebas y el contrato; cinco, Natalia revisa el SQL y el resultado; seis, aprueba y se fusiona; siete, el orquestador corre dbt en producción">
+<defs>
+<marker id="c10d3-o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+<marker id="c10d3-t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-tra"/></marker>
+<marker id="c10d3-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-warm"/></marker>
+</defs>
+<rect x="20" y="16" width="140" height="50" rx="8" style="fill:var(--warm-soft);stroke:var(--warm)"/><text x="90" y="38" class="t t-s t-b k-warm" text-anchor="middle">Martín</text><text x="90" y="55" class="t t-s" text-anchor="middle">escribe el cambio</text>
+<rect x="190" y="16" width="140" height="50" rx="8" class="caja"/><text x="260" y="38" class="t t-s t-b" text-anchor="middle">Repositorio Git</text><text x="260" y="55" class="t t-s t-m" text-anchor="middle">el proyecto dbt</text>
+<rect x="360" y="16" width="170" height="50" rx="8" class="c-tra"/><text x="445" y="38" class="t t-s t-b k-tra" text-anchor="middle">Integración continua</text><text x="445" y="55" class="t t-s" text-anchor="middle">esquema temporal</text>
+<rect x="560" y="16" width="140" height="50" rx="8" style="fill:var(--warm-soft);stroke:var(--warm)"/><text x="630" y="38" class="t t-s t-b k-warm" text-anchor="middle">Natalia</text><text x="630" y="55" class="t t-s" text-anchor="middle">revisora</text>
+<rect x="730" y="16" width="150" height="50" rx="8" class="c-red"/><text x="805" y="38" class="t t-s t-b k-red" text-anchor="middle">Producción</text><text x="805" y="55" class="t t-s" text-anchor="middle">almacén + orquestador</text>
+<line x1="90" y1="66" x2="90" y2="390" class="vida"/><line x1="260" y1="66" x2="260" y2="390" class="vida"/><line x1="445" y1="66" x2="445" y2="390" class="vida"/><line x1="630" y1="66" x2="630" y2="390" class="vida"/><line x1="805" y1="66" x2="805" y2="390" class="vida"/>
+<line x1="90" y1="100" x2="256" y2="100" class="ln" marker-end="url(#c10d3-o)"/><text x="100" y="92" class="t t-s">① sube la rama</text>
+<line x1="90" y1="140" x2="256" y2="140" class="ln" marker-end="url(#c10d3-o)"/><text x="100" y="132" class="t t-s">② abre el pull request</text>
+<line x1="260" y1="180" x2="441" y2="180" class="ln s-tra" marker-end="url(#c10d3-t)"/><text x="270" y="172" class="t t-s">③ dbt build --select state:modified+</text>
+<line x1="445" y1="225" x2="264" y2="225" class="ln s-tra" marker-end="url(#c10d3-t)"/><text x="455" y="221" class="t t-s">④ pruebas, contrato y diff de datos</text>
+<line x1="260" y1="270" x2="626" y2="270" class="ln" marker-end="url(#c10d3-o)"/><text x="270" y="262" class="t t-s">⑤ revisa el SQL y el resultado de ④</text>
+<line x1="630" y1="310" x2="264" y2="310" class="ln" marker-end="url(#c10d3-o)"/><text x="640" y="306" class="t t-s">⑥ aprueba y se fusiona</text>
+<line x1="260" y1="350" x2="801" y2="350" class="ln s-tra" marker-end="url(#c10d3-t)"/><text x="270" y="342" class="t t-s">⑦ la próxima corrida del orquestador construye en producción</text>
+<text x="452" y="196" class="t t-s k-warm">si algo falla, el pull request no se puede fusionar</text>
+<text x="20" y="418" class="t t-s t-m">Producción nunca recibe un modelo que no pasó sus pruebas en un esquema aparte, con los datos reales o una muestra.</text>
+</svg></div><figcaption><b>Un cambio en un modelo, de la rama a producción.</b> Participantes arriba: Martín (quien cambia), el repositorio, la integración continua (morado), Natalia (quien revisa) y producción (azul). ① y ② Martín sube su rama y abre la solicitud de cambio. ③ La CI construye solo lo modificado y lo que depende de ello, en un esquema temporal. ④ Publica el resultado: pruebas, contratos y una comparación de datos; si algo falla, la solicitud no se puede fusionar. ⑤ y ⑥ Natalia revisa el SQL y el resultado, y aprueba. ⑦ La siguiente corrida del orquestador construye en producción.</figcaption></figure><div class="lab" id="10-lab-2"><div class="lab-title"><span class="tag">Laboratorio</span><h3>El grafo de modelos de dbt de la tienda</h3></div><p class="hint">Pulsa el modelo que cambiaste en tu rama y elige el selector: lo que depende de él (<code>modelo+</code>), de lo que depende (<code>+modelo</code>), solo el modelo o todo el proyecto. Mira qué se reconstruye, cuántas pruebas corren, cuánto tarda y el comando de dbt. Cambia <code>fct_ventas</code> de <code>table</code> a <code>incremental</code> y compara.</p><style>
+[id="10-lab-2"] .c10l2-rot{font:700 .72rem var(--f-display);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+[id="10-lab-2"] .c10l2-g{display:grid;gap:4px}
+[id="10-lab-2"] .c10l2-lienzo{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+[id="10-lab-2"] .c10l2-lienzo svg{display:block;width:100%;min-width:620px;height:auto}
+[id="10-lab-2"] svg text{font-family:var(--f-display);fill:var(--ink);pointer-events:none}
+[id="10-lab-2"] svg .c10l2-m{fill:var(--muted)}
+[id="10-lab-2"] svg .c10l2-ar{stroke:var(--line);stroke-width:1.5;fill:none}
+[id="10-lab-2"] svg .c10l2-ar.on{stroke:var(--accent);stroke-width:2.4}
+[id="10-lab-2"] svg g.c10l2-n{cursor:pointer}
+[id="10-lab-2"] svg g.c10l2-n rect{stroke-width:1.6}
+[id="10-lab-2"] svg g.c10l2-n.src rect{fill:var(--c-fis-s);stroke:var(--c-fis)}
+[id="10-lab-2"] svg g.c10l2-n.stg rect,[id="10-lab-2"] svg g.c10l2-n.mart rect{fill:var(--c-tra-s);stroke:var(--c-tra)}
+[id="10-lab-2"] svg g.c10l2-n.exp rect{fill:var(--c-apl-s);stroke:var(--c-apl)}
+[id="10-lab-2"] svg g.c10l2-n.off{opacity:.35}
+[id="10-lab-2"] svg g.c10l2-n.sel rect{stroke:var(--accent);stroke-width:3}
+[id="10-lab-2"] svg g.c10l2-n.mod rect{stroke:var(--warm);stroke-width:3.2}
+[id="10-lab-2"] svg g.c10l2-n:focus{outline:none}
+[id="10-lab-2"] svg g.c10l2-n:focus rect{stroke-dasharray:4 2}
+[id="10-lab-2"] .c10l2-cmd{font:600 .85rem var(--f-mono);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 10px;overflow-wrap:anywhere;color:var(--ink)}
+</style>
+<p class="hint">Pulsa (o elige con Tab y Enter) el modelo que cambiaste en tu rama. Las fuentes y el tablero no se construyen con dbt: aparecen para ver de dónde viene y a dónde va cada modelo.</p>
+<div class="c10l2-g"><span class="c10l2-rot">Qué seleccionas</span>
+<div class="btns" role="group" aria-label="Selector de dbt">
+  <button type="button" data-s="mas" aria-pressed="true">modelo+ (lo que depende de él)</button>
+  <button type="button" data-s="ant" aria-pressed="false">+modelo (de lo que depende)</button>
+  <button type="button" data-s="solo" aria-pressed="false">solo el modelo</button>
+  <button type="button" data-s="todo" aria-pressed="false">todo el proyecto</button>
+</div></div>
+<div class="c10l2-g"><span class="c10l2-rot">Materialización de fct_ventas</span>
+<div class="btns" role="group" aria-label="Materialización de fct_ventas">
+  <button type="button" data-f="table" aria-pressed="true">table (se reconstruye entera)</button>
+  <button type="button" data-f="incremental" aria-pressed="false">incremental (solo lo nuevo)</button>
+</div></div>
+<div class="c10l2-lienzo"><svg id="c10l2-svg" viewBox="0 0 680 330" role="group" aria-label="Grafo de modelos de dbt de Tienda Ejemplo: fuentes, staging, marts y el tablero"></svg></div>
+<div class="c10l2-cmd" id="c10l2-cmd" aria-live="polite"></div>
+<div class="readout texto" id="c10l2-out" aria-live="polite"></div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Qué reconstruye un cambio, y la documentación generada</h3></div><p>Vas a usar el proyecto de la práctica anterior para ver qué selecciona dbt cuando cambia un modelo y para generar la documentación. Sigue dentro de <code>tienda_dbt</code>, con el entorno activado. Primero guarda una copia del estado actual, como si fuera producción:</p><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>dbt parse --profiles-dir .</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>Copy-Item -Recurse target estado-prod</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>dbt parse --profiles-dir .</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>cp -r target estado-prod</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>Abre <code>models/staging/stg_pedidos.sql</code> en un editor y agrega al final una línea de comentario, por ejemplo <code>-- revisado por Martín</code>. Guárdalo.</span></li><li><span>Pregunta a dbt qué cambió y qué depende de ello, y compáralo con el selector de un modelo y sus descendientes:</span></li></ol><div class="cmds"><div class="cmd-panel" data-so="win mac linux"><div class="cmd-l"><code>dbt ls --profiles-dir . --select state:modified+ --state estado-prod --resource-type model</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dbt ls --profiles-dir . --select stg_pedidos+</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dbt docs generate --profiles-dir .</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dbt docs serve --profiles-dir . --port 8080</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="3" style="counter-reset:st 2"><li><span>El último comando abre la documentación en el navegador (o entra a <code>http://localhost:8080</code>). Busca <code>fct_ventas</code>, lee su descripción y abre el grafo de linaje con el botón de la esquina inferior derecha. Al terminar, detén el servidor con Ctrl+C.</span></li></ol><p><b>Qué observar:</b> el primer <code>dbt ls</code> encuentra solo tres modelos: <code>stg_pedidos</code>, que cambiaste, y <code>fct_ventas</code> y <code>ventas_mensuales</code>, que dependen de él; los otros tres modelos no se tocarían en la CI. El segundo, sin filtrar por tipo, agrega las pruebas de esos modelos: lo que correría <code>dbt build</code> con ese selector. En la documentación, cada modelo tiene su SQL compilado, sus columnas con tipos leídos de DuckDB y sus pruebas, y el grafo muestra el camino de las fuentes de la tienda hasta <code>ventas_mensuales</code>, sin que nadie lo haya dibujado. Puedes dejar el comentario en <code>stg_pedidos.sql</code>: no cambia el resultado.</p></div><div class="caso"><b>Un caso real</b><p><b>La columna que cambió de unidad.</b> En una empresa de comercio en línea, el equipo de la aplicación cambió el campo de monto de los pagos de dólares a centavos, para evitar problemas de redondeo, y lo anunció en el canal de su propio equipo. La ingesta siguió copiando sin errores, todas las transformaciones corrieron, y durante dos días el tablero de ingresos mostró cifras cien veces más altas, hasta que alguien de finanzas preguntó. No había nada roto en el código: faltaba un acuerdo y una prueba. El equipo de datos agregó una prueba de rango sobre el monto (entre 0 y un máximo razonable, con severidad <code>error</code>) y una prueba que compara las ventas con los pagos aprobados menos los reembolsados, como la del capítulo 04; el equipo de la aplicación agregó a su CI una verificación del contrato de sus eventos, que hoy exige una versión nueva para cualquier cambio de tipo o unidad.</p></div><div class="ml"><b>En la práctica</b><p><b>La plataforma, como código.</b> Natalia y Martín pasaron las treinta consultas sueltas a un proyecto dbt con tres capas, doce modelos y cuarenta pruebas. Las tablas <code>stg_</code> son vistas, las dimensiones son tablas y <code>fct_ventas</code> es incremental por <code>actualizado_en</code>, con una reconstrucción completa los domingos. En el DAG de Airflow del capítulo 09, las tareas de transformación se reemplazaron por una sola: <code>dbt build</code>. Cada cambio de Martín pasa por una solicitud de cambio que Natalia revisa, con la CI corriendo <code>state:modified+</code>. Y la definición de ventas netas que Elena aprobó en el capítulo 01 quedó escrita una sola vez, como métrica, con su descripción en la documentación generada. El pedido duplicado del miércoles volvió a aparecer dos semanas después, por otro reintento de la ingesta. Esta vez se detuvo en <code>unique_stg_pedidos_pedido_id</code>, el tablero conservó la cifra de la víspera y Natalia recibió la alerta antes de que Elena abriera el tablero.</p></div></section>
+<section><h2>La idea clave</h2><div class="prose"><p>Las transformaciones son código: modelos SQL en Git que se referencian entre sí con <code>ref()</code>, de donde dbt saca solo el grafo y el orden. La materialización decide qué se guarda (vista, tabla, incremental), sin cambiar el SQL. Las pruebas de datos (únicos, no nulos, valores aceptados, relaciones) corren apenas se construye cada modelo y detienen lo que está aguas abajo, de modo que un dato malo deja el tablero atrasado y no equivocado. Los contratos convierten los cambios que rompen en acuerdos previos, la documentación y el linaje se generan del mismo código, una capa semántica define cada métrica una sola vez y cada cambio pasa por revisión y por una CI que construye solo lo que cambió.</p></div></section>
+<section><h2>Pruébate</h2><div class="quiz"><h3>Pruébate</h3><details><summary>¿Qué gana un modelo al escribir <code>{{ ref('stg_pedidos') }}</code> en lugar del nombre de la tabla?</summary><p>Que dbt sabe que depende de <code>stg_pedidos</code> y arma solo el grafo y el orden de construcción, y que la misma consulta apunta a la tabla correcta en desarrollo o en producción.</p></details><details><summary>¿Por qué no conviene materializar como vista un modelo grande que el tablero consulta cien veces al día?</summary><p>Porque una vista recalcula la consulta cada vez que alguien la lee: cien veces al día. Como tabla o incremental, se calcula una vez por corrida y las consultas leen el resultado.</p></details><details><summary>Con <code>dbt build</code>, la prueba <code>unique</code> de <code>stg_pedidos</code> falla. ¿Qué pasa con <code>fct_ventas</code> y con el tablero?</summary><p><code>fct_ventas</code> y todo lo que depende de ella se omiten; el tablero conserva la cifra de la corrida anterior, atrasada pero sin el duplicado.</p></details><details><summary>¿Por qué la prueba <code>not_null</code> sobre el email de los clientes tiene severidad <code>warn</code> y no <code>error</code>?</summary><p>Porque hay 26 clientes sin email y las ventas no usan esa columna: un error detendría modelos que están bien. El problema se avisa y se corrige en el origen sin frenar el tablero.</p></details><details><summary>¿Qué diferencia hay entre una prueba de datos y un contrato de modelo?</summary><p>La prueba revisa los valores después de construir (repetidos, vacíos, valores fuera de la lista). El contrato fija de antemano las columnas y sus tipos, y dbt se niega a construir el modelo si el <code>SELECT</code> no los produce.</p></details><details><summary>¿Qué selecciona <code>state:modified+</code> en la integración continua y por qué conviene?</summary><p>Los modelos que cambiaron en la rama respecto de producción y todo lo que depende de ellos. Prueba lo que el cambio puede romper sin reconstruir el proyecto entero.</p></details></div></section>
+<section><h2>Para investigar</h2><div class="investiga"><h3>Para investigar</h3><p class="hint">Estas preguntas no se responden en el capítulo: búscalas por tu cuenta.</p><ol><li>¿Qué es Jinja y qué otras cosas, además de <code>ref()</code> y <code>source()</code>, se pueden hacer con macros en dbt?<small>Pista: busca «dbt Jinja macros».</small></li><li>¿Qué son las instantáneas (<i>snapshots</i>) de dbt y cómo implementan una dimensión de cambio lento de tipo 2?<small>Pista: busca «dbt snapshots SCD type 2».</small></li><li>¿Qué estrategias incrementales ofrecen los adaptadores de dbt (<code>append</code>, <code>merge</code>, <code>delete+insert</code>, <code>microbatch</code>) y en qué se diferencian?</li><li>¿Qué es el paquete <code>dbt-utils</code> y qué pruebas genéricas agrega a las cuatro de serie?</li><li>¿Cómo compara una herramienta de diferencias de datos (<i>data diff</i>) dos versiones de una tabla con millones de filas sin traerlas completas?<small>Pista: busca «data-diff checksum bisection».</small></li></ol></div></section>
+<section><h2>Para saber más</h2><div class="vids"><span>Para saber más</span><a class="vid" href="https://docs.getdbt.com/docs/build/data-tests" target="_blank" rel="noopener">dbt: documentación de pruebas de datos <small>documentación oficial, en inglés</small></a><a class="vid" href="https://docs.getdbt.com/docs/build/materializations" target="_blank" rel="noopener">dbt: materializaciones <small>documentación oficial, en inglés</small></a><a class="vid" href="https://docs.getdbt.com/docs/mesh/govern/model-contracts" target="_blank" rel="noopener">dbt: contratos de modelo <small>documentación oficial, en inglés</small></a><a class="vid" href="https://github.com/duckdb/dbt-duckdb" target="_blank" rel="noopener">dbt-duckdb <small>el adaptador de DuckDB para dbt, en inglés</small></a></div></section>
+<label class="got"><input type="checkbox" id="got"> Lo tengo claro</label>
+<nav class="pager" id="pager" aria-label="Capítulo anterior y siguiente"></nav>
+</main>
+</div>
+<footer><span>Curso abierto de aaramirez.github.io.</span><span>Sitio publicado: <a href="https://github.com/aaramirez/ingenieria-de-datos" target="_blank" rel="noopener">github.com/aaramirez/ingenieria-de-datos</a></span></footer>
+</div>
+<script src="assets/lab.js"></script>
+<script>
+(function(){
+  const raiz=document.querySelector('[id="10-lab-1"]');
+  const {$}=window.Lab;
+  const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const nf=(n,d=0)=>{const s=Math.abs(n).toFixed(d).split('.');s[0]=s[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.');return (n<0?'−':'')+s.join(',');};
+  const usd=n=>'US$ '+nf(n,2);
+  const BUENA=782785.77,PED=173.70;
+  // modelo, capa, dependencias, pruebas [nombre, qué problema la rompe]
+  const M=[
+    ['stg_clientes','staging',[],[['unique(cliente_id)'],['not_null(email)','email']]],
+    ['stg_pedidos','staging',[],[['unique(pedido_id)','dup'],['not_null(cliente_id)'],['accepted_values(estado)','est']]],
+    ['stg_detalle_pedido','staging',[],[['not_null(producto_id)'],['cantidad > 0']]],
+    ['stg_pagos','staging',[],[['unique(pago_id)'],['relationships(pedido_id → stg_pedidos)','huer']]],
+    ['fct_ventas','marts',['stg_pedidos','stg_detalle_pedido','stg_pagos'],[['unique(pedido_id, linea)','dup'],['ventas_netas >= 0']]],
+    ['ventas_mensuales','consumo',['fct_ventas','stg_clientes'],[['not_null(mes)']]]];
+  let x={dup:true,est:false,huer:false},modo='build',warnEmail=true,timers=[],est={};
+  function plan(){
+    const pasos=[],fin={};
+    M.forEach(([m,capa,deps,pr])=>{
+      if(deps.some(d=>fin[d]!=='ok')){fin[m]='skip';pasos.push([m,'model','skip']);pr.forEach((p,i)=>pasos.push([m,i,'skip']));return;}
+      pasos.push([m,'model','run']);pasos.push([m,'model','ok']);fin[m]='ok';
+      if(modo==='run'){pr.forEach((p,i)=>pasos.push([m,i,'none']));return;}
+      pr.forEach((p,i)=>{
+        const rota=p[1]==='email'||(p[1]&&x[p[1]]);
+        let r='pass';if(rota)r=(p[1]==='email'&&warnEmail)?'warn':'fail';
+        pasos.push([m,i,r]);if(r==='fail')fin[m]='fail';
+      });
+    });
+    return {pasos,fin};
+  }
+  function pintar(){
+    $('#c10l1-lista').innerHTML=M.map(([m,capa,deps,pr])=>{
+      const e=est[m]||{};const sm=e.model||'';
+      const lbl={run:'corriendo',ok:'construido',skip:'omitido (falló algo antes)','':capa}[sm];
+      return '<div class="c10l1-fila"><div class="c10l1-mod '+sm+(capa==='consumo'?' cons':'')+'">'+m+'<small>'+lbl+'</small></div><div class="c10l1-pruebas">'+
+        pr.map((p,i)=>{const s=e[i]||'';const t={pass:' ✓',fail:' ✗ falla',warn:' ⚠ aviso',skip:'',none:' (no corrió)','':''}[s];return '<span class="c10l1-p '+(s==='none'?'skip':s)+'">'+p[0]+t+'</span>';}).join('')+'</div></div>';
+    }).join('');
+  }
+  function cerrar(fin){
+    const llega=fin.ventas_mensuales==='ok';
+    let valor=BUENA,clase='buena',sub='recalculada y probada';
+    if(!llega){clase='vieja';sub='no se actualizó: el tablero sigue con la cifra de ayer';}
+    else if(x.dup){valor=BUENA+PED;clase='mala';sub='¡inflada! el pedido 59521 se contó dos veces';}
+    else if(x.est){clase='mala';sub='aproximada: los 912 pedidos enviados ahora dicen «en_ruta» y el filtro de estados los dejó fuera';valor=BUENA-912*93.46;}
+    else if(x.huer){sub='la cifra no cambia, pero hay un pago sin pedido que nadie revisó';clase='mala';}
+    $('#c10l1-v').textContent=(llega&&x.est&&!x.dup?'≈ ':'')+usd(valor);$('#c10l1-vs').textContent=sub;$('#c10l1-cifra').className='c10l1-cifra '+clase;
+    const fallas=[];M.forEach(([m,c,d,pr])=>pr.forEach((p,i)=>{if((est[m]||{})[i]==='fail')fallas.push(p[0]+' en '+m);}));
+    let txt;
+    if(modo==='run')txt='Con dbt run se construyen los modelos sin probar nada: '+(x.dup||x.est||x.huer?'el problema llega directo al tablero de Elena, que lo verá antes que el equipo de datos.':'esta vez no había problemas, pero nadie lo comprobó.');
+    else if(fallas.length)txt='Se detuvo en '+fallas.join(' y ')+'. Todo lo que depende de ese modelo quedó omitido, así que el tablero conserva la cifra de ayer: atrasada, pero no equivocada. Las ramas que no dependen del error sí se construyeron.';
+    else txt='Todas las pruebas pasaron y la cifra se publicó.';
+    if(modo==='build')txt+=warnEmail?' La prueba not_null(email) falla con los 26 clientes sin email, pero es solo un aviso: no frena las ventas, que no usan el email.':' Pusiste not_null(email) como error: los 26 clientes sin email detienen stg_clientes y, con él, ventas_mensuales, aunque las ventas no usan el email. Una prueba demasiado estricta también hace daño.';
+    $('#c10l1-out').innerHTML='<span class="big">'+(llega?'Tablero actualizado: '+(x.est&&!x.dup?'≈ ':'')+usd(valor):'Tablero sin actualizar: sigue en '+usd(BUENA))+'</span><span>'+txt+'</span>';
+  }
+  function correr(){
+    timers.forEach(clearTimeout);timers=[];est={};pintar();
+    const {pasos,fin}=plan();let acc=0;
+    const aplica=([m,k,s])=>{est[m]=est[m]||{};est[m][k]=s;};
+    if(reduce){pasos.forEach(aplica);pintar();cerrar(fin);return;}
+    pasos.forEach(p=>{timers.push(setTimeout(()=>{aplica(p);pintar();},acc));acc+=p[2]==='skip'||p[2]==='none'?70:220;});
+    timers.push(setTimeout(()=>cerrar(fin),acc+80));
+  }
+  raiz.querySelectorAll('[data-x]').forEach(b=>b.addEventListener('click',()=>{x[b.dataset.x]=!x[b.dataset.x];b.setAttribute('aria-pressed',x[b.dataset.x]);}));
+  raiz.querySelectorAll('[data-m]').forEach(b=>b.addEventListener('click',()=>{modo=b.dataset.m;raiz.querySelectorAll('[data-m]').forEach(z=>z.setAttribute('aria-pressed',z===b));}));
+  $('#c10l1-sev').addEventListener('click',e=>{warnEmail=!warnEmail;e.currentTarget.setAttribute('aria-pressed',warnEmail);e.currentTarget.textContent=warnEmail?'Email vacío: solo aviso (severity: warn)':'Email vacío: error (severity: error)';});
+  $('#c10l1-go').addEventListener('click',correr);
+  pintar();
+})();
+</script>
+<script>
+(function(){
+  const raiz=document.querySelector('[id="10-lab-2"]');
+  const {$}=window.Lab;
+  const svg=$('#c10l2-svg'),NS='http://www.w3.org/2000/svg';
+  // id, tipo, columna, fila, minutos (table), pruebas, dependencias
+  const N=[
+    ['tienda.clientes','src',0,0,0,0,[]],['tienda.pedidos','src',0,1,0,0,[]],['tienda.detalle_pedido','src',0,2,0,0,[]],['tienda.pagos','src',0,3,0,0,[]],['tienda.productos','src',0,4,0,0,[]],
+    ['stg_clientes','stg',1,0,0.5,2,['tienda.clientes']],['stg_pedidos','stg',1,1,1,3,['tienda.pedidos']],['stg_detalle_pedido','stg',1,2,1.5,2,['tienda.detalle_pedido']],['stg_pagos','stg',1,3,1,2,['tienda.pagos']],['stg_productos','stg',1,4,0.2,2,['tienda.productos']],
+    ['dim_clientes','mart',2,0.3,0.5,2,['stg_clientes']],['fct_ventas','mart',2,1.8,6,3,['stg_pedidos','stg_detalle_pedido','stg_pagos']],['dim_productos','mart',2,3.5,0.2,1,['stg_productos']],
+    ['ventas_mensuales','mart',3,1,0.3,1,['fct_ventas']],['ventas_por_categoria','mart',3,2.6,0.4,1,['fct_ventas','dim_productos']],
+    ['tablero de ventas','exp',4,1.8,0,0,['ventas_mensuales','ventas_por_categoria','dim_clientes']]];
+  const P={};N.forEach(n=>P[n[0]]={id:n[0],t:n[1],c:n[2],f:n[3],min:n[4],pr:n[5],dep:n[6]});
+  let mod='stg_pedidos',sel='mas',fct='table';
+  const pos=n=>({x:10+n.c*136,y:34+n.f*58});
+  const hijos=id=>N.filter(n=>n[6].includes(id)).map(n=>n[0]);
+  function cierre(id,f){const v=new Set();const r=i=>f(i).forEach(j=>{if(!v.has(j)){v.add(j);r(j);}});r(id);return v;}
+  function el(n,a,t,p){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(t!==undefined)e.textContent=t;(p||svg).appendChild(e);return e;}
+  function seleccion(){
+    const s=new Set([mod]);
+    if(sel==='mas')cierre(mod,hijos).forEach(x=>s.add(x));
+    if(sel==='ant')cierre(mod,i=>P[i].dep).forEach(x=>s.add(x));
+    if(sel==='todo')N.forEach(n=>s.add(n[0]));
+    return [...s].filter(i=>P[i].t==='stg'||P[i].t==='mart');
+  }
+  function pintar(){
+    const S=new Set(seleccion());
+    const desc=cierre(mod,hijos);
+    svg.innerHTML='';
+    ['FUENTES','STAGING','MARTS','MÉTRICAS','EXPOSICIÓN'].forEach((t,i)=>el('text',{x:10+i*136,y:18,'font-size':10,class:'c10l2-m'},t));
+    N.forEach(n=>{const b=pos(P[n[0]]);n[6].forEach(d=>{const a=pos(P[d]);const on=S.has(n[0])&&(S.has(d)||d===mod);
+      el('path',{d:'M'+(a.x+122)+' '+(a.y+19)+'C'+(a.x+132)+' '+(a.y+19)+' '+(b.x-10)+' '+(b.y+19)+' '+b.x+' '+(b.y+19),class:'c10l2-ar'+(on?' on':'')});});});
+    N.forEach(n=>{
+      const o=P[n[0]],b=pos(o),constr=o.t==='stg'||o.t==='mart';
+      let cl='c10l2-n '+o.t;
+      if(o.id===mod)cl+=' mod';else if(S.has(o.id))cl+=' sel';else if(!(o.t==='exp'&&desc.has(o.id)))cl+=' off';
+      const g=el('g',{class:cl,tabindex:constr?0:-1,role:constr?'button':'img','aria-label':o.id+(o.id===mod?', modificado':S.has(o.id)?', se reconstruye':'')});
+      el('rect',{x:b.x,y:b.y,width:122,height:38,rx:7},undefined,g);
+      el('text',{x:b.x+7,y:b.y+16,'font-size':o.id.length>17?9.6:10.5,'font-weight':700},o.id,g);
+      el('text',{x:b.x+7,y:b.y+31,'font-size':10,class:'c10l2-m'},o.t==='src'?'source':o.t==='exp'?'exposure':(o.id==='fct_ventas'?fct:o.t==='stg'?'view':'table')+(o.pr?' · '+o.pr+(o.pr===1?' prueba':' pruebas'):''),g);
+      if(constr){const act=()=>{mod=o.id;pintar();};g.addEventListener('click',act);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();act();}});}
+    });
+    const lista=[...S];
+    const min=lista.reduce((s,i)=>s+(i==='fct_ventas'&&fct==='incremental'?0.4:P[i].min),0),pr=lista.reduce((s,i)=>s+P[i].pr,0);
+    const arg=sel==='todo'?'':' --select '+(sel==='mas'?mod+'+':sel==='ant'?'+'+mod:mod);
+    $('#c10l2-cmd').textContent='dbt build'+arg;
+    let txt;
+    if(sel==='mas')txt='Cambiaste '+mod+': hay que reconstruir y probar todo lo que depende de él, porque sus resultados pueden cambiar. dbt lo sabe sin que se lo digas, porque cada modelo nombra a sus padres con ref(). '+(desc.has('tablero de ventas')?'El cambio llega al tablero de ventas.':'Este cambio no toca el tablero.');
+    else if(sel==='ant')txt='Con +'+mod+' se construye lo que el modelo necesita para existir, no lo que se rompe si cambia. Sirve para preparar un entorno nuevo, no para validar un cambio.';
+    else if(sel==='solo')txt='Solo '+mod+': rápido, pero los modelos que dependen de él quedan sin probar con el cambio. En la integración continua se usa state:modified+ para tomar lo cambiado y lo que depende de ello.';
+    else txt='Todo el proyecto: '+lista.length+' modelos. Seguro, pero cada cambio paga el costo completo; con proyectos de cientos de modelos, eso son horas.';
+    if(lista.includes('fct_ventas'))txt+=fct==='incremental'?' fct_ventas es incremental: procesa solo los pedidos nuevos o actualizados desde la última corrida.':' fct_ventas es table: se reconstruye completa, y es la pieza más cara.';
+    $('#c10l2-out').innerHTML='<span class="big">'+lista.length+' modelos · '+pr+' pruebas · unos '+min.toFixed(1).replace('.',',')+' min</span><span>'+txt+'</span>';
+  }
+  raiz.querySelectorAll('[data-s]').forEach(b=>b.addEventListener('click',()=>{sel=b.dataset.s;raiz.querySelectorAll('[data-s]').forEach(z=>z.setAttribute('aria-pressed',z===b));pintar();}));
+  raiz.querySelectorAll('[data-f]').forEach(b=>b.addEventListener('click',()=>{fct=b.dataset.f;raiz.querySelectorAll('[data-f]').forEach(z=>z.setAttribute('aria-pressed',z===b));pintar();}));
+  pintar();
+})();
+</script>
+</body>
+</html>

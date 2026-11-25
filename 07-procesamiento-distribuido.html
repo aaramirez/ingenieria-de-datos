@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="es">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-KX76XF8R');</script>
+<!-- End Google Tag Manager -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Procesamiento distribuido · Ingeniería de datos · Ingeniería de datos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Cómo viaja un dato desde la base de una aplicación hasta el tablero que lee la gerencia: ingesta, formatos, ETL y ELT, data warehouse, lakehouse, Spark, Kafka, orquestación, dbt, calidad y linaje, con laboratorios donde se ve cada pipeline funcionar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400;1,8..60,600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KX76XF8R"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<div class="wrap" data-page="procesamiento-distribuido">
+<header class="topbar"><a class="brand" href="index.html">Ingeniería de <b>datos</b></a><span class="eyebrow">Curso visual e interactivo · Datos e inteligencia artificial</span><a class="al-sitio" href="https://aaramirez.github.io/">← Todos los cursos</a></header>
+<div class="layout">
+<nav class="toc" id="toc" aria-label="Ruta de aprendizaje"></nav>
+<main>
+<header class="page-head"><span class="num">CAPÍTULO 07 DE 14</span><h1>Procesamiento distribuido: de MapReduce a Spark</h1><p class="lede">Cuando los datos no caben en una máquina, el trabajo se reparte entre muchas. Este capítulo explica cómo se reparte (de la idea de MapReduce de 2004 a Spark), por qué mover datos por la red es lo que cuesta y cuándo una sola máquina con DuckDB o Polars hace el mismo trabajo más rápido y más barato.</p></header>
+<section><div class="prose"><p>Irene Castro, la científica de datos de Tienda Ejemplo, quiere pronosticar la demanda por categoría para la próxima temporada. Para entrenar necesita algo que el tablero no tiene: cada línea de cada pedido, de todos los meses, cruzada con el producto y el cliente. Y quiere probarlo con un escenario de crecimiento: diez veces más clientes y pedidos que hoy.</p><p>Un proveedor le recomendó «montar un clúster de Spark, que es lo que usan las empresas grandes». Natalia Herrera, antes de pedir presupuesto, hizo dos preguntas: ¿cuántos datos son de verdad? y ¿cuánto tarda hoy en una sola máquina? Este capítulo recorre las dos respuestas. La primera lleva a entender cómo se reparte un cálculo entre muchas computadoras. La segunda, a descubrir que muchas veces no hace falta.</p></div></section>
+<section><h2>Cuándo una máquina no alcanza (y cuándo sí alcanza)</h2><div class="prose"><p>Un cálculo se queda corto en una máquina por una de tres razones: los datos no caben en su disco, el resultado intermedio no cabe en su memoria, o el cálculo tarda más de lo que el negocio puede esperar. Cuando pasa alguna de las tres, hay dos salidas.</p></div><div class="analogia"><b>Imagínalo así</b><p>Una panadería que recibe un pedido diez veces más grande puede comprar un horno más grande o contratar diez panaderos con diez hornos. El horno grande es simple: una sola persona, una sola receta. Los diez panaderos pueden hacer mucho más, pero alguien tiene que repartir la masa, coordinar los tiempos y juntar el pan al final, y si uno se atrasa, el pedido entero espera.</p></div><div class="prose"><ul><li><b>Escalar verticalmente</b> (<i>scale up</i>): una máquina más grande, con más memoria, más núcleos y discos más rápidos. Sin cambios en el código.</li><li><b>Escalar horizontalmente</b> (<i>scale out</i>): muchas máquinas comunes trabajando juntas en un <b>clúster</b> (<i>cluster</i>, grupo de computadores que actúan como uno). Es lo que se llama <b>procesamiento distribuido</b> (<i>distributed processing</i>).</li></ul><p>El procesamiento distribuido no es gratis. Los datos tienen que viajar por la red entre máquinas, que es cientos de veces más lenta que leer de la memoria. Alguna máquina va a fallar en la mitad del trabajo y hay que repetir su parte. Y alguien tiene que mantener el clúster encendido, actualizado y pagado.</p><p>Por eso la primera pregunta es de tamaño. La base completa de Tienda Ejemplo pesa unos 16 MB; con diez veces más pedidos, unos 160 MB, y en Parquet bastante menos. Una laptop actual tiene 16 GB de memoria: cien veces más. Mucho antes de que haga falta un clúster, el cuello de botella suele ser una consulta mal escrita o un formato de archivo que obliga a leerlo todo, temas de los capítulos 03 y 05.</p><p>Una regla práctica: si los datos que una consulta necesita de verdad (las columnas y filas que lee, no el tamaño total del lago) caben en el disco local de una máquina grande y el resultado intermedio cabe en su memoria o puede volcarse a disco, una sola máquina con un motor columnar suele ganar. El clúster se justifica con decenas de terabytes, con muchos trabajos en paralelo de muchos equipos, o cuando los datos ya viven repartidos en un lago y moverlos a una máquina cuesta más que procesarlos donde están.</p></div></section>
+<section><h2>MapReduce y Hadoop: la idea de Google (2004)</h2><div class="prose"><p>A comienzos de los 2000, Google tenía que construir su índice de búsqueda con la web entera: miles de millones de páginas que no cabían en ninguna máquina. En 2004, Jeffrey Dean y Sanjay Ghemawat publicaron el artículo de <b>MapReduce</b>, un modelo de programación que reparte un cálculo entre miles de computadores baratos y se encarga solo de lo difícil: repartir, mover datos, reintentar lo que falla.</p><p>La idea es que casi cualquier cálculo sobre muchos datos se puede escribir con dos funciones:</p><ul><li><b>Mapa</b> (<i>map</i>): se aplica a cada registro por separado y emite pares <b>clave y valor</b> (<i>key-value</i>). Para contar líneas de pedido por categoría, el mapa recibe una línea y emite <code>(Hogar, 1)</code>.</li><li><b>Reducción</b> (<i>reduce</i>): recibe todos los valores de una misma clave y los combina. La reducción de <code>Hogar</code> recibe <code>[1, 1, 1]</code> y emite <code>(Hogar, 3)</code>.</li></ul><p>Como el mapa trata cada registro por su cuenta, puede correr en mil máquinas a la vez, cada una sobre su trozo de datos, sin hablar con las demás. Como la reducción trata cada clave por su cuenta, también. El problema está en el medio: los pares <code>(Hogar, 1)</code> salieron de todas las máquinas, y la reducción de <code>Hogar</code> necesita tenerlos juntos.</p><p>Esa fase del medio se llama <b>shuffle</b> (<i>barajar</i>, redistribución): cada máquina ordena sus pares por clave, los escribe en disco y los envía por la red a la máquina que reduce esa clave. Es la única fase que necesita la red, y por eso es la cara.</p></div><figure class="fig fig-flujo" id="07-diagrama-1"><div class="lienzo"><svg viewBox="0 0 900 430" style="min-width:720px" role="img" aria-label="Un trabajo MapReduce que cuenta líneas de pedido por categoría: tres bloques de entrada, tres tareas de mapa que emiten pares categoría y uno, la fase de shuffle y ordenamiento que agrupa los pares por clave a través de la red, dos tareas de reducción que suman, y los archivos de salida">
+<defs>
+<marker id="c7d1-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+<marker id="c7d1-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-warm"/></marker>
+</defs>
+<text x="20" y="24" class="t t-xs t-b t-m">ENTRADA</text>
+<text x="200" y="24" class="t t-xs t-b t-m">1 · MAPA</text>
+<text x="420" y="24" class="t t-xs t-b t-m">2 · SHUFFLE Y ORDEN</text>
+<text x="640" y="24" class="t t-xs t-b t-m">3 · REDUCCIÓN</text>
+<text x="800" y="24" class="t t-xs t-b t-m">SALIDA</text>
+
+
+<rect x="20" y="44" width="140" height="96" rx="8" class="c-red"/>
+<text x="90" y="66" class="t t-s t-b k-red" text-anchor="middle">bloque 1</text>
+<text x="90" y="88" class="t t-s t-mono" text-anchor="middle">Hogar</text>
+<text x="90" y="104" class="t t-s t-mono" text-anchor="middle">Cocina</text>
+<text x="90" y="120" class="t t-s t-mono" text-anchor="middle">Hogar</text>
+<rect x="20" y="164" width="140" height="96" rx="8" class="c-red"/>
+<text x="90" y="186" class="t t-s t-b k-red" text-anchor="middle">bloque 2</text>
+<text x="90" y="208" class="t t-s t-mono" text-anchor="middle">Juguetes</text>
+<text x="90" y="224" class="t t-s t-mono" text-anchor="middle">Hogar</text>
+<text x="90" y="240" class="t t-s t-mono" text-anchor="middle">Cocina</text>
+<rect x="20" y="284" width="140" height="96" rx="8" class="c-red"/>
+<text x="90" y="306" class="t t-s t-b k-red" text-anchor="middle">bloque 3</text>
+<text x="90" y="328" class="t t-s t-mono" text-anchor="middle">Cocina</text>
+<text x="90" y="344" class="t t-s t-mono" text-anchor="middle">Juguetes</text>
+<text x="90" y="360" class="t t-s t-mono" text-anchor="middle">Cocina</text>
+
+
+<rect x="200" y="44" width="170" height="96" rx="8" class="c-tra"/>
+<text x="285" y="66" class="t t-s t-b k-tra" text-anchor="middle">mapa en el nodo 1</text>
+<text x="285" y="90" class="t t-s t-mono" text-anchor="middle">(Hogar, 1) (Cocina, 1)</text>
+<text x="285" y="108" class="t t-s t-mono" text-anchor="middle">(Hogar, 1)</text>
+<rect x="200" y="164" width="170" height="96" rx="8" class="c-tra"/>
+<text x="285" y="186" class="t t-s t-b k-tra" text-anchor="middle">mapa en el nodo 2</text>
+<text x="285" y="210" class="t t-s t-mono" text-anchor="middle">(Juguetes, 1) (Hogar, 1)</text>
+<text x="285" y="228" class="t t-s t-mono" text-anchor="middle">(Cocina, 1)</text>
+<rect x="200" y="284" width="170" height="96" rx="8" class="c-tra"/>
+<text x="285" y="306" class="t t-s t-b k-tra" text-anchor="middle">mapa en el nodo 3</text>
+<text x="285" y="330" class="t t-s t-mono" text-anchor="middle">(Cocina, 1) (Juguetes, 1)</text>
+<text x="285" y="348" class="t t-s t-mono" text-anchor="middle">(Cocina, 1)</text>
+<line x1="160" y1="92" x2="198" y2="92" class="ln" marker-end="url(#c7d1-m)"/>
+<line x1="160" y1="212" x2="198" y2="212" class="ln" marker-end="url(#c7d1-m)"/>
+<line x1="160" y1="332" x2="198" y2="332" class="ln" marker-end="url(#c7d1-m)"/>
+
+
+<rect x="400" y="40" width="220" height="344" rx="10" class="caja s-warm" style="stroke-dasharray:5 4"/>
+<text x="510" y="62" class="t t-s t-b k-warm" text-anchor="middle">la red: cada par va al nodo</text>
+<text x="510" y="78" class="t t-s t-b k-warm" text-anchor="middle">que reduce su clave</text>
+<line x1="370" y1="86" x2="638" y2="140" class="ln s-warm" marker-end="url(#c7d1-w)"/>
+<line x1="370" y1="104" x2="638" y2="290" class="ln s-warm" marker-end="url(#c7d1-w)"/>
+<line x1="370" y1="206" x2="638" y2="150" class="ln s-warm" marker-end="url(#c7d1-w)"/>
+<line x1="370" y1="214" x2="638" y2="160" class="ln s-warm" marker-end="url(#c7d1-w)"/>
+<line x1="370" y1="228" x2="638" y2="300" class="ln s-warm" marker-end="url(#c7d1-w)"/>
+<line x1="370" y1="326" x2="638" y2="310" class="ln s-warm" marker-end="url(#c7d1-w)"/>
+<line x1="370" y1="334" x2="638" y2="170" class="ln s-warm" marker-end="url(#c7d1-w)"/>
+<line x1="370" y1="348" x2="638" y2="320" class="ln s-warm" marker-end="url(#c7d1-w)"/>
+<text x="510" y="364" class="t t-s t-m" text-anchor="middle">partición = hash(clave) mod 2</text>
+
+
+<rect x="640" y="104" width="140" height="80" rx="8" class="c-tra"/>
+<text x="710" y="126" class="t t-s t-b k-tra" text-anchor="middle">reducción A</text>
+<text x="710" y="148" class="t t-s t-mono" text-anchor="middle">Hogar: 1+1+1</text>
+<text x="710" y="166" class="t t-s t-mono" text-anchor="middle">Juguetes: 1+1</text>
+<rect x="640" y="264" width="140" height="80" rx="8" class="c-tra"/>
+<text x="710" y="286" class="t t-s t-b k-tra" text-anchor="middle">reducción B</text>
+<text x="710" y="308" class="t t-s t-mono" text-anchor="middle">Cocina:</text>
+<text x="710" y="326" class="t t-s t-mono" text-anchor="middle">1+1+1+1</text>
+
+
+<rect x="800" y="112" width="90" height="64" rx="8" class="c-red"/>
+<text x="845" y="138" class="t t-s t-mono" text-anchor="middle">Hogar 3</text>
+<text x="845" y="156" class="t t-s t-mono" text-anchor="middle">Juguetes 2</text>
+<rect x="800" y="272" width="90" height="64" rx="8" class="c-red"/>
+<text x="845" y="308" class="t t-s t-mono" text-anchor="middle">Cocina 4</text>
+<line x1="780" y1="144" x2="798" y2="144" class="ln" marker-end="url(#c7d1-m)"/>
+<line x1="780" y1="304" x2="798" y2="304" class="ln" marker-end="url(#c7d1-m)"/>
+
+<text x="20" y="412" class="t t-s t-m">Mapa y reducción corren en paralelo y en local; el shuffle es lo único que cruza la red, se escribe en disco y espera al nodo más lento.</text>
+</svg></div><figcaption><b>Un trabajo MapReduce que cuenta líneas por categoría.</b> De izquierda a derecha: tres bloques de la entrada (azul, almacenamiento), tres tareas de mapa que emiten pares <code>(categoría, 1)</code> en su propio nodo, la fase de shuffle en el recuadro rojo punteado, donde cada par cruza la red hacia el nodo que reduce su clave según el hash de la clave, dos tareas de reducción que suman y los archivos de salida. Fíjate en que solo las flechas rojas cruzan entre máquinas: mapa y reducción trabajan en local.</figcaption></figure><div class="prose"><p>Para que la máquina que reduce sepa qué claves le tocan, se usa una <b>función hash</b> (<i>hash function</i>): convierte la clave en un número, y el resto de dividirlo por el número de reductores dice a cuál va. Todas las filas de <code>Hogar</code> dan el mismo número, así que todas llegan al mismo lugar.</p><p>La versión de código abierto llegó en 2006 con <b>Hadoop</b>, impulsado por Yahoo: un sistema de archivos distribuido (HDFS) para guardar los bloques en muchas máquinas, el motor MapReduce para procesarlos y, desde 2013, un administrador de recursos del clúster (YARN). Durante una década, «big data» fue casi sinónimo de Hadoop.</p><p>MapReduce tenía dos límites. Escribía en disco al final de cada fase, así que un cálculo de diez pasos leía y escribía el disco diez veces. Y escribir cualquier cosa, hasta un simple <code>GROUP BY</code>, exigía programar las funciones en Java. Hive (2010) agregó SQL sobre Hadoop, pero cada consulta seguía siendo una cadena de trabajos MapReduce con el disco de por medio.</p></div></section>
+<section><h2>Spark: DataFrames, evaluación perezosa y el plan de ejecución</h2><div class="prose"><p><b>Apache Spark</b> nació en 2009 en el laboratorio AMPLab de la Universidad de California en Berkeley, con una idea: guardar los resultados intermedios en la memoria de las máquinas en lugar de en disco. En 2014 salió su primera versión estable y se volvió el motor de procesamiento distribuido más usado; a noviembre de 2026 sigue siéndolo, con servicios administrados en todas las nubes y en plataformas como Databricks.</p><p>Spark se programa en Python (PySpark), Scala, Java, R o SQL, sobre una estructura llamada <b>DataFrame</b>: una tabla con columnas con nombre y tipo, como la de pandas, pero repartida en trozos entre las máquinas del clúster. Cada trozo es una <b>partición</b> (<i>partition</i>).</p><h3>La evaluación perezosa</h3><p>Lo que más sorprende al empezar con Spark es que la mayoría de las líneas no hacen nada. Cuando escribes <code>pedidos.filter(...)</code> o <code>detalle.join(productos, ...)</code>, Spark no lee ni filtra ni une: anota la operación en un plan. Esas operaciones se llaman <b>transformaciones</b> (<i>transformations</i>). Solo cuando pides un resultado (escribir un archivo, contar filas, mostrar las primeras diez) se ejecuta todo junto. Esas operaciones se llaman <b>acciones</b> (<i>actions</i>). A esta forma de trabajar se le llama <b>evaluación perezosa</b> (<i>lazy evaluation</i>).</p></div><div class="analogia"><b>Imagínalo así</b><p>Es como dictarle a un mesero el pedido de toda la mesa antes de que vaya a la cocina, en lugar de mandarlo plato por plato. Con el pedido completo en la mano, la cocina puede organizarse: hacer las dos ensaladas juntas, no encender la parrilla si nadie pidió carne y sacar los platos en el orden que conviene.</p></div><div class="prose"><p>Con el plan completo, el <b>optimizador</b> de Spark (se llama Catalyst) lo reescribe antes de ejecutarlo. Algunas de sus reglas:</p><ul><li><b>Leer solo las columnas que se usan</b> (<i>projection pushdown</i>): si la consulta usa cuatro columnas de un Parquet de cinco, lee cuatro.</li><li><b>Filtrar en la lectura</b> (<i>predicate pushdown</i>): el filtro <code>estado IN ('pagado', 'enviado', 'entregado')</code> baja hasta el lector de archivos, que se salta los grupos de filas cuyas estadísticas dicen que no hay nada que buscar (lo viste en el capítulo 03).</li><li><b>Elegir cómo unir</b>: por difusión o por partición, según el tamaño de cada tabla (más abajo).</li></ul><h3>Del plan a las etapas y las tareas</h3><p>El plan optimizado se convierte en un <b>plan físico</b> (<i>physical plan</i>), que Spark corta en <b>etapas</b> (<i>stages</i>) en cada punto donde hace falta un shuffle. Dentro de una etapa todo corre en paralelo sin red: leer, filtrar, sumar dentro de cada partición. Entre etapas, los datos se redistribuyen. Cada etapa se divide en <b>tareas</b> (<i>tasks</i>), una por partición.</p><p>Las transformaciones que no necesitan datos de otras particiones (filtrar, calcular una columna) se llaman <b>estrechas</b> (<i>narrow</i>); las que sí los necesitan (agrupar, unir, ordenar) se llaman <b>anchas</b> (<i>wide</i>) y son las que provocan un shuffle.</p><p>Quien reparte el trabajo es el <b>driver</b> (conductor), el proceso que guarda el plan, reparte las tareas y reintenta las que fallan. Quienes trabajan son los <b>ejecutores</b> (<i>executors</i>), procesos en cada máquina del clúster que corren varias tareas a la vez, una por núcleo.</p></div><figure class="fig fig-esquema" id="07-diagrama-2"><div class="lienzo"><svg viewBox="0 0 900 470" style="min-width:720px" role="img" aria-label="Cómo Spark convierte el código en trabajo: arriba, las transformaciones perezosas que solo anotan un plan y la acción que lo dispara; en el medio, el plan físico partido en dos etapas por el shuffle; abajo, el clúster con el driver y tres ejecutores que corren una tarea por partición">
+<defs>
+<marker id="c7d2-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+<marker id="c7d2-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-warm"/></marker>
+</defs>
+
+<text x="20" y="24" class="t t-xs t-b t-m">1 · EL CÓDIGO: TRANSFORMACIONES PEREZOSAS Y UNA ACCIÓN</text>
+<rect x="20" y="36" width="150" height="54" rx="8" class="caja"/>
+<text x="95" y="58" class="t t-s t-mono" text-anchor="middle">read.parquet</text>
+<text x="95" y="76" class="t t-xs t-m" text-anchor="middle">solo anota</text>
+<rect x="190" y="36" width="150" height="54" rx="8" class="caja"/>
+<text x="265" y="58" class="t t-s t-mono" text-anchor="middle">filter(estado)</text>
+<text x="265" y="76" class="t t-xs t-m" text-anchor="middle">solo anota</text>
+<rect x="360" y="36" width="150" height="54" rx="8" class="caja"/>
+<text x="435" y="58" class="t t-s t-mono" text-anchor="middle">join(productos)</text>
+<text x="435" y="76" class="t t-xs t-m" text-anchor="middle">solo anota</text>
+<rect x="530" y="36" width="150" height="54" rx="8" class="caja"/>
+<text x="605" y="58" class="t t-s t-mono" text-anchor="middle">groupBy(categoria)</text>
+<text x="605" y="76" class="t t-xs t-m" text-anchor="middle">solo anota</text>
+<rect x="700" y="36" width="180" height="54" rx="8" class="c-apl"/>
+<text x="790" y="58" class="t t-s t-mono" text-anchor="middle">write / show</text>
+<text x="790" y="76" class="t t-xs t-b k-apl" text-anchor="middle">ACCIÓN: ahora sí corre</text>
+<line x1="170" y1="63" x2="188" y2="63" class="ln" marker-end="url(#c7d2-m)"/>
+<line x1="340" y1="63" x2="358" y2="63" class="ln" marker-end="url(#c7d2-m)"/>
+<line x1="510" y1="63" x2="528" y2="63" class="ln" marker-end="url(#c7d2-m)"/>
+<line x1="680" y1="63" x2="698" y2="63" class="ln" marker-end="url(#c7d2-m)"/>
+
+
+<text x="20" y="128" class="t t-xs t-b t-m">2 · EL OPTIMIZADOR (CATALYST) ARMA EL PLAN FÍSICO Y LO CORTA EN ETAPAS</text>
+<rect x="20" y="140" width="400" height="110" rx="10" class="c-tra"/>
+<text x="36" y="162" class="t t-s t-b k-tra">ETAPA 1 · sin red, en paralelo</text>
+<text x="36" y="186" class="t t-s">leer solo 4 columnas · filtrar estado en la lectura</text>
+<text x="36" y="206" class="t t-s">unir con productos (difusión: viaja la tabla chica)</text>
+<text x="36" y="226" class="t t-s">sumar por categoría dentro de cada partición</text>
+<rect x="480" y="140" width="400" height="110" rx="10" class="c-tra"/>
+<text x="496" y="162" class="t t-s t-b k-tra">ETAPA 2 · después del shuffle</text>
+<text x="496" y="186" class="t t-s">recibir las sumas parciales de su categoría</text>
+<text x="496" y="206" class="t t-s">sumar el total por categoría</text>
+<text x="496" y="226" class="t t-s">escribir el resultado</text>
+<line x1="420" y1="195" x2="478" y2="195" class="ln s-warm" style="stroke-width:2.5" marker-end="url(#c7d2-w)"/>
+<text x="450" y="182" class="t t-xs t-b k-warm" text-anchor="middle">SHUFFLE</text>
+
+
+<text x="20" y="288" class="t t-xs t-b t-m">3 · EL CLÚSTER: UN DRIVER QUE PLANIFICA Y EJECUTORES QUE CORREN UNA TAREA POR PARTICIÓN</text>
+<rect x="20" y="300" width="180" height="150" rx="10" style="fill:var(--warm-soft);stroke:var(--warm)"/>
+<text x="110" y="326" class="t t-b k-warm" text-anchor="middle">Driver</text>
+<text x="110" y="350" class="t t-s" text-anchor="middle">guarda el plan</text>
+<text x="110" y="368" class="t t-s" text-anchor="middle">reparte las tareas</text>
+<text x="110" y="386" class="t t-s" text-anchor="middle">reintenta las que fallan</text>
+<text x="110" y="404" class="t t-s" text-anchor="middle">junta el resultado</text>
+<g>
+<rect x="240" y="300" width="200" height="150" rx="10" class="caja"/>
+<text x="340" y="322" class="t t-s t-b" text-anchor="middle">Ejecutor en el nodo 1</text>
+<rect x="256" y="334" width="80" height="34" rx="6" class="c-red"/><text x="296" y="356" class="t t-s" text-anchor="middle">partición 1</text>
+<rect x="344" y="334" width="80" height="34" rx="6" class="c-red"/><text x="384" y="356" class="t t-s" text-anchor="middle">partición 4</text>
+<rect x="256" y="378" width="168" height="30" rx="6" class="c-tra"/><text x="340" y="398" class="t t-s" text-anchor="middle">2 tareas a la vez (2 núcleos)</text>
+<text x="340" y="432" class="t t-s t-m" text-anchor="middle">memoria y disco locales</text>
+</g>
+<g>
+<rect x="460" y="300" width="200" height="150" rx="10" class="caja"/>
+<text x="560" y="322" class="t t-s t-b" text-anchor="middle">Ejecutor en el nodo 2</text>
+<rect x="476" y="334" width="80" height="34" rx="6" class="c-red"/><text x="516" y="356" class="t t-s" text-anchor="middle">partición 2</text>
+<rect x="564" y="334" width="80" height="34" rx="6" class="c-red"/><text x="604" y="356" class="t t-s" text-anchor="middle">partición 5</text>
+<rect x="476" y="378" width="168" height="30" rx="6" class="c-tra"/><text x="560" y="398" class="t t-s" text-anchor="middle">2 tareas a la vez</text>
+<text x="560" y="432" class="t t-s t-m" text-anchor="middle">memoria y disco locales</text>
+</g>
+<g>
+<rect x="680" y="300" width="200" height="150" rx="10" class="caja"/>
+<text x="780" y="322" class="t t-s t-b" text-anchor="middle">Ejecutor en el nodo 3</text>
+<rect x="696" y="334" width="80" height="34" rx="6" class="c-red"/><text x="736" y="356" class="t t-s" text-anchor="middle">partición 3</text>
+<rect x="784" y="334" width="80" height="34" rx="6" class="c-red"/><text x="824" y="356" class="t t-s" text-anchor="middle">partición 6</text>
+<rect x="696" y="378" width="168" height="30" rx="6" class="c-tra"/><text x="780" y="398" class="t t-s" text-anchor="middle">2 tareas a la vez</text>
+<text x="780" y="432" class="t t-s t-m" text-anchor="middle">memoria y disco locales</text>
+</g>
+<line x1="200" y1="375" x2="238" y2="375" class="ln" marker-end="url(#c7d2-m)"/>
+</svg></div><figcaption><b>Cómo Spark convierte el código en trabajo.</b> Arriba, las cuatro transformaciones solo se anotan; la acción, en rosa, dispara la ejecución. En el medio, el plan físico del optimizador, cortado en dos etapas moradas por el shuffle (flecha roja): la primera lee solo las columnas necesarias, filtra en la lectura y suma dentro de cada partición; la segunda recibe las sumas parciales y escribe el total. Abajo, el clúster: el driver, que planifica, y tres ejecutores, cada uno con dos particiones y dos tareas a la vez.</figcaption></figure><div class="prose"><p>Si un ejecutor se cae a la mitad, el driver vuelve a lanzar sus tareas en otro. Puede hacerlo porque cada partición se puede recalcular desde su origen siguiendo el plan: Spark guarda la receta, no solo el resultado.</p></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>El plan antes de correr, en una sola máquina</h3></div><p>Vas a crear una versión diez veces más grande de la tienda, pasarla a Parquet y calcular las ventas netas por mes y categoría con tres herramientas: pandas, que ejecuta cada línea en el momento, y Polars y DuckDB, que arman un plan primero. Usa la carpeta <code>datos-tienda</code> y su entorno virtual, y agrega <code>pandas</code> y <code>polars</code>:</p><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>cd $HOME\datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>.venv\Scripts\activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>pip install duckdb pyarrow pandas polars</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python generar_tienda.py --escala 10 --carpeta grande</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>cd ~/datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>source .venv/bin/activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>pip install duckdb pyarrow pandas polars</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 generar_tienda.py --escala 10 --carpeta grande</code><button type="button" class="copiar">Copiar</button></div></div></div><p>El último comando tarda cerca de un minuto y crea <code>grande/tienda.db</code> con unos 650.000 pedidos, sin tocar tu <code>tienda.db</code> de siempre. Guarda este programa como <code>una_maquina.py</code>:</p><div class="code-copia"><pre><code>"""Una máquina contra 1,1 millones de líneas.
+
+Exporta la tienda grande a Parquet y calcula las ventas netas por mes y categoría
+con pandas, Polars y DuckDB. Muestra el plan de Polars y de DuckDB antes de correr.
+"""
+import sys
+import time
+from pathlib import Path
+import duckdb
+import pandas as pd
+import polars as pl
+
+sys.stdout.reconfigure(encoding="utf-8")  # para que la consola de Windows muestre los símbolos del plan
+LAGO = Path("grande/lago")
+ESTADOS = ["pagado", "enviado", "entregado"]
+
+if not (LAGO / "detalle_pedido.parquet").exists():
+    LAGO.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect()
+    con.sql("INSTALL sqlite; LOAD sqlite; ATTACH 'grande/tienda.db' AS t (TYPE sqlite, READ_ONLY)")
+    for tabla in ["pedidos", "detalle_pedido", "productos"]:
+        con.sql(f"COPY t.{tabla} TO '{LAGO / tabla}.parquet' (FORMAT parquet)")
+    con.close()
+
+def medir(nombre, funcion):
+    inicio = time.perf_counter()
+    resultado = funcion()
+    cifra = f"{resultado:,.2f}".replace(",", " ").replace(".", ",").replace(" ", ".")
+    print(f"{nombre:8} {time.perf_counter() - inicio:6.2f} s   ventas netas de octubre: US$ {cifra}")
+
+def con_pandas():
+    p = pd.read_parquet(LAGO / "pedidos.parquet")
+    d = pd.read_parquet(LAGO / "detalle_pedido.parquet")
+    pr = pd.read_parquet(LAGO / "productos.parquet")
+    t = d.merge(p, on="pedido_id").merge(pr, on="producto_id")
+    t = t[t.estado.isin(ESTADOS)]
+    t["mes"] = t.creado_en.str[:7]
+    t["venta"] = t.cantidad * t.precio_unitario.astype(float)
+    tabla = t.groupby(["mes", "categoria"]).venta.sum()
+    return tabla.loc["2026-10"].sum()
+
+def consulta_polars():
+    p = pl.scan_parquet(LAGO / "pedidos.parquet")
+    d = pl.scan_parquet(LAGO / "detalle_pedido.parquet")
+    pr = pl.scan_parquet(LAGO / "productos.parquet")
+    return (d.join(p, on="pedido_id").join(pr, on="producto_id")
+            .filter(pl.col("estado").is_in(ESTADOS))
+            .with_columns(mes=pl.col("creado_en").str.slice(0, 7),
+                          venta=pl.col("cantidad") * pl.col("precio_unitario").cast(pl.Float64))
+            .group_by("mes", "categoria").agg(pl.col("venta").sum()))
+
+def con_polars():
+    tabla = consulta_polars().collect()
+    return tabla.filter(pl.col("mes") == "2026-10")["venta"].sum()
+
+SQL = f"""
+SELECT substr(p.creado_en, 1, 7) AS mes, pr.categoria,
+       SUM(d.cantidad * d.precio_unitario) AS venta
+FROM '{LAGO}/detalle_pedido.parquet' d
+JOIN '{LAGO}/pedidos.parquet' p USING (pedido_id)
+JOIN '{LAGO}/productos.parquet' pr USING (producto_id)
+WHERE p.estado IN ('pagado', 'enviado', 'entregado')
+GROUP BY ALL"""
+
+def con_duckdb():
+    tabla = duckdb.sql(SQL)
+    return float(duckdb.sql("SELECT SUM(venta) FROM tabla WHERE mes = '2026-10'").fetchall()[0][0])
+
+print("PLAN DE POLARS (perezoso: todavía no leyó nada)")
+print(consulta_polars().explain())
+print("\nPLAN DE DUCKDB")
+print(duckdb.sql("EXPLAIN " + SQL).fetchall()[0][1])
+print()
+for nombre, f in [("pandas", con_pandas), ("Polars", con_polars), ("DuckDB", con_duckdb)]:
+    medir(nombre, f)</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python una_maquina.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 una_maquina.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>En el plan de Polars, busca las líneas <code>PROJECT 3/6 COLUMNS</code> y <code>SELECTION</code> debajo de <code>pedidos.parquet</code>.</span></li><li><span>En el plan de DuckDB, busca el recuadro <code>Parquet Scan</code> de pedidos y su línea <code>Filters</code>.</span></li><li><span>Compara los tres tiempos y las tres cifras. Corre el programa una segunda vez: ya no exporta el Parquet.</span></li></ol><p><b>Qué observar:</b> las dos herramientas perezosas muestran su plan sin haber leído un solo dato, y los dos planes hicieron lo mismo que Catalyst en Spark: de <code>pedidos</code> leen solo 3 de sus 6 columnas y el filtro de estado bajó hasta la lectura del archivo. Las tres herramientas dan la misma cifra (unos US$ 8,1 millones para octubre en la tienda diez veces más grande) sobre 1,1 millones de líneas, y las tres tardan menos de un par de segundos en una laptop; Polars y DuckDB, varias veces menos que pandas. Tus tiempos serán otros según tu equipo; el orden suele repetirse. Esa es la respuesta a la pregunta de Natalia: para estos datos no hace falta un clúster.</p></div></section>
+<section><h2>Particiones, <i>shuffle</i> y datos desbalanceados</h2><div class="prose"><p>En un trabajo distribuido, cada partición la procesa una tarea, y las tareas corren en paralelo. De ahí salen las dos reglas que explican casi todos los problemas de rendimiento de Spark: el trabajo dura lo que dura la tarea más lenta, y el shuffle es lo que más cuesta.</p></div><div class="lab" id="07-lab-1"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Un trabajo repartido entre nodos: mapa, shuffle y reducción</h3></div><p class="hint">Cada punto es una línea de <code>detalle_pedido</code>, con el color de la categoría de su producto. Elige cuántos nodos tiene el clúster y pulsa «Correr el trabajo» o avanza «Paso a paso»: mira qué filas cruzan la red en el shuffle y cuáles se quedan en su nodo. Después activa «Combinar en el mapa» y compara cuántas cosas viajan. Prueba con 6 nodos: ¿todos reciben una categoría?</p><style>
+[id="07-lab-1"] .c7l1-rot{font:700 .72rem var(--f-display);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+[id="07-lab-1"] .c7l1-g{display:grid;gap:4px}
+[id="07-lab-1"] .c7l1-lienzo{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+[id="07-lab-1"] .c7l1-lienzo svg{display:block;width:100%;min-width:540px;height:auto}
+[id="07-lab-1"] .c7l1-tarjetas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:8px}
+[id="07-lab-1"] .c7l1-t{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--card);display:grid;gap:2px}
+[id="07-lab-1"] .c7l1-t b{font:700 1.15rem var(--f-mono);color:var(--ink)}
+[id="07-lab-1"] .c7l1-t span{font:600 .72rem var(--f-display);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+[id="07-lab-1"] .c7l1-t.red b{color:var(--warm)}
+[id="07-lab-1"] svg text{font-family:var(--f-display);fill:var(--ink)}
+[id="07-lab-1"] svg .c7l1-m{fill:var(--muted)}
+[id="07-lab-1"] svg .c7l1-nodo{fill:var(--paper);stroke:var(--line);stroke-width:1.5}
+[id="07-lab-1"] svg .c7l1-fase{fill:none;stroke:var(--grid);stroke-dasharray:4 4}
+[id="07-lab-1"] svg .c7l1-red{fill:var(--warm-soft);stroke:var(--warm);stroke-width:1;stroke-dasharray:3 3}
+</style>
+<div class="c7l1-g"><span class="c7l1-rot">Nodos del clúster</span>
+<div class="btns" role="group" aria-label="Número de nodos">
+  <button type="button" data-n="2" aria-pressed="false">2 nodos</button>
+  <button type="button" data-n="3" aria-pressed="true">3 nodos</button>
+  <button type="button" data-n="4" aria-pressed="false">4 nodos</button>
+  <button type="button" data-n="6" aria-pressed="false">6 nodos</button>
+</div></div>
+<div class="c7l1-g"><span class="c7l1-rot">Antes del shuffle</span>
+<div class="btns" role="group" aria-label="Combinar en el mapa">
+  <button type="button" id="c7l1-comb" aria-pressed="false">Combinar en el mapa (sumas parciales)</button>
+</div></div>
+<div class="btns"><button type="button" class="primary" id="c7l1-run">Correr el trabajo</button><button type="button" id="c7l1-paso">Paso a paso</button></div>
+<div class="c7l1-lienzo"><svg id="c7l1-svg" viewBox="0 0 640 380" role="img" aria-label="Nodos del clúster en columnas; cada punto es una línea de detalle_pedido coloreada por la categoría de su producto; las filas pasan por mapa, shuffle y reducción"></svg></div>
+<div class="legend" id="c7l1-ley"></div>
+<div class="c7l1-tarjetas">
+  <div class="c7l1-t"><span>Filas leídas</span><b id="c7l1-k1">—</b></div>
+  <div class="c7l1-t red"><span>Viajan por la red</span><b id="c7l1-k2">—</b></div>
+  <div class="c7l1-t"><span>Se quedan en su nodo</span><b id="c7l1-k3">—</b></div>
+  <div class="c7l1-t"><span>Tiempo estimado</span><b id="c7l1-k4">—</b></div>
+</div>
+<div class="readout texto" id="c7l1-out" aria-live="polite">Elige cuántos nodos y pulsa «Correr el trabajo».</div></div><div class="prose"><p>El laboratorio muestra una optimización que Spark aplica sola en las agregaciones: <b>combinar en el mapa</b> (<i>map-side combine</i>). Antes de enviar nada, cada nodo suma sus propias filas de <code>Hogar</code> y manda una sola cifra parcial. El resultado es el mismo y por la red viaja una cifra por categoría y por nodo en lugar de miles de filas. Por eso un <code>SUM</code> o un <code>COUNT</code> distribuidos son baratos, y un <code>COUNT(DISTINCT cliente_id)</code> o una unión, que no se pueden resumir antes de mover, son caros.</p><p>El número de particiones también importa. Muy pocas, y algunos núcleos se quedan sin trabajo. Demasiadas, y el costo de crear y coordinar miles de tareas diminutas supera al trabajo útil. Spark usa por defecto 200 particiones después de un shuffle, un valor que casi nunca es el correcto para un trabajo concreto; las versiones recientes lo ajustan en tiempo de ejecución, como verás enseguida.</p><h3>La clave desbalanceada</h3><p>Todas las filas de una misma clave van a la misma partición. Si una clave tiene muchas más filas que las demás, su partición es enorme y su tarea tarda mucho más que el resto. Es el <b>desbalance de datos</b> (<i>data skew</i>), el problema más común y más frustrante del procesamiento distribuido: el trabajo va al 99 % durante una hora, esperando a una sola tarea.</p></div><div class="analogia"><b>Imagínalo así</b><p>Es la fila del supermercado donde una sola persona trae tres carritos llenos. Las otras cajas terminaron y sus cajeros esperan con los brazos cruzados, y abrir más cajas no ayuda: los tres carritos siguen en una sola caja.</p></div><div class="prose"><p>En Tienda Ejemplo, Natalia lo vería al unir los pedidos con los eventos de la app: los visitantes que navegan sin iniciar sesión llegan con <code>cliente_id = 0</code>, y en una semana de descuentos pueden ser la mitad de los eventos. Otros desbalances típicos son los valores nulos (todos los <code>NULL</code> van juntos), un cliente corporativo con miles de pedidos o la ciudad más grande del país.</p></div><div class="lab" id="07-lab-2"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Una clave desbalanceada retrasa a todos</h3></div><p class="hint">Seis nodos agrupan seis millones de eventos de la app por <code>cliente_id</code>. Sube el porcentaje de eventos con <code>cliente_id = 0</code> y pulsa «Correr la agregación»: mira cuánto tarda el nodo que los recibe y cuánto esperan los demás. Después prueba los dos remedios, salar la clave o dejar que la ejecución adaptativa parta la partición grande, y compara la duración y el tiempo ocioso del clúster.</p><style>
+[id="07-lab-2"] .c7l2-rot{font:700 .72rem var(--f-display);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+[id="07-lab-2"] .c7l2-g{display:grid;gap:4px}
+[id="07-lab-2"] .c7l2-nodos{display:grid;gap:7px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+[id="07-lab-2"] .c7l2-fila{display:grid;grid-template-columns:56px minmax(0,1fr) 80px;align-items:center;gap:8px;font:500 .8rem var(--f-display)}
+[id="07-lab-2"] .c7l2-fila b{font:700 .8rem var(--f-display);color:var(--ink)}
+[id="07-lab-2"] .c7l2-pista{position:relative;height:22px;border-radius:6px;background:var(--paper);overflow:hidden}
+[id="07-lab-2"] .c7l2-barra{position:absolute;left:0;top:0;bottom:0;display:flex}
+[id="07-lab-2"] .c7l2-barra i{display:block;height:100%}
+[id="07-lab-2"] .c7l2-barra i.n{background:var(--c-red)}
+[id="07-lab-2"] .c7l2-barra i.h{background:var(--warm)}
+[id="07-lab-2"] .c7l2-avance{position:absolute;top:0;bottom:0;width:2px;background:var(--ink);opacity:.75}
+[id="07-lab-2"] .c7l2-espera{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(135deg,transparent 0 5px,var(--grid) 5px 7px);opacity:.9}
+[id="07-lab-2"] .c7l2-fila span.v{font:500 .76rem var(--f-mono);color:var(--muted);text-align:right;white-space:nowrap}
+[id="07-lab-2"] .c7l2-tarjetas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:8px}
+[id="07-lab-2"] .c7l2-t{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--card);display:grid;gap:2px}
+[id="07-lab-2"] .c7l2-t b{font:700 1.15rem var(--f-mono);color:var(--ink)}
+[id="07-lab-2"] .c7l2-t span{font:600 .72rem var(--f-display);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+[id="07-lab-2"] .c7l2-t.mal b{color:var(--warm)} [id="07-lab-2"] .c7l2-t.bien b{color:var(--good)}
+</style>
+<div class="ctls">
+  <label class="ctl">Eventos con cliente_id = 0 <output id="c7l2-po">2 %</output><input type="range" id="c7l2-p" min="1" max="70" step="1" value="2" aria-label="Porcentaje de eventos con cliente_id 0"></label>
+</div>
+<div class="c7l2-g"><span class="c7l2-rot">Remedios</span>
+<div class="btns" role="group" aria-label="Remedios contra el desbalance">
+  <button type="button" id="c7l2-sal" aria-pressed="false">Salar el cliente 0 (6 sub-claves)</button>
+  <button type="button" id="c7l2-aqe" aria-pressed="false">Dividir la partición grande (AQE)</button>
+</div></div>
+<div class="btns"><button type="button" class="primary" id="c7l2-run">Correr la agregación</button></div>
+<div class="c7l2-nodos" id="c7l2-nodos" aria-label="Avance de cada nodo"></div>
+<div class="legend"><span><i style="background:var(--c-red)"></i>filas de claves normales</span><span><i style="background:var(--warm)"></i>filas de cliente_id = 0</span><span><i style="background:var(--grid)"></i>nodo terminado, esperando</span></div>
+<div class="c7l2-tarjetas">
+  <div class="c7l2-t" id="c7l2-tt"><span>Duración del trabajo</span><b id="c7l2-k1">—</b></div>
+  <div class="c7l2-t"><span>Si estuviera parejo</span><b id="c7l2-k2">—</b></div>
+  <div class="c7l2-t" id="c7l2-to"><span>Tiempo ocioso del clúster</span><b id="c7l2-k3">—</b></div>
+</div>
+<div class="readout texto" id="c7l2-out" aria-live="polite"></div></div><div class="prose"><p>Los remedios, de más simple a más trabajoso:</p><ul><li><b>Filtrar o tratar aparte la clave problemática.</b> Si los eventos sin sesión no sirven para la unión con clientes, se filtran antes; si sirven, se procesan por separado y se juntan al final.</li><li><b>Ejecución adaptativa</b> (<i>Adaptive Query Execution</i>, AQE): desde Spark 3, el motor mide el tamaño real de las particiones después de cada shuffle y, si una es mucho más grande que la mediana, la parte en trozos. Está activada por defecto desde Spark 3.2 y resuelve muchos casos sin tocar el código.</li><li><b>Salar la clave</b> (<i>salting</i>): se le agrega a la clave un número al azar del 0 al N−1 (<code>0-3</code>, <code>0-5</code>), la agregación se hace por la clave salada, repartida en N particiones, y un segundo paso pequeño suma los N resultados parciales de cada clave original.</li></ul></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>¿Cómo quedaría repartido? Particiones, desbalance y sal</h3></div><p>Vas a simular el shuffle de Spark con DuckDB: cada línea de la tienda grande va a la partición <code>hash(clave) % 8</code>, y el programa cuenta cuántas líneas recibe cada una de las 8 particiones según la clave elegida. Necesitas los archivos Parquet de la práctica anterior en <code>grande/lago</code>. Guarda esto como <code>particiones.py</code> en <code>datos-tienda</code>:</p><div class="code-copia"><pre><code>"""¿Cómo quedarían repartidas las filas en 8 particiones?
+
+Simula el shuffle de Spark: cada línea va a la partición hash(clave) % 8.
+"""
+import duckdb
+
+LINEAS = """(SELECT d.*, p.canal, p.cliente_id, pr.categoria
+  FROM 'grande/lago/detalle_pedido.parquet' d
+  JOIN 'grande/lago/pedidos.parquet' p USING (pedido_id)
+  JOIN 'grande/lago/productos.parquet' pr USING (producto_id))"""
+
+def repartir(nombre, clave):
+    filas = duckdb.sql(f"""
+        SELECT hash({clave}) % 8 AS particion, COUNT(*) AS n
+        FROM {LINEAS} GROUP BY 1 ORDER BY 1""").fetchall()
+    n = dict(filas)
+    cuentas = [n.get(i, 0) for i in range(8)]
+    vacias = cuentas.count(0)
+    print(f"{nombre:28} máx {max(cuentas):&gt;9,}  mín {min(cuentas):&gt;9,}  vacías {vacias}"
+          .replace(",", "."))
+    print("   " + " ".join(f"{c // 10_000:&gt;3}" for c in cuentas), " (decenas de miles por partición)")
+
+repartir("por pedido_id", "pedido_id")
+repartir("por cliente_id", "cliente_id")
+repartir("por categoria (6 valores)", "categoria")
+repartir("por canal (2 valores)", "canal")
+repartir("por canal con sal de 0 a 7", "canal || '-' || (pedido_id % 8)")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python particiones.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 particiones.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>Compara la línea de <code>pedido_id</code> con la de <code>categoria</code>: el máximo, el mínimo y las particiones vacías.</span></li><li><span>Mira la de <code>canal</code>: solo hay dos valores, <code>web</code> y <code>app</code>.</span></li><li><span>Mira la última, con la sal: el canal sigue siendo la clave, pero ahora con 16 sub-claves.</span></li></ol><p><b>Qué observar:</b> con claves de muchos valores (<code>pedido_id</code>, <code>cliente_id</code>) las 8 particiones quedan casi iguales, unas 143.000 líneas cada una. Con <code>categoria</code>, solo 6 valores, el hash deja varias particiones vacías y una con cientos de miles de líneas: dos o tres categorías cayeron en la misma. Con <code>canal</code>, 6 de las 8 quedan vacías: un clúster de 8 nodos trabajaría como uno de 2. La sal reparte mucho mejor, aunque no perfecto: con pocas sub-claves el hash todavía puede juntar dos en la misma partición. Los números exactos pueden cambiar con otra versión de DuckDB, porque cada motor usa su propia función hash; el patrón no cambia.</p></div></section>
+<section><h2>Uniones distribuidas: por difusión o por partición</h2><div class="prose"><p>Unir dos tablas en un clúster plantea un problema: la línea de un pedido y la fila de su producto pueden estar en máquinas distintas. Para unirlas, tienen que encontrarse en la misma. Hay dos maneras de lograrlo.</p></div><div class="analogia"><b>Imagínalo así</b><p>Para que cada mesero de un salón grande sepa el precio de los platos, puedes darle a cada uno una copia de la carta, que es una hoja. Pero si lo que necesitan es cruzar dos listas largas, la de reservas y la de pedidos especiales, no puedes fotocopiar ninguna para todos: hay que repartirlas por número de mesa, para que cada mesero reciba solo las de sus mesas.</p></div><div class="prose"><ul><li><b>Unión por difusión</b> (<i>broadcast join</i>): si una de las tablas es pequeña, como <code>productos</code> con sus 200 filas, se copia entera a todos los ejecutores. La tabla grande no se mueve: cada ejecutor une sus propias particiones con su copia. Por la red viaja la tabla pequeña multiplicada por el número de ejecutores, casi nada.</li><li><b>Unión por partición</b> (<i>shuffle join</i>, y en su versión más común <i>sort-merge join</i>): si las dos tablas son grandes, como <code>pedidos</code> y <code>detalle_pedido</code> con diez veces más datos, las dos se reparten por la clave de unión (<code>pedido_id</code>), de modo que las filas del mismo pedido terminen en la misma máquina; ahí se ordenan y se cruzan. Por la red viajan casi las dos tablas completas.</li></ul></div><figure class="fig fig-comparacion" id="07-diagrama-3"><div class="lienzo"><svg viewBox="0 0 900 400" style="min-width:720px" role="img" aria-label="Dos formas de unir tablas en un clúster. A la izquierda, la unión por difusión: la tabla pequeña de productos se copia a los tres nodos y las particiones grandes de detalle_pedido no se mueven. A la derecha, la unión por partición: las dos tablas se reparten por la clave a través de la red y cada nodo une un tramo de claves">
+<defs>
+<marker id="c7d3-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-warm"/></marker>
+</defs>
+
+<rect x="10" y="10" width="430" height="380" rx="12" class="caja"/>
+<text x="26" y="36" class="t t-b">Por difusión (broadcast)</text>
+<text x="26" y="54" class="t t-s t-m">una tabla cabe en memoria: se copia a todos</text>
+<rect x="160" y="72" width="130" height="40" rx="8" class="c-red"/>
+<text x="225" y="90" class="t t-s t-b k-red" text-anchor="middle">productos</text>
+<text x="225" y="105" class="t t-s" text-anchor="middle">200 filas</text>
+<line x1="200" y1="112" x2="90" y2="168" class="ln s-warm" marker-end="url(#c7d3-w)"/>
+<line x1="225" y1="112" x2="225" y2="168" class="ln s-warm" marker-end="url(#c7d3-w)"/>
+<line x1="250" y1="112" x2="360" y2="168" class="ln s-warm" marker-end="url(#c7d3-w)"/>
+<g>
+<rect x="30" y="172" width="120" height="160" rx="8" class="caja"/>
+<text x="90" y="192" class="t t-s t-b" text-anchor="middle">nodo 1</text>
+<rect x="44" y="202" width="92" height="22" rx="4" class="c-red"/><text x="90" y="217" class="t t-s" text-anchor="middle">copia productos</text>
+<rect x="44" y="232" width="92" height="60" rx="4" class="c-tra"/><text x="90" y="258" class="t t-s" text-anchor="middle">detalle</text><text x="90" y="274" class="t t-s" text-anchor="middle">parte 1</text>
+<text x="90" y="318" class="t t-s t-m" text-anchor="middle">une en local</text>
+</g>
+<g>
+<rect x="165" y="172" width="120" height="160" rx="8" class="caja"/>
+<text x="225" y="192" class="t t-s t-b" text-anchor="middle">nodo 2</text>
+<rect x="179" y="202" width="92" height="22" rx="4" class="c-red"/><text x="225" y="217" class="t t-s" text-anchor="middle">copia productos</text>
+<rect x="179" y="232" width="92" height="60" rx="4" class="c-tra"/><text x="225" y="258" class="t t-s" text-anchor="middle">detalle</text><text x="225" y="274" class="t t-s" text-anchor="middle">parte 2</text>
+<text x="225" y="318" class="t t-s t-m" text-anchor="middle">une en local</text>
+</g>
+<g>
+<rect x="300" y="172" width="120" height="160" rx="8" class="caja"/>
+<text x="360" y="192" class="t t-s t-b" text-anchor="middle">nodo 3</text>
+<rect x="314" y="202" width="92" height="22" rx="4" class="c-red"/><text x="360" y="217" class="t t-s" text-anchor="middle">copia productos</text>
+<rect x="314" y="232" width="92" height="60" rx="4" class="c-tra"/><text x="360" y="258" class="t t-s" text-anchor="middle">detalle</text><text x="360" y="274" class="t t-s" text-anchor="middle">parte 3</text>
+<text x="360" y="318" class="t t-s t-m" text-anchor="middle">une en local</text>
+</g>
+<text x="26" y="362" class="t t-s">Por la red: tabla chica × nodos.</text>
+<text x="26" y="380" class="t t-s t-m">Si la «chica» no cabe en memoria, el trabajo cae.</text>
+
+
+<rect x="460" y="10" width="430" height="380" rx="12" class="caja"/>
+<text x="476" y="36" class="t t-b">Por partición (shuffle + sort-merge)</text>
+<text x="476" y="54" class="t t-s t-m">ninguna cabe: las dos se reparten por la clave</text>
+<rect x="480" y="72" width="180" height="40" rx="8" class="c-tra"/>
+<text x="570" y="90" class="t t-s t-b k-tra" text-anchor="middle">pedidos (grande)</text>
+<text x="570" y="105" class="t t-s" text-anchor="middle">en todas partes</text>
+<rect x="690" y="72" width="180" height="40" rx="8" class="c-tra"/>
+<text x="780" y="90" class="t t-s t-b k-tra" text-anchor="middle">detalle (grande)</text>
+<text x="780" y="105" class="t t-s" text-anchor="middle">en todas partes</text>
+<line x1="540" y1="112" x2="540" y2="168" class="ln s-warm" marker-end="url(#c7d3-w)"/>
+<line x1="575" y1="112" x2="670" y2="168" class="ln s-warm" marker-end="url(#c7d3-w)"/>
+<line x1="610" y1="112" x2="800" y2="168" class="ln s-warm" marker-end="url(#c7d3-w)"/>
+<line x1="740" y1="112" x2="550" y2="168" class="ln s-warm" marker-end="url(#c7d3-w)"/>
+<line x1="780" y1="112" x2="680" y2="168" class="ln s-warm" marker-end="url(#c7d3-w)"/>
+<line x1="820" y1="112" x2="810" y2="168" class="ln s-warm" marker-end="url(#c7d3-w)"/>
+<g>
+<rect x="480" y="172" width="120" height="160" rx="8" class="caja"/>
+<text x="540" y="192" class="t t-s t-b" text-anchor="middle">nodo 1</text>
+<rect x="494" y="202" width="92" height="90" rx="4" class="c-tra"/><text x="540" y="236" class="t t-s" text-anchor="middle">pedido_id</text><text x="540" y="252" class="t t-s" text-anchor="middle">tramo A</text><text x="540" y="268" class="t t-s" text-anchor="middle">de las dos</text>
+<text x="540" y="318" class="t t-s t-m" text-anchor="middle">ordena y cruza</text>
+</g>
+<g>
+<rect x="615" y="172" width="120" height="160" rx="8" class="caja"/>
+<text x="675" y="192" class="t t-s t-b" text-anchor="middle">nodo 2</text>
+<rect x="629" y="202" width="92" height="90" rx="4" class="c-tra"/><text x="675" y="236" class="t t-s" text-anchor="middle">pedido_id</text><text x="675" y="252" class="t t-s" text-anchor="middle">tramo B</text><text x="675" y="268" class="t t-s" text-anchor="middle">de las dos</text>
+<text x="675" y="318" class="t t-s t-m" text-anchor="middle">ordena y cruza</text>
+</g>
+<g>
+<rect x="750" y="172" width="120" height="160" rx="8" class="caja"/>
+<text x="810" y="192" class="t t-s t-b" text-anchor="middle">nodo 3</text>
+<rect x="764" y="202" width="92" height="90" rx="4" class="c-tra"/><text x="810" y="236" class="t t-s" text-anchor="middle">pedido_id</text><text x="810" y="252" class="t t-s" text-anchor="middle">tramo C</text><text x="810" y="268" class="t t-s" text-anchor="middle">de las dos</text>
+<text x="810" y="318" class="t t-s t-m" text-anchor="middle">ordena y cruza</text>
+</g>
+<text x="476" y="362" class="t t-s">Por la red: casi las dos tablas completas.</text>
+<text x="476" y="380" class="t t-s t-m">Siempre funciona; es la más cara.</text>
+</svg></div><figcaption><b>Dos formas de unir en un clúster.</b> A la izquierda, por difusión: la tabla <code>productos</code> (azul, arriba) se copia a los tres nodos y cada uno une su parte de <code>detalle_pedido</code> en local, sin mover la tabla grande. A la derecha, por partición: <code>pedidos</code> y <code>detalle_pedido</code> se reparten por <code>pedido_id</code> (flechas rojas, la red) y cada nodo recibe un tramo de claves de las dos tablas, lo ordena y lo cruza. Abajo de cada panel, cuánto viaja por la red y cuándo conviene.</figcaption></figure><div class="prose"><p>Spark elige la difusión de forma automática cuando estima que una tabla pesa menos de un umbral, que por defecto es de 10 MB (la opción <code>spark.sql.autoBroadcastJoinThreshold</code>). Dos errores son comunes. Uno: una dimensión de 50 MB que cabría holgada en memoria se une por partición porque supera el umbral, y la tabla grande viaja entera sin necesidad; una pista en la consulta (<code>/*+ BROADCAST(clientes) */</code>) lo corrige. El otro: forzar la difusión de una tabla que no es tan pequeña, que se copia a cada ejecutor y lo deja sin memoria.</p></div><div class="lab" id="07-lab-3"><div class="lab-title"><span class="tag">Laboratorio</span><h3>¿Difusión o partición?</h3></div><p class="hint">Mueve el tamaño de la tabla pequeña, de un catálogo como <code>productos</code> a una tabla de varios gigabytes, y el de la tabla grande. Mira cuántos datos viajan por la red con cada estrategia, cuál elige el optimizador con su umbral de 10 MB y qué pasa si fuerzas la difusión de una tabla que no cabe en memoria.</p><style>
+[id="07-lab-3"] .c7l3-rot{font:700 .72rem var(--f-display);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+[id="07-lab-3"] .c7l3-g{display:grid;gap:4px}
+[id="07-lab-3"] .c7l3-comp{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:10px}
+[id="07-lab-3"] .c7l3-est{border:2px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card);display:grid;gap:6px}
+[id="07-lab-3"] .c7l3-est.elegida{border-color:var(--accent);background:var(--accent-soft)}
+[id="07-lab-3"] .c7l3-est.falla{border-color:var(--warm);background:var(--warm-soft)}
+[id="07-lab-3"] .c7l3-est h4{margin:0;font:700 .9rem var(--f-display);color:var(--ink)}
+[id="07-lab-3"] .c7l3-est small{font:500 .78rem var(--f-display);color:var(--muted)}
+[id="07-lab-3"] .c7l3-met{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px;align-items:center;font:500 .76rem var(--f-display);color:var(--muted)}
+[id="07-lab-3"] .c7l3-pista{height:14px;border-radius:4px;background:var(--paper);position:relative;overflow:hidden}
+[id="07-lab-3"] .c7l3-pista i{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
+[id="07-lab-3"] .c7l3-num{font:600 .8rem var(--f-mono);color:var(--ink)}
+[id="07-lab-3"] .c7l3-sello{font:700 .72rem var(--f-display);letter-spacing:.06em;text-transform:uppercase}
+[id="07-lab-3"] svg text{font-family:var(--f-display);fill:var(--ink)}
+</style>
+<div class="ctls">
+  <label class="ctl">Tamaño de la tabla pequeña <output id="c7l3-so">5 MB</output><input type="range" id="c7l3-s" min="0" max="100" step="1" value="23" aria-label="Tamaño de la tabla pequeña"></label>
+  <label class="ctl">Tamaño de la tabla grande <output id="c7l3-bo">200 GB</output><input type="range" id="c7l3-b" min="10" max="1000" step="10" value="200" aria-label="Tamaño de la tabla grande en GB"></label>
+</div>
+<div class="c7l3-g"><span class="c7l3-rot">Estrategia de unión</span>
+<div class="btns" role="group" aria-label="Estrategia de unión">
+  <button type="button" data-e="auto" aria-pressed="true">Que decida el optimizador</button>
+  <button type="button" data-e="bc" aria-pressed="false">Forzar difusión</button>
+  <button type="button" data-e="sm" aria-pressed="false">Forzar partición (sort-merge)</button>
+</div></div>
+<div class="c7l3-comp" id="c7l3-comp"></div>
+<div class="readout texto" id="c7l3-out" aria-live="polite"></div>
+<p class="hint">Clúster de ejemplo: 20 ejecutores con 4 GB de memoria disponible para la unión cada uno. Umbral de difusión automática: 10 MB, el valor por defecto de Spark.</p></div></section>
+<section><h2>Alternativas de una sola máquina: DuckDB y Polars</h2><div class="prose"><p>La práctica de este capítulo dio una pista: muchas consultas que hace diez años exigían un clúster hoy corren en una laptop. Lo que cambió no fue solo el hardware (memorias de decenas de gigabytes y discos de estado sólido), sino los motores.</p><ul><li><b>DuckDB</b>: una base de datos analítica que corre dentro de tu programa, sin servidor, como SQLite pero pensada para consultas analíticas. Guarda y procesa por columnas, ejecuta las operaciones sobre bloques de miles de valores a la vez (<b>ejecución vectorizada</b>, <i>vectorized execution</i>) usando todos los núcleos, lee Parquet, CSV y bases SQLite o PostgreSQL directamente y, si un resultado intermedio no cabe en la memoria, lo vuelca a disco en lugar de fallar.</li><li><b>Polars</b>: una biblioteca de DataFrames escrita en Rust, con una API en Python parecida a la de pandas pero con evaluación perezosa y un optimizador como el de Spark. Usa el formato de memoria de Apache Arrow y también procesa en paralelo con todos los núcleos.</li></ul><p>Los dos aplican, en una sola máquina, las mismas ideas de este capítulo: un plan que se optimiza antes de correr, leer solo las columnas necesarias, filtrar en la lectura, dividir los datos en trozos y procesarlos en paralelo. Lo que se ahorran es la parte cara del procesamiento distribuido: no hay red, no hay shuffle entre máquinas, no hay un clúster que mantener ni un driver que coordine.</p><div class="tbl"><table><thead><tr><th></th><th>Una máquina (DuckDB, Polars)</th><th>Clúster (Spark)</th></tr></thead><tbody><tr><td>Datos cómodos</td><td>hasta cientos de GB, más si la consulta lee poco</td><td>de cientos de GB a petabytes</td></tr><tr><td>Arranque</td><td>milisegundos</td><td>de segundos a minutos (pedir ejecutores)</td></tr><tr><td>Fallas</td><td>si se cae, se repite todo</td><td>reintenta solo las tareas perdidas</td></tr><tr><td>Operación</td><td>una biblioteca de Python</td><td>un clúster o un servicio administrado</td></tr><tr><td>Costo</td><td>la máquina que ya tienes</td><td>máquinas por hora, aunque estén ociosas</td></tr></tbody></table></div><p>La decisión no es de moda sino de números. Mide el tamaño de lo que tus consultas leen y el tiempo que tardan en una máquina buena; si no alcanza, el procesamiento distribuido es la herramienta correcta, y ya sabes qué vigilar: el shuffle, el desbalance y las uniones.</p></div><div class="caso"><b>Un caso real</b><p><b>El clúster que se apagó.</b> Un equipo de datos de una empresa de comercio electrónico de tamaño medio mantenía un clúster de Spark para sus transformaciones nocturnas. Al revisar los registros de un trimestre, notaron que la tabla más grande que leía cualquier trabajo, ya filtrada por fecha y columnas, tenía unos 40 GB, y que la mayor parte del tiempo de cada trabajo se iba en pedir y arrancar ejecutores. Movieron las transformaciones a DuckDB en una sola máquina grande, programadas por el mismo orquestador: la corrida nocturna pasó de cerca de una hora a unos minutos y el costo mensual bajó a una fracción. Dejaron Spark para el único trabajo que sí lo necesitaba: el reproceso anual de todo el historial de eventos de la app, decenas de terabytes. Casos parecidos se cuentan con frecuencia en conferencias y blogs técnicos desde 2023; la lección no es «Spark sobra», sino medir antes de elegir.</p></div><div class="ml"><b>En la práctica</b><p><b>La respuesta a Irene.</b> Natalia le mostró a Irene la práctica de este capítulo: las ventas por mes y categoría de la tienda diez veces más grande, en menos de un segundo con Polars. Irene armó su conjunto de entrenamiento con DuckDB sobre los Parquet del lago, sin pedir presupuesto. Natalia dejó escrita una regla para la plataforma: «antes de proponer un clúster, se mide el tamaño de lo que lee la consulta y el tiempo en una máquina». Y anotó cuándo volvería a preguntar: si los eventos de la app, que todavía no entran a la plataforma, llegan como se espera con el streaming del capítulo 08, en un año serán varios terabytes al mes. Ese día, el capítulo 07 vuelve a servir.</p></div></section>
+<section><h2>La idea clave</h2><div class="prose"><p>Para procesar más datos de los que caben en una máquina, el trabajo se divide en particiones que se procesan en paralelo, y los datos se redistribuyen solo cuando una operación necesita juntar las filas de una misma clave: ese shuffle es lo que cuesta. Por eso las agregaciones se combinan antes de mover, las tablas pequeñas se difunden en lugar de repartirse y las claves desbalanceadas se salan o se tratan aparte. Y antes de todo eso, se mide: con DuckDB o Polars, una sola máquina hace hoy mucho de lo que antes exigía un clúster.</p></div></section>
+<section><h2>Pruébate</h2><div class="quiz"><h3>Pruébate</h3><details><summary>¿Por qué un <code>SUM(venta)</code> por categoría distribuido es barato y un <code>COUNT(DISTINCT cliente_id)</code> es caro?</summary><p>Porque la suma se puede combinar en el mapa: cada nodo suma sus filas y por la red viaja una cifra por clave. Para contar valores distintos hay que mover los valores mismos, porque dos nodos pueden tener el mismo cliente.</p></details><details><summary>En Spark, escribes cinco líneas de transformaciones sobre un DataFrame y el programa termina en un milisegundo. ¿Qué pasó?</summary><p>Nada se ejecutó: las transformaciones son perezosas y solo se anotan en el plan. El trabajo corre recién cuando una acción (escribir, contar, mostrar) pide un resultado.</p></details><details><summary>Un trabajo de 200 tareas lleva una hora en 199 de 200. ¿Qué sospechas y qué haces?</summary><p>Una clave desbalanceada: una partición mucho más grande que las demás. Se revisa la distribución de la clave y se filtra o trata aparte el valor dominante (nulos, un cliente genérico), se activa la ejecución adaptativa o se sala la clave.</p></details><details><summary>¿Qué estrategia de unión conviene para unir <code>detalle_pedido</code> con <code>productos</code>, y cuál para unir <code>pedidos</code> con <code>detalle_pedido</code> en la tienda diez veces más grande en un clúster?</summary><p>Con <code>productos</code>, por difusión: es una tabla pequeña que se copia a cada ejecutor. Entre <code>pedidos</code> y <code>detalle_pedido</code>, por partición: las dos son grandes y se reparten por <code>pedido_id</code>.</p></details><details><summary>¿Por qué agregar más nodos no acelera una agregación por <code>canal</code> en la tienda?</summary><p>Porque <code>canal</code> tiene solo dos valores: todas las filas van a lo sumo a dos particiones y el resto de los nodos se queda sin trabajo. El paralelismo útil está limitado por el número de claves.</p></details></div></section>
+<section><h2>Para investigar</h2><div class="investiga"><h3>Para investigar</h3><p class="hint">Estas preguntas no se responden en el capítulo: búscalas por tu cuenta.</p><ol><li>¿Qué es HDFS y por qué guarda cada bloque en tres máquinas distintas?<small>Pista: busca «HDFS replication factor» y «rack awareness».</small></li><li>¿Qué es Apache Arrow y por qué Polars, DuckDB y Spark lo usan para pasarse datos sin copiarlos?<small>Pista: busca «Arrow columnar format zero-copy».</small></li><li>¿Qué es la ejecución especulativa de Spark y qué problema de las tareas lentas intenta resolver?<small>Pista: busca «spark.speculation straggler».</small></li><li>¿Cómo funciona por dentro una unión por hash (<i>hash join</i>) y en qué se diferencia de la unión por ordenamiento y mezcla?</li><li>¿Por qué Spark corre sobre la máquina virtual de Java y qué problemas trae el recolector de basura (<i>garbage collector</i>) en trabajos con mucha memoria?<small>Pista: busca «Project Tungsten off-heap memory».</small></li></ol></div></section>
+<section><h2>Para saber más</h2><div class="vids"><span>Para saber más</span><a class="vid" href="https://research.google/pubs/mapreduce-simplified-data-processing-on-large-clusters/" target="_blank" rel="noopener">MapReduce: Simplified Data Processing on Large Clusters <small>el artículo de Dean y Ghemawat (2004), en inglés</small></a><a class="vid" href="https://spark.apache.org/docs/latest/sql-performance-tuning.html" target="_blank" rel="noopener">Spark SQL: ajuste de rendimiento <small>documentación oficial: difusión, AQE y desbalance, en inglés</small></a><a class="vid" href="https://docs.pola.rs/user-guide/lazy/" target="_blank" rel="noopener">Polars: la API perezosa <small>documentación oficial, en inglés</small></a><a class="vid" href="https://duckdb.org/docs/stable/guides/performance/overview" target="_blank" rel="noopener">DuckDB: guía de rendimiento <small>documentación oficial, en inglés</small></a></div></section>
+<label class="got"><input type="checkbox" id="got"> Lo tengo claro</label>
+<nav class="pager" id="pager" aria-label="Capítulo anterior y siguiente"></nav>
+</main>
+</div>
+<footer><span>Curso abierto de aaramirez.github.io.</span><span>Sitio publicado: <a href="https://github.com/aaramirez/ingenieria-de-datos" target="_blank" rel="noopener">github.com/aaramirez/ingenieria-de-datos</a></span></footer>
+</div>
+<script src="assets/lab.js"></script>
+<script>
+(function(){
+  const raiz=document.querySelector('[id="07-lab-1"]');
+  const {$}=window.Lab;
+  const svg=raiz.querySelector('#c7l1-svg');
+  const NS='http://www.w3.org/2000/svg';
+  const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Claves de la agregación (cuatro categorías) y sus colores
+  const CLAVES=[['Hogar','--c-red'],['Cocina','--c-tra'],['Electrónica','--c-apl'],['Papelería','--c-enl'],['Deportes','--c-fis'],['Juguetes','--d-inet']];
+  const FILAS=36;
+  function rng(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+  const r=rng(7);
+  const PESOS=[0.24,0.2,0.18,0.14,0.13,0.11];
+  const datos=[];
+  for(let i=0;i<FILAS;i++){let u=r(),k=0,acc=PESOS[0];while(u>acc&&k<5){k++;acc+=PESOS[k];}datos.push(k);}
+  // a qué nodo va cada clave en el shuffle: hash(clave) mod N (tabla fija para que se lea)
+  const HASH=[5,2,7,3,8,13];
+  let N=3,comb=false,fase=0,timers=[];
+  const Y={nodo:34,ent:72,map:146,red:240,sal:322};
+  function el(n,a,txt){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(txt!==undefined)e.textContent=txt;svg.appendChild(e);return e;}
+  function col(i){const w=550/N;return 84+w*i+w/2;}
+  function ancho(){return 550/N-8;}
+  function color(k){return 'var('+CLAVES[k][1]+')';}
+  function particion(){const p=[];for(let i=0;i<N;i++)p.push([]);datos.forEach((k,i)=>p[i%N].push(k));return p;}
+  function destino(k){return HASH[k]%N;}
+  function mapa(p){
+    // salida del mapa: con combinación, una suma por clave y nodo; sin ella, una fila por registro
+    return p.map(lista=>{
+      if(!comb)return lista.map(k=>({k,n:1}));
+      const c=[0,0,0,0,0,0];lista.forEach(k=>c[k]++);
+      return c.map((n,k)=>({k,n})).filter(o=>o.n>0);
+    });
+  }
+  function metricas(){
+    const p=particion(),m=mapa(p);let viajan=0,quedan=0;
+    m.forEach((lista,i)=>lista.forEach(o=>{if(destino(o.k)===i)quedan++;else viajan++;}));
+    const tMapa=Math.max(...p.map(l=>l.length))*0.5;
+    const tRed=viajan*0.35;
+    const carga=new Array(N).fill(0);m.forEach(lista=>lista.forEach(o=>carga[destino(o.k)]+=comb?1:o.n));
+    const tRed2=Math.max(...carga)*0.3;
+    return {p,m,viajan,quedan,t:tMapa+tRed+tRed2,carga};
+  }
+  function puntos(lista,x,y,paso){
+    // reparte los puntos en una cuadrícula dentro de la columna
+    paso=paso||13;const w=ancho()-16,porFila=Math.max(3,Math.floor(w/paso));
+    return lista.map((o,j)=>({o,x:x-w/2+8+(j%porFila)*paso,y:y+Math.floor(j/porFila)*paso}));
+  }
+  function dibujar(){
+    svg.innerHTML='';
+    const M=metricas();
+    el('text',{x:8,y:Y.ent+4,'font-size':10,class:'c7l1-m'},'ENTRADA');
+    el('text',{x:8,y:Y.map+4,'font-size':10,class:'c7l1-m'},'MAPA');
+    el('text',{x:8,y:Y.red+4,'font-size':10,class:'c7l1-m'},'SHUFFLE');
+    el('text',{x:8,y:Y.sal+4,'font-size':10,class:'c7l1-m'},'REDUCCIÓN');
+    for(let i=0;i<N;i++){
+      const x=col(i);
+      el('rect',{x:x-ancho()/2,y:Y.nodo-18,width:ancho(),height:364-Y.nodo,rx:10,class:'c7l1-nodo'});
+      el('text',{x,y:Y.nodo,'text-anchor':'middle','font-size':12,'font-weight':700},'Nodo '+(i+1));
+      const claves=CLAVES.map((c,k)=>k).filter(k=>destino(k)===i);
+      if(!claves.length)el('text',{x,y:Y.nodo+15,'text-anchor':'middle','font-size':10,class:'c7l1-m'},'sin claves');
+      claves.forEach((k,j)=>el('rect',{x:x-claves.length*7+j*14+1,y:Y.nodo+6,width:11,height:11,rx:2,fill:color(k)}));
+    }
+    if(fase>=2)el('rect',{x:84,y:Y.map+30,width:550,height:Y.red-Y.map-52,rx:6,class:'c7l1-red'});
+    if(fase>=2)el('text',{x:359,y:Y.map+52,'text-anchor':'middle','font-size':10,fill:'var(--warm)'},'RED: las filas viajan al nodo de su clave');
+    // entrada
+    M.p.forEach((l,i)=>puntos(l.map(k=>({k,n:1})),col(i),Y.ent).forEach(q=>el('circle',{cx:q.x,cy:q.y,r:5,fill:color(q.o.k)})));
+    if(fase>=1){
+      M.m.forEach((l,i)=>{
+        const ps=puntos(l,col(i),Y.map,comb?17:13);
+        ps.forEach(q=>{
+          const rad=comb?7:5;
+          const c=el('circle',{cx:q.x,cy:q.y,r:rad,fill:color(q.o.k)});
+          if(comb){el('text',{x:q.x,y:q.y+3.5,'text-anchor':'middle','font-size':10,'font-weight':700,fill:'var(--paper)'},String(q.o.n));}
+          q.el=c;
+          if(fase>=2){
+            const d=destino(q.o.k);
+            const yaLlegados=M.m.slice(0,i).reduce((s,ll)=>s+ll.filter(o=>destino(o.k)===d).length,0)+l.slice(0,l.indexOf(q.o)).filter(o=>destino(o.k)===d).length;
+            const w=ancho()-16,porFila=Math.max(3,Math.floor(w/17));
+            const tx=col(d)-w/2+8+(yaLlegados%porFila)*17,ty=Y.red+Math.floor(yaLlegados/porFila)*16;
+            const viaja=d!==i;
+            const linea=el('line',{x1:q.x,y1:q.y,x2:tx,y2:ty,stroke:viaja?'var(--warm)':'var(--grid)','stroke-width':viaja?1:0.8,opacity:viaja?0.55:0.8});
+            const m=el('circle',{cx:q.x,cy:q.y,r:rad,fill:color(q.o.k),stroke:viaja?'var(--warm)':'none','stroke-width':1.5});
+            if(fase===2&&!reduce){
+              const t0=performance.now(),dur=900;
+              (function anim(t){const a=Math.min(1,(t-t0)/dur),e=a<.5?2*a*a:1-Math.pow(-2*a+2,2)/2;m.setAttribute('cx',q.x+(tx-q.x)*e);m.setAttribute('cy',q.y+(ty-q.y)*e);if(a<1)requestAnimationFrame(anim);})(t0);
+            }else{m.setAttribute('cx',tx);m.setAttribute('cy',ty);}
+          }
+        });
+      });
+    }
+    if(fase>=3){
+      for(let i=0;i<N;i++){
+        const tot=[0,0,0,0,0,0];M.m.forEach(l=>l.forEach(o=>{if(destino(o.k)===i)tot[o.k]+=o.n;}));
+        let yy=Y.sal;
+        tot.forEach((n,k)=>{if(!n)return;
+          el('rect',{x:col(i)-ancho()/2+8,y:yy-10,width:12,height:12,rx:3,fill:color(k)});
+          el('text',{x:col(i)-ancho()/2+26,y:yy,'font-size':11},(ancho()>120?CLAVES[k][0]+': ':'')+n);yy+=16;});
+      }
+    }
+    const fmt=n=>String(n);const seg=t=>t.toFixed(1).replace('.',',')+' s';
+    document.getElementById('c7l1-k1').textContent=fase>=1?fmt(FILAS):'—';
+    document.getElementById('c7l1-k2').textContent=fase>=2?fmt(M.viajan)+(comb?' sumas':' filas'):'—';
+    document.getElementById('c7l1-k3').textContent=fase>=2?fmt(M.quedan):'—';
+    document.getElementById('c7l1-k4').textContent=fase>=3?M.t.toFixed(1).replace('.',',')+' s':'—';
+    const out=document.getElementById('c7l1-out');
+    const T=['Cada nodo tiene su partición de líneas de detalle_pedido: '+M.p.map(l=>l.length).join(', ')+' filas. Pulsa otra vez para la fase de mapa.',
+      comb?'Mapa con combinación: cada nodo suma sus propias líneas por categoría y deja una sola cifra por clave. Todavía nada viajó por la red.':'Mapa: cada nodo lee sus filas y emite un par (categoría, 1) por línea. Todavía nada viajó por la red.',
+      'Shuffle: cada par va al nodo que reduce su categoría (hash de la clave módulo '+N+'). '+M.viajan+' '+(comb?'sumas parciales':'filas')+' cruzan la red y '+M.quedan+' se quedan donde estaban. Esta es la fase cara: disco, serialización y red.',
+      'Reducción: cada nodo suma lo que recibió y escribe el total de sus categorías. '+(comb?'Con la combinación en el mapa viajaron '+M.viajan+' sumas en lugar de las filas sueltas: el resultado es idéntico y la red trabajó mucho menos.':'Prueba «Combinar en el mapa»: el resultado será el mismo, pero por la red viajarán solo unas pocas sumas parciales.')];
+    const vacios=[];for(let i=0;i<N;i++)if(!CLAVES.some((c,k)=>destino(k)===i))vacios.push(i+1);
+    const big=['Fase 1 de 4 · entrada','Fase 2 de 4 · mapa','Fase 3 de 4 · shuffle: '+M.viajan+' '+(comb?'sumas':'filas')+' por la red','Fase 4 de 4 · reducción en '+seg(M.t)];
+    out.innerHTML='<span class="big">'+big[fase]+'</span><span>'+T[fase]+(fase===3&&vacios.length?' Ojo: el nodo '+vacios.join(' y el ')+' no recibió ninguna categoría. El hash reparte claves, no filas, y con pocas claves algún nodo se queda sin trabajo.':'')+'</span>';
+    const ley=document.getElementById('c7l1-ley');
+    ley.innerHTML=CLAVES.map(c=>'<span><i style="background:var('+c[1]+')"></i>'+c[0]+'</span>').join('')+'<span><i style="background:var(--warm-soft);border:1px solid var(--warm)"></i>cruza la red</span>';
+  }
+  function correr(){
+    timers.forEach(clearTimeout);timers=[];fase=0;dibujar();
+    [1,2,3].forEach((f,j)=>timers.push(setTimeout(()=>{fase=f;dibujar();},reduce?0:(j+1)*1100)));
+  }
+  function paso(){timers.forEach(clearTimeout);timers=[];fase=(fase+1)%4;dibujar();}
+  raiz.querySelectorAll('[data-n]').forEach(b=>b.addEventListener('click',()=>{N=+b.dataset.n;raiz.querySelectorAll('[data-n]').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));timers.forEach(clearTimeout);fase=0;dibujar();}));
+  document.getElementById('c7l1-comb').addEventListener('click',e=>{comb=!comb;e.currentTarget.setAttribute('aria-pressed',comb?'true':'false');timers.forEach(clearTimeout);fase=0;dibujar();});
+  document.getElementById('c7l1-run').addEventListener('click',correr);
+  document.getElementById('c7l1-paso').addEventListener('click',paso);
+  dibujar();
+})();
+</script>
+<script>
+(function(){
+  const raiz=document.querySelector('[id="07-lab-2"]');
+  const {$}=window.Lab;
+  const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const NODOS=6,TOTAL=6000000,VEL=100000,CALIENTE=2; // filas por segundo y nodo; nodo que recibe la clave grande
+  let p=2,sal=false,aqe=false,raf=0;
+  const miles=n=>Math.round(n).toLocaleString('es').replace(/ |,/g,'.');
+  const seg=s=>s.toFixed(1).replace('.',',')+' s';
+  function reparto(){
+    // filas por nodo: [normales, de la clave grande]
+    const grande=TOTAL*p/100,resto=(TOTAL-grande)/NODOS;
+    const r=[];for(let i=0;i<NODOS;i++)r.push([resto,0]);
+    if(sal){for(let i=0;i<NODOS;i++)r[i][1]=grande/NODOS;}
+    else if(aqe){
+      // AQE parte la partición desbalanceada en trozos y los reparte en los nodos con menos carga
+      const trozos=4;r[CALIENTE][1]=grande/trozos;
+      let k=0;for(let t=1;t<trozos;t++){k=(CALIENTE+t)%NODOS;r[k][1]+=grande/trozos;}
+    }else r[CALIENTE][1]=grande;
+    return r;
+  }
+  function tiempos(r){
+    const t=r.map(([a,b])=>(a+b)/VEL);
+    const extra=sal?0.35:(aqe?0.2:0); // el segundo paso que junta las sub-claves, o el costo de replanificar
+    return {t,dur:Math.max(...t)+extra,parejo:TOTAL/NODOS/VEL+extra};
+  }
+  function pintar(av){
+    const r=reparto(),T=tiempos(r),escala=Math.max(T.dur,1);
+    const html=r.map(([a,b],i)=>{
+      const ti=T.t[i],wa=a/VEL/escala*100,wb=b/VEL/escala*100;
+      const prog=av===undefined?1:Math.min(1,av*escala/ti);
+      const corte=av===undefined?100:Math.min(av*100,100);
+      const terminado=av!==undefined&&av*escala>=ti;
+      return '<div class="c7l2-fila"><b>Nodo '+(i+1)+'</b><div class="c7l2-pista"><div class="c7l2-barra" style="width:'+((wa+wb)*prog)+'%"><i class="n" style="width:'+(wa/(wa+wb)*100)+'%"></i><i class="h" style="width:'+(wb/(wa+wb)*100)+'%"></i></div>'+
+        (terminado?'<div class="c7l2-espera" style="left:'+(wa+wb)+'%;width:'+Math.max(0,corte-(wa+wb))+'%"></div>':'')+
+        (av!==undefined&&av<1?'<div class="c7l2-avance" style="left:'+corte+'%"></div>':'')+
+        '</div><span class="v">'+((a+b)/1e6).toFixed(1).replace('.',',')+' M · '+Math.round(ti)+' s</span></div>';
+    }).join('');
+    raiz.querySelector('#c7l2-nodos').innerHTML=html;
+    if(av===undefined||av>=1){
+      const ocio=1-T.t.reduce((s,x)=>s+x,0)/(NODOS*T.dur);
+      raiz.querySelector('#c7l2-k1').textContent=seg(T.dur);
+      raiz.querySelector('#c7l2-k2').textContent=seg(T.parejo);
+      raiz.querySelector('#c7l2-k3').textContent=Math.round(ocio*100)+' %';
+      raiz.querySelector('#c7l2-tt').className='c7l2-t '+(T.dur>T.parejo*1.5?'mal':'bien');
+      raiz.querySelector('#c7l2-to').className='c7l2-t '+(ocio>0.3?'mal':'bien');
+      let txt;
+      if(sal)txt='Con sal, el cliente 0 se reparte en 6 sub-claves («0-0» a «0-5»), una por nodo. Todos terminan casi juntos; el precio es un segundo paso pequeño que suma las 6 sub-sumas del cliente 0.';
+      else if(aqe)txt='La ejecución adaptativa (AQE) detecta en tiempo de ejecución que una partición es mucho más grande que la mediana y la parte en trozos. Mejora sin tocar el código, aunque aquí no reparte tan parejo como la sal.';
+      else if(p<=5)txt='Con las claves parejas, cada nodo recibe más o menos lo mismo y el trabajo dura lo que dura un nodo. Sube el porcentaje de eventos de visitantes sin sesión, que llegan con cliente_id = 0.';
+      else txt='Todas las filas de una misma clave van al mismo nodo (hash de la clave). El nodo '+(CALIENTE+1)+' carga con '+miles(TOTAL*p/100)+' eventos del cliente 0 y los otros cinco terminan y esperan: el trabajo dura lo que dura el más lento, '+(T.dur/T.parejo).toFixed(1).replace('.',',')+' veces más que si estuviera parejo. Más nodos no lo arreglan: prueba los remedios.';
+      raiz.querySelector('#c7l2-out').innerHTML='<span class="big">El trabajo dura '+seg(T.dur)+(T.dur>T.parejo*1.15?', '+(T.dur/T.parejo).toFixed(1).replace('.',',')+' veces lo parejo':'')+'</span><span>'+txt+'</span>';
+    }
+  }
+  function correr(){
+    cancelAnimationFrame(raf);
+    if(reduce){pintar();return;}
+    const t0=performance.now(),dur=2600;
+    (function f(t){const a=Math.min(1,(t-t0)/dur);pintar(a);if(a<1)raf=requestAnimationFrame(f);})(t0);
+  }
+  const rango=raiz.querySelector('#c7l2-p');
+  rango.addEventListener('input',()=>{p=+rango.value;raiz.querySelector('#c7l2-po').textContent=p+' %';cancelAnimationFrame(raf);pintar();});
+  raiz.querySelector('#c7l2-sal').addEventListener('click',e=>{sal=!sal;if(sal){aqe=false;raiz.querySelector('#c7l2-aqe').setAttribute('aria-pressed','false');}e.currentTarget.setAttribute('aria-pressed',sal?'true':'false');correr();});
+  raiz.querySelector('#c7l2-aqe').addEventListener('click',e=>{aqe=!aqe;if(aqe){sal=false;raiz.querySelector('#c7l2-sal').setAttribute('aria-pressed','false');}e.currentTarget.setAttribute('aria-pressed',aqe?'true':'false');correr();});
+  raiz.querySelector('#c7l2-run').addEventListener('click',correr);
+  pintar();
+})();
+</script>
+<script>
+(function(){
+  const raiz=document.querySelector('[id="07-lab-3"]');
+  const {$}=window.Lab;
+  const N=20,MEM=4096,UMBRAL=10; // MB
+  let est='auto';
+  const sMB=v=>Math.round(Math.pow(10,v/100*Math.log10(4096)) * 10)/10; // 1 MB a 4 GB, escala logarítmica
+  function tam(mb){if(mb>=1024)return (mb/1024).toFixed(1).replace('.',',')+' GB';return (mb>=10?Math.round(mb):mb.toFixed(1).replace('.',','))+' MB';}
+  function pintar(){
+    const peq=sMB(+raiz.querySelector('#c7l3-s').value),gr=+raiz.querySelector('#c7l3-b').value*1024;
+    raiz.querySelector('#c7l3-so').textContent=tam(peq);
+    raiz.querySelector('#c7l3-bo').textContent=tam(gr);
+    // tráfico por la red: difusión = copia de la pequeña a cada ejecutor; partición = ambas tablas se reparten por la clave
+    const redBC=peq*N, redSM=(gr+peq)*(N-1)/N;
+    const cabe=peq*1.6<MEM; // la tabla en memoria ocupa más que en disco
+    const elegida=est==='auto'?(peq<=UMBRAL?'bc':'sm'):est;
+    const max=Math.max(redBC,redSM);
+    const t=(red,ordena)=>red/1024/N*2.2+(ordena?gr/1024/N*1.5:0)+gr/1024/N*1.2; // segundos aproximados
+    const tBC=cabe?t(redBC,false):Infinity, tSM=t(redSM,true);
+    const tarjeta=(id,nombre,desc,red,tt,falla)=>{
+      const cl='c7l3-est'+(elegida===id?' elegida':'')+(falla&&elegida===id?' falla':'');
+      const sello=elegida===id?(falla?'<span class="c7l3-sello" style="color:var(--warm)">elegida · falla por memoria</span>':'<span class="c7l3-sello" style="color:var(--accent)">elegida</span>'):'<span class="c7l3-sello" style="color:var(--muted)">no elegida</span>';
+      return '<div class="'+cl+'"><h4>'+nombre+'</h4>'+sello+'<small>'+desc+'</small>'+
+        '<div class="c7l3-met">Por la red<div class="c7l3-pista"><i style="width:'+Math.max(1,red/max*100)+'%;background:var(--warm)"></i></div></div>'+
+        '<div class="c7l3-met"><span></span><span class="c7l3-num">'+tam(red)+'</span></div>'+
+        '<div class="c7l3-met">Tiempo aprox.<span class="c7l3-num">'+(isFinite(tt)?Math.round(tt)+' s':'no termina')+'</span></div></div>';
+    };
+    raiz.querySelector('#c7l3-comp').innerHTML=
+      tarjeta('bc','Por difusión (broadcast)','La tabla pequeña se copia entera a los '+N+' ejecutores; la grande no se mueve.',redBC,tBC,!cabe)+
+      tarjeta('sm','Por partición (shuffle + sort-merge)','Las dos tablas se reparten por la clave de unión, se ordenan y se cruzan por tramos.',redSM,tSM,false);
+    let txt;
+    if(elegida==='bc'&&!cabe)txt='Forzaste la difusión con una tabla de '+tam(peq)+': no cabe en la memoria de cada ejecutor y el trabajo cae por falta de memoria (OutOfMemoryError). La difusión solo sirve cuando una de las tablas es de verdad pequeña.';
+    else if(elegida==='bc')txt='Difusión: viajan '+tam(redBC)+' (la tabla pequeña por '+N+') en lugar de '+tam(redSM)+'. La tabla grande se queda donde está y cada ejecutor une sus propias filas. '+(est==='auto'?'El optimizador la eligió porque la tabla pequeña no pasa del umbral de '+UMBRAL+' MB.':'Aquí forzarla es buena idea.');
+    else if(est==='auto'&&peq<300)txt='La tabla pequeña pesa '+tam(peq)+', sobre el umbral de '+UMBRAL+' MB, y el optimizador eligió repartir las dos: '+tam(redSM)+' por la red. Con una pista (hint) de difusión, o subiendo el umbral, viajarían solo '+tam(redBC)+'. Saber el tamaño de tus tablas le gana al valor por defecto.';
+    else txt='Unión por partición: las dos tablas viajan casi completas por la red ('+tam(redSM)+') y se ordenan por la clave. Es la estrategia que siempre funciona, la que se usa cuando ninguna tabla cabe en memoria, y la más cara.';
+    raiz.querySelector('#c7l3-out').innerHTML='<span class="big">'+(elegida==='bc'?(cabe?'Difusión':'Difusión: falla por memoria'):'Partición (sort-merge)')+' · '+tam(elegida==='bc'?redBC:redSM)+' por la red</span><span>'+txt+'</span>';
+  }
+  raiz.querySelectorAll('input').forEach(i=>i.addEventListener('input',pintar));
+  raiz.querySelectorAll('[data-e]').forEach(b=>b.addEventListener('click',()=>{est=b.dataset.e;raiz.querySelectorAll('[data-e]').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));pintar();}));
+  pintar();
+})();
+</script>
+</body>
+</html>

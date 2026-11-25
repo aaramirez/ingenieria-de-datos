@@ -1,0 +1,780 @@
+<!doctype html>
+<html lang="es">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-KX76XF8R');</script>
+<!-- End Google Tag Manager -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ETL y ELT · Ingeniería de datos · Ingeniería de datos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Cómo viaja un dato desde la base de una aplicación hasta el tablero que lee la gerencia: ingesta, formatos, ETL y ELT, data warehouse, lakehouse, Spark, Kafka, orquestación, dbt, calidad y linaje, con laboratorios donde se ve cada pipeline funcionar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400;1,8..60,600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KX76XF8R"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<div class="wrap" data-page="etl-y-elt">
+<header class="topbar"><a class="brand" href="index.html">Ingeniería de <b>datos</b></a><span class="eyebrow">Curso visual e interactivo · Datos e inteligencia artificial</span><a class="al-sitio" href="https://aaramirez.github.io/">← Todos los cursos</a></header>
+<div class="layout">
+<nav class="toc" id="toc" aria-label="Ruta de aprendizaje"></nav>
+<main>
+<header class="page-head"><span class="num">CAPÍTULO 04 DE 14</span><h1>ETL y ELT, por lotes o en streaming</h1><p class="lede">Los datos de Tienda Ejemplo ya llegan a la zona de aterrizaje, pero nadie los puede usar todavía. Este capítulo arma el primer pipeline de la tienda: decide si transformar antes o después de cargar, cada cuánto correrlo y cómo lograr que se pueda repetir mil veces sin duplicar una venta.</p></header>
+<section><h2>Extraer, transformar y cargar: el ETL clásico</h2><div class="prose"><p>Es lunes y Martín Salas repite su rutina: exporta los pedidos de la semana a una hoja de cálculo, borra a mano los cancelados, pega los precios de otra hoja, arma una tabla dinámica por categoría y le manda el resultado a Elena Vargas. Tarda tres horas. Cuando Elena pregunta por qué la cifra de esta semana no cuadra con la de la semana pasada, Martín no lo sabe: no recuerda si borró los carritos abandonados.</p><p>Natalia Herrera, la ingeniera de datos que acaba de llegar, mira la hoja y ve un proceso que tiene nombre desde hace más de treinta años. Martín <b>extrae</b> los datos, los <b>transforma</b> y los <b>carga</b> en otro lugar. Solo que lo hace a mano, sin registro y una vez por semana.</p></div><div class="analogia"><b>Imagínalo así</b><p>Una panadería no vende el trigo como sale del campo. Lo compra (extraer), lo muele, lo amasa y lo hornea (transformar) y deja el pan en la vitrina (cargar). El cliente que entra solo ve el pan; no necesita saber de molinos. Y si un día el pan sale crudo, el panadero quiere saber en qué paso falló, no tirar la panadería entera.</p></div><div class="prose"><p><b>ETL</b> (<i>Extract, Transform, Load</i>, extraer, transformar y cargar) es el patrón que lleva datos desde los sistemas donde nacen hasta un lugar preparado para analizarlos, en tres pasos:</p><ul><li><b>Extraer</b>: leer los datos del origen. En la tienda, la base de Diego Paz con <code>pedidos</code>, <code>detalle_pedido</code>, <code>pagos</code> y <code>clientes</code>. La regla de oro del capítulo 02 sigue vigente: leer sin tumbar al origen, de forma incremental cuando se pueda.</li><li><b>Transformar</b>: convertir las filas crudas en lo que el negocio necesita. Filtrar los pedidos que no son venta, unir cada línea con su producto, calcular <code>cantidad × precio_unitario</code>, limpiar las ciudades mal escritas, agregar por día y categoría.</li><li><b>Cargar</b>: escribir el resultado en el destino, un <b>almacén de datos</b> (<i>data warehouse</i>) donde lo consultan el tablero de Elena y las consultas de Martín.</li></ul><p>Al conjunto de pasos encadenados que hace esto de forma automática se le llama <b>pipeline</b> (<i>data pipeline</i>, tubería de datos). Un pipeline corre solo, deja un registro de cada corrida y hace siempre lo mismo, cosa que la hoja de Martín no puede prometer.</p><p>En el ETL clásico, el que dominó desde los años noventa, la transformación ocurre <b>fuera del almacén</b>, en un servidor propio del proceso. Había una buena razón: el almacén era caro, el espacio en disco también, y nadie quería guardar ahí datos crudos que no se iban a consultar. Al almacén llegaba solo la tabla final, limpia y resumida. A veces se usaba un <b>área de preparación</b> (<i>staging area</i>), un espacio intermedio donde se dejaban las filas extraídas mientras se transformaban, pero se vaciaba después de cada corrida.</p></div><div class="lab" id="04-lab-1"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Un pipeline armado con bloques: conecta extracción, transformaciones y carga, y mira los datos en cada paso</h3></div><p class="hint">Ocho pedidos reales del 14 de octubre, entre ellos el 59521 de Renata Ortiz. El pipeline inicial corre, pero le falta un paso de negocio: córrelo y mira la cifra. Agrega el bloque que falta y prueba a ponerlo después de «Agrupar»: mira qué columna desaparece. Haz clic en cada bloque para ver sus filas. Al final, corre dos veces seguidas con cada modo de carga.</p><style>
+[id="04-lab-1"] .c4l1-rot{font:600 .72rem var(--f-display);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+[id="04-lab-1"] .c4l1-pal button{border-style:dashed}
+[id="04-lab-1"] .c4l1-pipe{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+[id="04-lab-1"] .c4l1-pipe li{display:flex;align-items:center;gap:2px;border:1.5px solid var(--c-tra);background:var(--c-tra-s);border-radius:8px;padding:2px 3px 2px 2px}
+[id="04-lab-1"] .c4l1-pipe li.ext{border-color:var(--c-fis);background:var(--c-fis-s)}
+[id="04-lab-1"] .c4l1-pipe li.car{border-color:var(--c-red);background:var(--c-red-s)}
+[id="04-lab-1"] .c4l1-pipe li.err{border-color:var(--warm);background:var(--warm-soft)}
+[id="04-lab-1"] .c4l1-pipe li.sel{outline:2px solid var(--accent);outline-offset:1px}
+[id="04-lab-1"] .c4l1-pipe li>button{border:0;background:transparent;color:var(--ink);font:600 .78rem var(--f-display);padding:4px 6px;cursor:pointer;border-radius:6px}
+[id="04-lab-1"] .c4l1-pipe li>button.mini{font:500 .78rem var(--f-mono);padding:4px 5px;color:var(--muted)}
+[id="04-lab-1"] .c4l1-pipe li>button:hover{background:var(--card)}
+[id="04-lab-1"] .c4l1-flecha{color:var(--muted);font:600 .9rem var(--f-mono)}
+[id="04-lab-1"] table{width:100%;border-collapse:collapse;font:500 .76rem var(--f-mono)}
+[id="04-lab-1"] th,[id="04-lab-1"] td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+[id="04-lab-1"] th{font:600 .7rem var(--f-display);color:var(--muted);letter-spacing:.03em}
+[id="04-lab-1"] td.n{text-align:right}
+[id="04-lab-1"] tr.mal td{background:var(--warm-soft)}
+[id="04-lab-1"] tr.nueva td{background:var(--c-enl-s)}
+[id="04-lab-1"] .c4l1-tit{font:600 .84rem var(--f-display)}
+</style>
+<p class="c4l1-rot">Bloques disponibles (clic para agregar)</p>
+<div class="btns c4l1-pal" id="c4l1-pal"></div>
+<p class="c4l1-rot">Tu pipeline (clic en un bloque para ver sus datos)</p>
+<ol class="c4l1-pipe" id="c4l1-pipe" aria-label="Pasos del pipeline"></ol>
+<div class="opciones">
+  <label>Cómo carga el último bloque
+    <select id="c4l1-modo">
+      <option value="agregar">agregar al final (INSERT)</option>
+      <option value="reemplazar">reemplazar el día (DELETE + INSERT)</option>
+    </select></label>
+</div>
+<div class="btns">
+  <button type="button" class="primary" id="c4l1-run">Correr el pipeline</button>
+  <button type="button" id="c4l1-vaciar">Vaciar la tabla destino</button>
+  <button type="button" id="c4l1-ini">Volver al pipeline inicial</button>
+</div>
+<p class="c4l1-tit" id="c4l1-paso"></p>
+<div class="tbl" style="overflow-x:auto"><table id="c4l1-tab" aria-live="polite"></table></div>
+<p class="c4l1-tit">Tabla destino en el almacén: <code>ventas_categoria_dia</code></p>
+<div class="tbl" style="overflow-x:auto"><table id="c4l1-dest"></table></div>
+<div class="readout texto" id="c4l1-out" aria-live="polite"></div></div><div class="prose"><p>El laboratorio muestra dos cosas que vuelven a lo largo del curso. La primera: el orden de los pasos importa, porque cada transformación borra información que el paso siguiente podría necesitar. Después de agrupar ya no existe el estado de cada pedido, y filtrar por estado se vuelve imposible. La segunda: un pipeline que corre bien una vez puede dañar los datos la segunda vez. Eso se resuelve en la sección de idempotencia.</p></div></section>
+<section><h2>ELT: cargar primero y transformar dentro del almacén</h2><div class="prose"><p>Entre 2012 y 2016 cambió la economía del almacén. Los almacenes en la nube separaron el <b>almacenamiento</b> (<i>storage</i>) del <b>cómputo</b> (<i>compute</i>): guardar un terabyte se volvió barato y la potencia para procesarlo se alquila por minutos, con tantas máquinas como haga falta. Si guardar es barato y el almacén procesa más rápido que un servidor ETL, ¿por qué transformar afuera?</p><p>Así se popularizó <b>ELT</b> (<i>Extract, Load, Transform</i>, extraer, cargar y transformar): se extraen los datos y se cargan <b>tal cual</b> en el almacén, en un esquema que suele llamarse <code>crudo</code> (<i>raw</i>), y después se transforman ahí mismo con SQL. Las letras son las mismas; lo que cambia es dónde se hace el trabajo y qué se guarda.</p></div><div class="analogia"><b>Imagínalo así</b><p>Es la diferencia entre un restaurante que compra las verduras ya picadas y uno que compra la caja entera y la guarda en su cámara fría. El primero ocupa menos espacio, pero si mañana el chef quiere un corte distinto, tiene que volver al mercado. El segundo tiene la materia prima a mano: cambia el corte cuando quiere, sin salir de la cocina.</p></div><figure class="fig fig-arquitectura" id="04-diagrama-1"><div class="lienzo"><svg viewBox="0 0 900 420" style="min-width:760px" role="img" aria-label="ETL frente a ELT. Arriba, ETL: la base de la tienda entrega los datos a un servidor ETL que los transforma en su memoria y carga en el almacén solo la tabla final, que lee el tablero. Abajo, ELT: los datos se copian tal cual a un esquema crudo dentro del almacén y allí se transforman con SQL hasta la tabla final que lee el tablero">
+<defs>
+<marker id="c4d1-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+<marker id="c4d1-e" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-enl"/></marker>
+<marker id="c4d1-t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-tra"/></marker>
+</defs>
+<text x="20" y="26" class="t t-xs t-b t-m">ETL · EXTRAER, TRANSFORMAR, CARGAR</text>
+<rect x="20" y="62" width="140" height="64" rx="10" class="c-fis"/>
+<text x="90" y="88" class="t t-b" text-anchor="middle">Base de la tienda</text>
+<text x="90" y="106" class="t t-s t-m" text-anchor="middle">SQLite · OLTP</text>
+<path d="M160 94H226" class="ln s-enl" style="stroke-width:1.8" marker-end="url(#c4d1-e)"/>
+<text x="193" y="86" class="t t-s" text-anchor="middle">extraer</text>
+<rect x="230" y="50" width="210" height="88" rx="10" class="c-tra"/>
+<text x="246" y="72" class="t t-xs t-b k-tra">SERVIDOR ETL</text>
+<text x="246" y="92" class="t t-s">transforma en su memoria:</text>
+<text x="246" y="109" class="t t-s">filtra estados, une, agrega</text>
+<text x="246" y="126" class="t t-s t-m">una máquina, fuera del almacén</text>
+<path d="M440 94H526" class="ln s-enl" style="stroke-width:1.8" marker-end="url(#c4d1-e)"/>
+<text x="483" y="86" class="t t-s" text-anchor="middle">cargar</text>
+<text x="483" y="112" class="t t-s t-m" text-anchor="middle">solo el final</text>
+<rect x="530" y="50" width="200" height="88" rx="10" class="c-red"/>
+<text x="546" y="72" class="t t-xs t-b k-red">ALMACÉN</text>
+<rect x="546" y="82" width="168" height="40" rx="6" class="caja"/>
+<text x="630" y="107" class="t t-s t-mono" text-anchor="middle">ventas_diarias</text>
+<path d="M730 94H766" class="ln" style="stroke-width:1.8" marker-end="url(#c4d1-m)"/>
+<rect x="770" y="62" width="110" height="64" rx="10" class="c-apl"/>
+<text x="825" y="88" class="t t-b" text-anchor="middle">Tablero</text>
+<text x="825" y="106" class="t t-s t-m" text-anchor="middle">de Elena</text>
+<text x="230" y="164" class="t t-s k-warm">El crudo no se guarda: si cambia una regla, hay que volver a extraer del origen.</text>
+
+<line x1="20" y1="190" x2="880" y2="190" class="ln ln-d"/>
+
+<text x="20" y="220" class="t t-xs t-b t-m">ELT · EXTRAER, CARGAR, TRANSFORMAR</text>
+<rect x="20" y="276" width="140" height="64" rx="10" class="c-fis"/>
+<text x="90" y="302" class="t t-b" text-anchor="middle">Base de la tienda</text>
+<text x="90" y="320" class="t t-s t-m" text-anchor="middle">SQLite · OLTP</text>
+<path d="M160 308H226" class="ln s-enl" style="stroke-width:1.8" marker-end="url(#c4d1-e)"/>
+<text x="193" y="290" class="t t-s" text-anchor="middle">extraer</text>
+<text x="193" y="326" class="t t-s t-m" text-anchor="middle">y cargar</text>
+<text x="193" y="340" class="t t-s t-m" text-anchor="middle">tal cual</text>
+<rect x="230" y="236" width="500" height="144" rx="12" class="c-red"/>
+<text x="246" y="258" class="t t-xs t-b k-red">ALMACÉN · HACE LAS DOS COSAS</text>
+<rect x="246" y="270" width="156" height="94" rx="6" class="caja"/>
+<text x="258" y="290" class="t t-xs t-b t-m">ESQUEMA CRUDO</text>
+<text x="258" y="310" class="t t-s t-mono">crudo.pedidos</text>
+<text x="258" y="328" class="t t-s t-mono">crudo.detalle_pedido</text>
+<text x="258" y="346" class="t t-s t-mono">crudo.productos</text>
+<path d="M402 317H428" class="ln s-tra" style="stroke-width:1.8" marker-end="url(#c4d1-t)"/>
+<rect x="432" y="282" width="110" height="70" rx="8" class="c-tra"/>
+<text x="487" y="304" class="t t-xs t-b k-tra" text-anchor="middle">TRANSFORMAR</text>
+<text x="487" y="323" class="t t-s" text-anchor="middle">SQL, dbt</text>
+<text x="487" y="340" class="t t-s t-m" text-anchor="middle">con su motor</text>
+<path d="M542 317H568" class="ln s-tra" style="stroke-width:1.8" marker-end="url(#c4d1-t)"/>
+<rect x="572" y="296" width="142" height="42" rx="6" class="caja"/>
+<text x="643" y="322" class="t t-s t-mono" text-anchor="middle">ventas_diarias</text>
+<path d="M730 308H766" class="ln" style="stroke-width:1.8" marker-end="url(#c4d1-m)"/>
+<rect x="770" y="276" width="110" height="64" rx="10" class="c-apl"/>
+<text x="825" y="302" class="t t-b" text-anchor="middle">Tablero</text>
+<text x="825" y="320" class="t t-s t-m" text-anchor="middle">de Elena</text>
+<text x="230" y="404" class="t t-s k-enl">El crudo queda en el almacén: se recalcula con SQL sin volver a tocar el origen.</text>
+</svg></div><figcaption><b>ETL frente a ELT en Tienda Ejemplo.</b> Arriba, ETL: la base de la tienda (ámbar) entrega los datos a un servidor ETL (morado), que los transforma en su memoria y carga en el almacén (azul) solo la tabla final <code>ventas_diarias</code>. Abajo, ELT: los datos viajan tal cual (flecha verde de ingesta) a un esquema crudo dentro del almacén, y el propio almacén los transforma con SQL hasta la misma tabla final. En los dos casos el tablero (rosa) lee lo mismo; la diferencia es dónde se trabajó y qué quedó guardado.</figcaption></figure><div class="prose"><p>Lo que gana ELT:</p><ul><li><b>El crudo queda guardado.</b> Si Elena cambia una regla («los devueltos no cuentan desde el día del pedido, sino desde el día de la devolución»), se vuelve a transformar la historia desde <code>crudo</code>, sin molestar de nuevo a la base de Diego.</li><li><b>Una sola herramienta para transformar.</b> SQL, el idioma que Martín ya habla. Las transformaciones se pueden versionar, revisar y probar como código, que es el tema del capítulo 10 con dbt.</li><li><b>Escala con el almacén.</b> Si los datos crecen, se le dan más nodos al almacén; no hay un servidor intermedio que se vuelva cuello de botella.</li></ul><p>Lo que cuesta:</p><ul><li><b>El cómputo del almacén se paga.</b> En los almacenes en la nube cada transformación consume créditos o minutos de procesamiento. Un SQL mal escrito que se corre cada quince minutos puede ser la factura más alta del mes.</li><li><b>Los datos sensibles llegan crudos.</b> Si el origen tiene correos o documentos de identidad, en ELT esos datos entran al almacén antes de cualquier limpieza. Hay que decidir desde el primer día quién puede ver el esquema <code>crudo</code> (capítulo 12).</li></ul><p>ETL sigue teniendo su lugar: cuando el destino no tiene un motor para transformar (por ejemplo, cargar un archivo en un sistema contable), cuando la ley o una política exige que ciertos datos nunca lleguen al almacén sin anonimizar, o cuando los volúmenes son tan chicos que un script basta. En la práctica, muchos equipos hacen una mezcla: una limpieza mínima al extraer (quitar columnas sensibles, normalizar formatos) y el resto en el almacén.</p></div><div class="lab" id="04-lab-2"><div class="lab-title"><span class="tag">Laboratorio</span><h3>ETL frente a ELT: dónde se hace el trabajo y cuánto tarda cada uno</h3></div><p class="hint">Mueve el volumen de pedidos, el número de transformaciones y los nodos del almacén, y compara las dos barras. Después pulsa «Cambió una regla: recalcula un año» y mira qué le pasa al ETL, que nunca guardó el crudo.</p><style>
+[id="04-lab-2"] .c4l2-fila{display:grid;gap:6px}
+[id="04-lab-2"] .c4l2-cab{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;font:600 .9rem var(--f-display)}
+[id="04-lab-2"] .c4l2-cab b{font-family:var(--f-mono);font-size:1rem;color:var(--accent)}
+[id="04-lab-2"] .c4l2-bar{display:flex;height:34px;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:var(--paper)}
+[id="04-lab-2"] .c4l2-bar i{display:flex;align-items:center;justify-content:center;height:100%;min-width:3px;font:600 .7rem var(--f-display);color:var(--card);white-space:nowrap;overflow:hidden;transition:width .3s ease}
+@media (prefers-reduced-motion: reduce){[id="04-lab-2"] .c4l2-bar i{transition:none}}
+[id="04-lab-2"] .c4l2-ext{background:var(--d-casa)}
+[id="04-lab-2"] .c4l2-trs{background:var(--c-tra)}
+[id="04-lab-2"] .c4l2-car{background:var(--c-enl)}
+[id="04-lab-2"] .c4l2-tra{background:var(--c-red)}
+[id="04-lab-2"] .c4l2-donde{font:500 .8rem/1.4 var(--f-display);color:var(--muted)}
+[id="04-lab-2"] .c4l2-legend i{border-radius:3px}
+</style>
+<div class="ctls">
+  <label class="ctl">Filas de pedidos por cargar <output id="c4l2-no"></output>
+    <input type="range" id="c4l2-n" min="0" max="12" step="1" value="5" aria-label="Filas de pedidos por cargar"></label>
+  <label class="ctl">Transformaciones del pipeline <output id="c4l2-to"></output>
+    <input type="range" id="c4l2-t" min="1" max="10" step="1" value="4" aria-label="Número de transformaciones"></label>
+  <label class="ctl">Nodos de cómputo del almacén <output id="c4l2-wo"></output>
+    <input type="range" id="c4l2-w" min="0" max="5" step="1" value="2" aria-label="Nodos de cómputo del almacén"></label>
+</div>
+<div class="btns" role="group" aria-label="Qué pasa">
+  <button type="button" id="c4l2-dia" aria-pressed="true">La carga de cada noche</button>
+  <button type="button" id="c4l2-regla" aria-pressed="false">Cambió una regla: recalcula un año</button>
+</div>
+<div class="legend c4l2-legend">
+  <span><i style="background:var(--d-casa)"></i>Extraer del origen</span>
+  <span><i style="background:var(--c-tra)"></i>Transformar en el servidor ETL</span>
+  <span><i style="background:var(--c-enl)"></i>Cargar en el almacén</span>
+  <span><i style="background:var(--c-red)"></i>Transformar dentro del almacén</span>
+</div>
+<div class="c4l2-fila">
+  <div class="c4l2-cab"><span>ETL: extraer → transformar → cargar</span><b id="c4l2-etlt"></b></div>
+  <div class="c4l2-bar" id="c4l2-etl" aria-hidden="true"></div>
+  <div class="c4l2-donde" id="c4l2-etld"></div>
+</div>
+<div class="c4l2-fila">
+  <div class="c4l2-cab"><span>ELT: extraer → cargar → transformar</span><b id="c4l2-eltt"></b></div>
+  <div class="c4l2-bar" id="c4l2-elt" aria-hidden="true"></div>
+  <div class="c4l2-donde" id="c4l2-eltd"></div>
+</div>
+<div class="readout texto" id="c4l2-out" aria-live="polite"></div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>El mismo resultado con ETL y con ELT</h3></div><p>Vas a calcular las ventas netas por día de dos maneras: con un programa que transforma en Python y carga solo el resultado (ETL), y copiando las tablas crudas al almacén para transformarlas ahí con SQL (ELT). Usa la carpeta <code>datos-tienda</code> y el entorno virtual de los capítulos 02 y 03, que ya tiene <code>duckdb</code>; la base <code>tienda.db</code> debe estar recién creada, sin <code>--avanzar</code> (si avanzaste días en el capítulo 02, vuelve a crearla con <code>generar_tienda.py</code>).</p><div class="code-copia"><pre><code>"""ETL: extrae de la base de la tienda, transforma en Python y carga solo el resultado."""
+import sqlite3
+import time
+from collections import defaultdict
+
+import duckdb
+
+ESTADOS_VENTA = {"pagado", "enviado", "entregado"}
+
+# E: extraer del origen (una consulta de solo lectura a la base de la tienda)
+t0 = time.perf_counter()
+origen = sqlite3.connect("file:tienda.db?mode=ro", uri=True)
+filas = origen.execute("""
+    SELECT p.pedido_id, substr(p.creado_en, 1, 10), p.estado, d.cantidad, d.precio_unitario
+    FROM pedidos p JOIN detalle_pedido d ON d.pedido_id = p.pedido_id""").fetchall()
+origen.close()
+t1 = time.perf_counter()
+
+# T: transformar fuera del almacén, en la memoria de este programa
+monto = defaultdict(float)
+pedidos = defaultdict(set)
+for pedido_id, dia, estado, cantidad, precio in filas:
+    if estado in ESTADOS_VENTA:
+        monto[dia] += cantidad * precio
+        pedidos[dia].add(pedido_id)
+tabla = [(dia, round(monto[dia], 2), len(pedidos[dia])) for dia in sorted(monto)]
+t2 = time.perf_counter()
+
+# L: cargar en el almacén solo la tabla final
+alm = duckdb.connect("almacen.duckdb")
+alm.execute("CREATE OR REPLACE TABLE ventas_diarias_etl "
+            "(dia DATE, ventas_netas DECIMAL(12,2), pedidos INTEGER)")
+alm.executemany("INSERT INTO ventas_diarias_etl VALUES (?, ?, ?)", tabla)
+t3 = time.perf_counter()
+
+total, n = alm.execute("SELECT SUM(ventas_netas), SUM(pedidos) FROM ventas_diarias_etl "
+                       "WHERE dia BETWEEN '2026-10-01' AND '2026-10-31'").fetchone()
+print(f"Extraer {t1 - t0:.2f} s | transformar {t2 - t1:.2f} s | cargar {t3 - t2:.2f} s")
+print(f"{len(filas)} filas leídas, {len(tabla)} filas cargadas")
+print(f"Octubre: US$ {total} en {n} pedidos")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="code-copia"><pre><code>"""ELT: copia las tablas crudas al almacén y transforma ahí, con SQL."""
+import time
+
+import duckdb
+
+alm = duckdb.connect("almacen.duckdb")
+alm.execute("INSTALL sqlite; LOAD sqlite;")
+alm.execute("ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")
+
+# E + L: copiar las tablas tal como están en el origen, sin cambiarlas
+t0 = time.perf_counter()
+alm.execute("CREATE SCHEMA IF NOT EXISTS crudo")
+for tabla in ("pedidos", "detalle_pedido", "productos", "clientes"):
+    alm.execute(f"CREATE OR REPLACE TABLE crudo.{tabla} AS SELECT * FROM tienda.{tabla}")
+alm.execute("DETACH tienda")
+t1 = time.perf_counter()
+
+# T: transformar dentro del almacén, con su propio motor
+alm.execute("""
+    CREATE OR REPLACE TABLE ventas_diarias_elt AS
+    SELECT CAST(p.creado_en AS TIMESTAMP)::DATE AS dia,
+           CAST(SUM(d.cantidad * d.precio_unitario) AS DECIMAL(12,2)) AS ventas_netas,
+           COUNT(DISTINCT p.pedido_id) AS pedidos
+    FROM crudo.pedidos p JOIN crudo.detalle_pedido d ON d.pedido_id = p.pedido_id
+    WHERE p.estado IN ('pagado', 'enviado', 'entregado')
+    GROUP BY 1""")
+t2 = time.perf_counter()
+
+total, n = alm.execute("SELECT SUM(ventas_netas), SUM(pedidos) FROM ventas_diarias_elt "
+                       "WHERE dia BETWEEN '2026-10-01' AND '2026-10-31'").fetchone()
+filas = alm.execute("SELECT COUNT(*) FROM crudo.detalle_pedido").fetchone()[0]
+print(f"Extraer y cargar {t1 - t0:.2f} s | transformar {t2 - t1:.2f} s")
+print(f"{filas} líneas crudas guardadas en el almacén")
+print(f"Octubre: US$ {total} en {n} pedidos")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda el primer script como <code>etl.py</code> y el segundo como <code>elt.py</code> en <code>datos-tienda</code>. Activa el entorno y córrelos:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>cd $HOME\datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>.venv\Scripts\activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python etl.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python elt.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>cd ~/datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>source .venv/bin/activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 etl.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 elt.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Elena pide ahora las ventas de octubre por canal. Con ELT no hace falta volver al origen: la pregunta se responde con el crudo que ya está en el almacén. Guarda esto como <code>por_canal.py</code> y córrelo igual que los anteriores (<code>python por_canal.py</code> en Windows, <code>python3 por_canal.py</code> en macOS y Linux):</span></li></ol><div class="code-copia"><pre><code>"""Una pregunta nueva, respondida con el crudo que ya está en el almacén."""
+import duckdb
+
+duckdb.connect("almacen.duckdb").sql("""
+    SELECT p.canal, CAST(SUM(d.cantidad * d.precio_unitario) AS DECIMAL(12,2)) AS ventas
+    FROM crudo.pedidos p JOIN crudo.detalle_pedido d ON d.pedido_id = p.pedido_id
+    WHERE p.estado IN ('pagado', 'enviado', 'entregado')
+      AND p.creado_en &gt;= '2026-10-01' AND p.creado_en &lt; '2026-11-01'
+    GROUP BY p.canal ORDER BY p.canal""").show()</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps" start="3" style="counter-reset:st 2"><li><span>Piensa cómo responderías la misma pregunta con la tabla <code>ventas_diarias_etl</code>.</span></li></ol><p><b>Qué observar:</b> los dos programas dan <b>US$ 782.785,77 en 8.376 pedidos</b>, la cifra del tablero. El ETL leyó 114.112 líneas y cargó solo 304 filas, una por día: es liviano, pero ya no sabe nada del canal, y responder la nueva pregunta exige cambiar el programa y volver a leer la base de Diego. El ELT guardó las 114.112 líneas en <code>crudo</code>, y la pregunta por canal se contesta en una línea (app US$ 356.264,09, web US$ 426.521,68). Mira también los tiempos: en tu equipo la carga del ETL probablemente sea el paso más lento, aunque inserta muchas menos filas que el ELT. Los segundos exactos varían con cada computadora.</p></div></section>
+<section><h2>Por lotes frente a en streaming: latencia, costo y complejidad</h2><div class="prose"><p>La segunda decisión es cada cuánto corre el pipeline. Elena hoy ve el tablero del día anterior, y está conforme. Pero el equipo de marketing quiere saber, durante la semana de descuentos del 19 al 25 de octubre, cuánto se está vendiendo <b>ahora</b>, para subir o bajar la publicidad sobre la marcha.</p></div><div class="analogia"><b>Imagínalo así</b><p>El correo postal pasa una vez al día: junta todas las cartas y las entrega juntas. Es barato y casi nunca falla, pero una carta escrita a las ocho de la mañana llega al día siguiente. Un mensaje de chat llega en un segundo, pero necesita una red encendida todo el tiempo y un sistema que sepa qué hacer si dos mensajes llegan desordenados.</p></div><div class="prose"><ul><li><b>Por lotes</b> (<i>batch</i>): el pipeline procesa de una vez todo lo que se acumuló desde la última corrida, típicamente cada noche. Es lo que hacen los scripts de la práctica.</li><li><b>Micro-lotes</b> (<i>micro-batch</i>): lotes pequeños y frecuentes, cada cinco o quince minutos. Es el mismo código por lotes, corriendo muchas veces.</li><li><b>En streaming</b> (flujo continuo): cada evento (un pedido creado, un pago aprobado) se procesa en cuanto llega, en segundos o menos. Exige otras herramientas, como Kafka y Flink, que son el tema del capítulo 08.</li></ul><p>La medida que las separa es la <b>latencia</b> (<i>latency</i>): el tiempo entre que algo pasa en el negocio y que aparece en el tablero. Pero la latencia baja tiene precio.</p></div><figure class="fig fig-comparacion" id="04-diagrama-3"><div class="lienzo"><svg viewBox="0 0 900 470" style="min-width:760px" role="img" aria-label="Tres maneras de procesar los pedidos de un día. Por lotes: todos los pedidos esperan al proceso de las 02:00 de la noche siguiente. En micro-lotes: un proceso corto cada 15 minutos. En streaming: cada pedido se procesa segundos después de llegar. Abajo, una tabla compara latencia, costo y complejidad">
+<defs><marker id="c4d3-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-warm"/></marker></defs>
+<text x="170" y="24" class="t t-xs t-b t-m">UN DÍA DE PEDIDOS (CADA PUNTO ES UN PEDIDO)</text>
+<text x="20" y="74" class="t t-b">Por lotes</text><text x="20" y="91" class="t t-s t-m">cada noche</text>
+<line x1="170" y1="80" x2="870" y2="80" class="ln" style="stroke-width:1"/>
+<circle cx="196.2" cy="70" r="3.2" class="k-fis"/>
+<circle cx="202.6" cy="70" r="3.2" class="k-fis"/>
+<circle cx="210.6" cy="70" r="3.2" class="k-fis"/>
+<circle cx="211.7" cy="70" r="3.2" class="k-fis"/>
+<circle cx="214.0" cy="70" r="3.2" class="k-fis"/>
+<circle cx="218.9" cy="70" r="3.2" class="k-fis"/>
+<circle cx="220.7" cy="70" r="3.2" class="k-fis"/>
+<circle cx="233.5" cy="70" r="3.2" class="k-fis"/>
+<circle cx="252.5" cy="70" r="3.2" class="k-fis"/>
+<circle cx="256.7" cy="70" r="3.2" class="k-fis"/>
+<circle cx="271.0" cy="70" r="3.2" class="k-fis"/>
+<circle cx="275.6" cy="70" r="3.2" class="k-fis"/>
+<circle cx="296.5" cy="70" r="3.2" class="k-fis"/>
+<circle cx="314.2" cy="70" r="3.2" class="k-fis"/>
+<circle cx="326.3" cy="70" r="3.2" class="k-fis"/>
+<circle cx="372.7" cy="70" r="3.2" class="k-fis"/>
+<circle cx="385.9" cy="70" r="3.2" class="k-fis"/>
+<circle cx="389.9" cy="70" r="3.2" class="k-fis"/>
+<circle cx="396.7" cy="70" r="3.2" class="k-fis"/>
+<circle cx="426.0" cy="70" r="3.2" class="k-fis"/>
+<circle cx="430.7" cy="70" r="3.2" class="k-fis"/>
+<circle cx="447.7" cy="70" r="3.2" class="k-fis"/>
+<circle cx="467.2" cy="70" r="3.2" class="k-fis"/>
+<circle cx="469.3" cy="70" r="3.2" class="k-fis"/>
+<circle cx="473.6" cy="70" r="3.2" class="k-fis"/>
+<circle cx="525.2" cy="70" r="3.2" class="k-fis"/>
+<circle cx="545.1" cy="70" r="3.2" class="k-fis"/>
+<circle cx="553.4" cy="70" r="3.2" class="k-fis"/>
+<circle cx="574.0" cy="70" r="3.2" class="k-fis"/>
+<circle cx="577.1" cy="70" r="3.2" class="k-fis"/>
+<circle cx="579.9" cy="70" r="3.2" class="k-fis"/>
+<circle cx="609.2" cy="70" r="3.2" class="k-fis"/>
+<circle cx="617.2" cy="70" r="3.2" class="k-fis"/>
+<circle cx="625.7" cy="70" r="3.2" class="k-fis"/>
+<circle cx="646.3" cy="70" r="3.2" class="k-fis"/>
+<circle cx="741.3" cy="70" r="3.2" class="k-fis"/>
+<circle cx="748.8" cy="70" r="3.2" class="k-fis"/>
+<circle cx="770.9" cy="70" r="3.2" class="k-fis"/>
+<circle cx="833.4" cy="70" r="3.2" class="k-fis"/>
+<circle cx="853.4" cy="70" r="3.2" class="k-fis"/>
+<text x="20" y="154" class="t t-b">Micro-lotes</text><text x="20" y="171" class="t t-s t-m">cada 15 minutos</text>
+<line x1="170" y1="160" x2="870" y2="160" class="ln" style="stroke-width:1"/>
+<circle cx="196.2" cy="150" r="3.2" class="k-fis"/>
+<circle cx="202.6" cy="150" r="3.2" class="k-fis"/>
+<circle cx="210.6" cy="150" r="3.2" class="k-fis"/>
+<circle cx="211.7" cy="150" r="3.2" class="k-fis"/>
+<circle cx="214.0" cy="150" r="3.2" class="k-fis"/>
+<circle cx="218.9" cy="150" r="3.2" class="k-fis"/>
+<circle cx="220.7" cy="150" r="3.2" class="k-fis"/>
+<circle cx="233.5" cy="150" r="3.2" class="k-fis"/>
+<circle cx="252.5" cy="150" r="3.2" class="k-fis"/>
+<circle cx="256.7" cy="150" r="3.2" class="k-fis"/>
+<circle cx="271.0" cy="150" r="3.2" class="k-fis"/>
+<circle cx="275.6" cy="150" r="3.2" class="k-fis"/>
+<circle cx="296.5" cy="150" r="3.2" class="k-fis"/>
+<circle cx="314.2" cy="150" r="3.2" class="k-fis"/>
+<circle cx="326.3" cy="150" r="3.2" class="k-fis"/>
+<circle cx="372.7" cy="150" r="3.2" class="k-fis"/>
+<circle cx="385.9" cy="150" r="3.2" class="k-fis"/>
+<circle cx="389.9" cy="150" r="3.2" class="k-fis"/>
+<circle cx="396.7" cy="150" r="3.2" class="k-fis"/>
+<circle cx="426.0" cy="150" r="3.2" class="k-fis"/>
+<circle cx="430.7" cy="150" r="3.2" class="k-fis"/>
+<circle cx="447.7" cy="150" r="3.2" class="k-fis"/>
+<circle cx="467.2" cy="150" r="3.2" class="k-fis"/>
+<circle cx="469.3" cy="150" r="3.2" class="k-fis"/>
+<circle cx="473.6" cy="150" r="3.2" class="k-fis"/>
+<circle cx="525.2" cy="150" r="3.2" class="k-fis"/>
+<circle cx="545.1" cy="150" r="3.2" class="k-fis"/>
+<circle cx="553.4" cy="150" r="3.2" class="k-fis"/>
+<circle cx="574.0" cy="150" r="3.2" class="k-fis"/>
+<circle cx="577.1" cy="150" r="3.2" class="k-fis"/>
+<circle cx="579.9" cy="150" r="3.2" class="k-fis"/>
+<circle cx="609.2" cy="150" r="3.2" class="k-fis"/>
+<circle cx="617.2" cy="150" r="3.2" class="k-fis"/>
+<circle cx="625.7" cy="150" r="3.2" class="k-fis"/>
+<circle cx="646.3" cy="150" r="3.2" class="k-fis"/>
+<circle cx="741.3" cy="150" r="3.2" class="k-fis"/>
+<circle cx="748.8" cy="150" r="3.2" class="k-fis"/>
+<circle cx="770.9" cy="150" r="3.2" class="k-fis"/>
+<circle cx="833.4" cy="150" r="3.2" class="k-fis"/>
+<circle cx="853.4" cy="150" r="3.2" class="k-fis"/>
+<text x="20" y="234" class="t t-b">Streaming</text><text x="20" y="251" class="t t-s t-m">evento por evento</text>
+<line x1="170" y1="240" x2="870" y2="240" class="ln" style="stroke-width:1"/>
+<circle cx="196.2" cy="230" r="3.2" class="k-fis"/>
+<circle cx="202.6" cy="230" r="3.2" class="k-fis"/>
+<circle cx="210.6" cy="230" r="3.2" class="k-fis"/>
+<circle cx="211.7" cy="230" r="3.2" class="k-fis"/>
+<circle cx="214.0" cy="230" r="3.2" class="k-fis"/>
+<circle cx="218.9" cy="230" r="3.2" class="k-fis"/>
+<circle cx="220.7" cy="230" r="3.2" class="k-fis"/>
+<circle cx="233.5" cy="230" r="3.2" class="k-fis"/>
+<circle cx="252.5" cy="230" r="3.2" class="k-fis"/>
+<circle cx="256.7" cy="230" r="3.2" class="k-fis"/>
+<circle cx="271.0" cy="230" r="3.2" class="k-fis"/>
+<circle cx="275.6" cy="230" r="3.2" class="k-fis"/>
+<circle cx="296.5" cy="230" r="3.2" class="k-fis"/>
+<circle cx="314.2" cy="230" r="3.2" class="k-fis"/>
+<circle cx="326.3" cy="230" r="3.2" class="k-fis"/>
+<circle cx="372.7" cy="230" r="3.2" class="k-fis"/>
+<circle cx="385.9" cy="230" r="3.2" class="k-fis"/>
+<circle cx="389.9" cy="230" r="3.2" class="k-fis"/>
+<circle cx="396.7" cy="230" r="3.2" class="k-fis"/>
+<circle cx="426.0" cy="230" r="3.2" class="k-fis"/>
+<circle cx="430.7" cy="230" r="3.2" class="k-fis"/>
+<circle cx="447.7" cy="230" r="3.2" class="k-fis"/>
+<circle cx="467.2" cy="230" r="3.2" class="k-fis"/>
+<circle cx="469.3" cy="230" r="3.2" class="k-fis"/>
+<circle cx="473.6" cy="230" r="3.2" class="k-fis"/>
+<circle cx="525.2" cy="230" r="3.2" class="k-fis"/>
+<circle cx="545.1" cy="230" r="3.2" class="k-fis"/>
+<circle cx="553.4" cy="230" r="3.2" class="k-fis"/>
+<circle cx="574.0" cy="230" r="3.2" class="k-fis"/>
+<circle cx="577.1" cy="230" r="3.2" class="k-fis"/>
+<circle cx="579.9" cy="230" r="3.2" class="k-fis"/>
+<circle cx="609.2" cy="230" r="3.2" class="k-fis"/>
+<circle cx="617.2" cy="230" r="3.2" class="k-fis"/>
+<circle cx="625.7" cy="230" r="3.2" class="k-fis"/>
+<circle cx="646.3" cy="230" r="3.2" class="k-fis"/>
+<circle cx="741.3" cy="230" r="3.2" class="k-fis"/>
+<circle cx="748.8" cy="230" r="3.2" class="k-fis"/>
+<circle cx="770.9" cy="230" r="3.2" class="k-fis"/>
+<circle cx="833.4" cy="230" r="3.2" class="k-fis"/>
+<circle cx="853.4" cy="230" r="3.2" class="k-fis"/>
+<rect x="228.3" y="72" width="20.4" height="16" rx="3" class="c-tra"/>
+<text x="228.3" y="100" class="t t-s k-tra">02:00: procesa todo el día anterior</text>
+<circle cx="739.7" cy="70" r="5" class="k-warm"/>
+<text x="739.7" y="102" class="t t-s k-warm" text-anchor="middle">pedido 59521, 19:32</text>
+<path d="M745.7 70H888" class="ln s-warm ln-d" marker-end="url(#c4d3-w)"/>
+<text x="870" y="58" class="t t-s k-warm" text-anchor="end">llega al tablero mañana, 02:40</text>
+<rect x="170.0" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="177.3" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="184.6" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="191.9" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="199.2" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="206.5" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="213.8" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="221.0" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="228.3" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="235.6" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="242.9" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="250.2" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="257.5" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="264.8" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="272.1" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="279.4" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="286.7" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="294.0" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="301.2" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="308.5" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="315.8" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="323.1" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="330.4" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="337.7" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="345.0" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="352.3" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="359.6" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="366.9" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="374.2" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="381.5" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="388.8" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="396.0" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="403.3" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="410.6" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="417.9" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="425.2" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="432.5" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="439.8" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="447.1" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="454.4" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="461.7" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="469.0" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="476.2" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="483.5" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="490.8" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="498.1" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="505.4" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="512.7" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="520.0" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="527.3" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="534.6" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="541.9" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="549.2" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="556.5" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="563.8" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="571.0" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="578.3" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="585.6" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="592.9" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="600.2" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="607.5" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="614.8" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="622.1" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="629.4" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="636.7" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="644.0" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="651.2" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="658.5" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="665.8" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="673.1" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="680.4" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="687.7" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="695.0" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="702.3" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="709.6" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="716.9" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="724.2" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="731.5" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="738.8" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="746.0" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="753.3" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="760.6" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="767.9" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="775.2" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="782.5" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="789.8" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="797.1" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="804.4" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="811.7" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="819.0" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="826.2" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="833.5" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="840.8" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="848.1" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="855.4" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<rect x="862.7" y="154" width="3" height="12" class="c-tra" style="stroke-width:.6"/>
+<circle cx="739.7" cy="150" r="5" class="k-warm"/>
+<text x="747.7" y="142" class="t t-s k-warm">en el tablero a las 19:45</text>
+<line x1="170" y1="240" x2="870" y2="240" class="ln s-tra" style="stroke-width:4"/>
+<circle cx="739.7" cy="230" r="5" class="k-warm"/>
+<text x="747.7" y="222" class="t t-s k-warm">en el tablero a las 19:32:07</text>
+<line x1="170.0" y1="268" x2="170.0" y2="273" class="ln"/>
+<text x="170.0" y="286" class="t t-s t-m" text-anchor="middle">00:00</text>
+<line x1="345.0" y1="268" x2="345.0" y2="273" class="ln"/>
+<text x="345.0" y="286" class="t t-s t-m" text-anchor="middle">06:00</text>
+<line x1="520.0" y1="268" x2="520.0" y2="273" class="ln"/>
+<text x="520.0" y="286" class="t t-s t-m" text-anchor="middle">12:00</text>
+<line x1="695.0" y1="268" x2="695.0" y2="273" class="ln"/>
+<text x="695.0" y="286" class="t t-s t-m" text-anchor="middle">18:00</text>
+<line x1="870.0" y1="268" x2="870.0" y2="273" class="ln"/>
+<text x="870.0" y="286" class="t t-s t-m" text-anchor="middle">24:00</text>
+<rect x="20" y="310" width="860" height="140" rx="10" class="caja"/>
+<text x="230" y="334" class="t t-xs t-b t-m">LATENCIA TÍPICA</text>
+<text x="450" y="334" class="t t-xs t-b t-m">COSTO</text>
+<text x="670" y="334" class="t t-xs t-b t-m">COMPLEJIDAD</text>
+<line x1="32" y1="343" x2="868" y2="343" class="ln" style="stroke-width:.6"/>
+<text x="36" y="362" class="t t-b">Por lotes</text><text x="230" y="362" class="t t-s">horas (hasta un día)</text><text x="450" y="362" class="t t-s">bajo: corre un rato</text><text x="670" y="362" class="t t-s">baja: reintentar es fácil</text>
+<line x1="32" y1="373" x2="868" y2="373" class="ln" style="stroke-width:.6"/>
+<text x="36" y="392" class="t t-b">Micro-lotes</text><text x="230" y="392" class="t t-s">minutos</text><text x="450" y="392" class="t t-s">medio: corre todo el día</text><text x="670" y="392" class="t t-s">media: más corridas, más fallas</text>
+<line x1="32" y1="403" x2="868" y2="403" class="ln" style="stroke-width:.6"/>
+<text x="36" y="422" class="t t-b">Streaming</text><text x="230" y="422" class="t t-s">segundos</text><text x="450" y="422" class="t t-s">alto: siempre encendido</text><text x="670" y="422" class="t t-s">alta: orden, tardíos, estado</text>
+</svg></div><figcaption><b>El mismo día de pedidos, procesado de tres maneras.</b> Cada punto ámbar es un pedido; los bloques morados son las corridas del pipeline. Por lotes, el pedido 59521 de Renata, creado a las 19:32, espera al proceso de las 02:00 y llega al tablero al día siguiente. En micro-lotes llega en el siguiente corte de quince minutos. En streaming, la línea morada no se apaga nunca y el pedido aparece segundos después. La tabla de abajo resume lo que se gana y lo que se paga en cada caso.</figcaption></figure><div class="prose"><p>Tres preguntas para decidir:</p><ol class="steps"><li><span><b>¿Qué decisión se toma con el dato, y cada cuánto?</b> Si Elena decide el presupuesto una vez por semana, un tablero al segundo no cambia nada. Si un sistema bloquea pagos sospechosos, un día de atraso es inaceptable.</span></li><li><span><b>¿Cuánto cuesta tener algo siempre encendido?</b> Un lote nocturno usa cómputo media hora; un proceso de streaming lo usa las veinticuatro horas, y alguien tiene que atenderlo de madrugada si se cae.</span></li><li><span><b>¿Qué tan difícil es corregir?</b> En un lote, si algo salió mal, se arregla y se vuelve a correr la noche. En streaming hay que pensar en eventos que llegan tarde, desordenados o repetidos, y en un estado que se mantiene en memoria.</span></li></ol><p>Una regla práctica que usan muchos equipos: empezar por lotes, bajar a micro-lotes cuando el negocio lo pida con una decisión concreta en la mano, y llegar a streaming solo cuando los minutos de atraso cuestan dinero. Para la semana de descuentos, Natalia propone micro-lotes cada quince minutos, con el mismo código del lote nocturno.</p></div></section>
+<section><h2>Pasos idempotentes y cargas que se pueden repetir</h2><div class="prose"><p>Un pipeline va a fallar. La red se corta en la mitad de una carga, el almacén rechaza una conexión, alguien lo vuelve a lanzar a mano «por las dudas». La pregunta no es si se va a correr dos veces, sino qué pasa cuando ocurra.</p></div><div class="analogia"><b>Imagínalo así</b><p>Apretar el botón del ascensor tres veces no trae tres ascensores: el ascensor ya sabe que alguien espera en ese piso, y repetir el pedido no cambia nada. En cambio, apretar tres veces «pagar» en una tienda mal hecha puede cobrarte tres veces. El primer botón es idempotente; el segundo, no.</p></div><div class="prose"><p>Un paso es <b>idempotente</b> (<i>idempotent</i>) cuando correrlo una vez o diez veces con la misma entrada deja el destino en el mismo estado. Es la propiedad más importante de un pipeline, porque permite reintentar sin miedo y reprocesar el pasado cuando se corrige un error. Ya la viste en la ingesta del capítulo 02; ahora se aplica a la transformación y a la carga.</p><p>Las formas más comunes de lograrlo:</p><ul><li><b>Reemplazar en lugar de agregar.</b> <code>CREATE OR REPLACE TABLE</code> reconstruye la tabla entera en cada corrida. Es simple y perfecto para tablas chicas, como <code>ventas_diarias</code>.</li><li><b>Reemplazar la partición.</b> Cuando la tabla es grande y cada corrida procesa un día, se borra ese día y se vuelve a escribir: <code>DELETE</code> del día más <code>INSERT</code> del día, <b>dentro de una misma transacción</b>, para que nadie vea la tabla a medias. Una <b>partición</b> (<i>partition</i>) es el trozo de la tabla que corresponde a un valor de una columna, como un día o un mes.</li><li><b>Fusionar por clave.</b> <code>MERGE</code> o <code>INSERT ... ON CONFLICT DO UPDATE</code> actualiza la fila si la clave ya existe y la inserta si no. A esta operación se le llama <b>upsert</b> (actualizar o insertar). Sirve cuando cada fila tiene una clave natural, como <code>pedido_id</code>.</li></ul><p>Lo que <b>no</b> es idempotente: un <code>INSERT</code> sin más, que agrega otra copia en cada corrida, y cualquier paso que dependa de «ahora» (<code>now()</code>, «los pedidos de las últimas 24 horas»). Si el pipeline del lunes falla y se vuelve a correr el martes, «las últimas 24 horas» ya son otras. Por eso un pipeline bien hecho recibe la fecha que procesa como parámetro (<code>--dia 2026-10-14</code>) y no la calcula.</p></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Corre dos veces la misma carga</h3></div><p>Vas a cargar las ventas por categoría del 14 de octubre, el día del pedido de Renata, primero con un <code>INSERT</code> simple y después borrando y reescribiendo el día. Necesitas el almacén con el esquema <code>crudo</code> de la práctica anterior.</p><div class="code-copia"><pre><code>"""Carga las ventas de un día por categoría. Prueba los dos modos y córrelo dos veces."""
+import argparse
+
+import duckdb
+
+p = argparse.ArgumentParser()
+p.add_argument("--dia", default="2026-10-14")
+p.add_argument("--modo", choices=["agregar", "reemplazar"], default="reemplazar")
+a = p.parse_args()
+
+alm = duckdb.connect("almacen.duckdb")
+alm.execute("CREATE TABLE IF NOT EXISTS ventas_categoria_dia "
+            "(dia DATE, categoria VARCHAR, ventas_netas DECIMAL(12,2), cargado_en TIMESTAMP)")
+lote = """
+    SELECT CAST(p.creado_en AS TIMESTAMP)::DATE, pr.categoria,
+           CAST(SUM(d.cantidad * d.precio_unitario) AS DECIMAL(12,2)), now()
+    FROM crudo.pedidos p
+    JOIN crudo.detalle_pedido d ON d.pedido_id = p.pedido_id
+    JOIN crudo.productos pr ON pr.producto_id = d.producto_id
+    WHERE p.estado IN ('pagado', 'enviado', 'entregado')
+      AND CAST(p.creado_en AS TIMESTAMP)::DATE = CAST(? AS DATE)
+    GROUP BY 1, 2"""
+
+if a.modo == "agregar":
+    # No idempotente: cada corrida suma otra copia del día
+    alm.execute(f"INSERT INTO ventas_categoria_dia {lote}", [a.dia])
+else:
+    # Idempotente: borra la partición del día y la vuelve a escribir, todo o nada
+    alm.execute("BEGIN TRANSACTION")
+    alm.execute("DELETE FROM ventas_categoria_dia WHERE dia = CAST(? AS DATE)", [a.dia])
+    alm.execute(f"INSERT INTO ventas_categoria_dia {lote}", [a.dia])
+    alm.execute("COMMIT")
+
+filas, total = alm.execute("SELECT COUNT(*), SUM(ventas_netas) FROM ventas_categoria_dia "
+                           "WHERE dia = CAST(? AS DATE)", [a.dia]).fetchone()
+print(f"Modo {a.modo}: el {a.dia} tiene {filas} filas y US$ {total}")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda el script como <code>cargar_dia.py</code> y córrelo cuatro veces, en este orden:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python cargar_dia.py --modo agregar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python cargar_dia.py --modo agregar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python cargar_dia.py --modo reemplazar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python cargar_dia.py --modo reemplazar</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 cargar_dia.py --modo agregar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 cargar_dia.py --modo agregar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 cargar_dia.py --modo reemplazar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 cargar_dia.py --modo reemplazar</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Prueba con otro día, por ejemplo <code>--dia 2026-10-21</code>, y vuelve a correr el 14: los demás días no se tocan.</span></li></ol><p><b>Qué observar:</b> con <code>agregar</code>, la primera corrida deja 6 filas (una por categoría) y US$ 18.885,50; la segunda, 12 filas y US$ 37.771,00: el día de Renata se vendió el doble sin que nadie comprara nada. La primera corrida con <code>reemplazar</code> borra las dos copias y deja otra vez 6 filas y US$ 18.885,50, y la segunda no cambia nada. Ese es el arreglo de un pipeline no idempotente: una corrida idempotente sobre el mismo día. Fíjate en que la columna <code>cargado_en</code> usa <code>now()</code>: es útil para auditar, pero por eso nunca debe usarse para decidir qué filas procesar.</p></div><div class="caso"><b>Un caso real</b><p><b>La venta que se duplicó en la madrugada.</b> Un caso que se repite en equipos de comercio electrónico: el pipeline nocturno carga las ventas del día con un <code>INSERT</code>, falla después de escribir la mitad de las filas por un corte de red, y el orquestador lo reintenta automáticamente, como debe. Por la mañana el tablero muestra una venta récord que no existió, y alguien la presenta en la reunión antes de que nadie la revise. El arreglo nunca es «no reintentar»: los reintentos son necesarios. El arreglo es que la carga sea idempotente (reemplazar la partición del día dentro de una transacción) y que una prueba compare el total con otra fuente antes de publicar.</p></div></section>
+<section><h2>Herramientas del mercado: de los ETL gráficos a los conectores administrados</h2><div class="prose"><p>Las herramientas para mover datos acompañaron los cambios del patrón. A noviembre de 2026, el mercado se reparte, a grandes rasgos, en cuatro familias. Se nombran como ejemplos públicos, no como recomendación.</p><div class="tbl"><table><thead><tr><th>Familia</th><th>Qué hace</th><th>Ejemplos públicos</th></tr></thead><tbody><tr><td><b>ETL gráficos</b></td><td>El pipeline se dibuja arrastrando cajas (leer, filtrar, unir, escribir) en una aplicación de escritorio o web, y corre en el servidor de la herramienta</td><td>Informatica PowerCenter, IBM DataStage, Microsoft SSIS, Pentaho Data Integration, Talend</td></tr><tr><td><b>Servicios ETL de las nubes</b></td><td>Lo mismo, como servicio administrado de una nube, con cómputo que se enciende por corrida</td><td>AWS Glue, Azure Data Factory, Google Cloud Data Fusion</td></tr><tr><td><b>Conectores administrados (la E y la L)</b></td><td>Un catálogo de cientos de <b>conectores</b> (<i>connectors</i>) ya hechos para bases, APIs de aplicaciones SaaS y archivos, que copian los datos crudos al almacén de forma incremental</td><td>Fivetran, Airbyte (de código abierto), Stitch</td></tr><tr><td><b>Transformación dentro del almacén (la T)</b></td><td>Transformaciones en SQL, versionadas, probadas y ordenadas como un grafo</td><td>dbt, SQLMesh, Dataform</td></tr></tbody></table></div><p>Un <b>conector</b> sabe hablar con un origen concreto: conoce sus tablas o sus <i>endpoints</i>, su paginación, sus límites de uso y cómo pedir solo lo nuevo. Escribir y mantener cien conectores es mucho trabajo, y por eso existen empresas que solo hacen eso. La pila moderna de ELT combina, en general, un conector administrado para la E y la L, un almacén en la nube y dbt para la T.</p><p>Detrás de cualquier herramienta están las mismas preguntas: ¿la carga es incremental?, ¿se puede repetir sin duplicar?, ¿qué pasa si el origen cambia una columna?, ¿dónde queda el registro de cada corrida? Una herramienta gráfica con un <code>INSERT</code> no idempotente tiene el mismo problema que un script. En este curso todo se hace con Python y SQL sobre DuckDB, para ver cada paso; lo aprendido se traslada a cualquiera de estas herramientas.</p></div></section>
+<section><h2>El primer pipeline de la tienda: de la base de pedidos a una tabla de ventas</h2><div class="prose"><p>Con las piezas anteriores, Natalia arma el primer pipeline de Tienda Ejemplo. Elige ELT (la tienda quiere guardar el crudo y Martín escribe SQL), por lotes (Elena decide una vez al día), con cargas idempotentes y una prueba antes de publicar. Hoy es un script; en el capítulo 09 lo tomará un orquestador y en el capítulo 10 sus transformaciones pasarán a dbt.</p></div><figure class="fig fig-flujo" id="04-diagrama-2"><div class="lienzo"><svg viewBox="0 0 900 470" style="min-width:760px" role="img" aria-label="Diagrama de secuencia del primer pipeline de la tienda: el programa programado lee en modo de solo lectura la base de la tienda, copia las tablas crudas al almacén, reemplaza dentro de una transacción las ventas del día, verifica que la suma cuadre con los pagos y solo entonces el tablero consulta la tabla de ventas">
+<defs>
+<marker id="c4d2-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+<marker id="c4d2-e" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-enl"/></marker>
+<marker id="c4d2-t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-tra"/></marker>
+<marker id="c4d2-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-apl"/></marker>
+</defs>
+<rect x="20" y="14" width="150" height="50" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="95" y="35" class="t t-b" text-anchor="middle" style="font-size:12px">Pipeline programado</text>
+<text x="95" y="53" class="t t-s t-m" text-anchor="middle">elt.py · cada noche</text>
+<line x1="95" y1="64" x2="95" y2="456" class="vida"/>
+<rect x="205" y="14" width="150" height="50" rx="10" class="c-fis"/>
+<text x="280" y="35" class="t t-b" text-anchor="middle" style="font-size:12px">Base de la tienda</text>
+<text x="280" y="53" class="t t-s t-m" text-anchor="middle">tienda.db (de Diego)</text>
+<line x1="280" y1="64" x2="280" y2="456" class="vida"/>
+<rect x="400" y="14" width="160" height="50" rx="10" class="c-red"/>
+<text x="480" y="35" class="t t-b" text-anchor="middle" style="font-size:12px">Almacén</text>
+<text x="480" y="53" class="t t-s t-m" text-anchor="middle">almacen.duckdb</text>
+<line x1="480" y1="64" x2="480" y2="456" class="vida"/>
+<rect x="600" y="14" width="140" height="50" rx="10" class="c-apl"/>
+<text x="670" y="35" class="t t-b" text-anchor="middle" style="font-size:12px">Tablero</text>
+<text x="670" y="53" class="t t-s t-m" text-anchor="middle">lo lee Elena</text>
+<line x1="670" y1="64" x2="670" y2="456" class="vida"/>
+
+<line x1="99" y1="104" x2="274" y2="104" class="ln s-enl" style="stroke-width:1.8" marker-end="url(#c4d2-e)"/>
+<text x="187" y="97" class="t t-s" text-anchor="middle"><tspan class="t-b">①</tspan> ATTACH … READ_ONLY</text>
+<text x="187" y="119" class="t t-s t-m" text-anchor="middle">lee sin bloquear a nadie</text>
+<line x1="284" y1="158" x2="474" y2="158" class="ln s-enl" style="stroke-width:1.8" marker-end="url(#c4d2-e)"/>
+<text x="379" y="151" class="t t-s" text-anchor="middle"><tspan class="t-b">②</tspan> CREATE OR REPLACE crudo.*</text>
+<text x="379" y="173" class="t t-s t-m" text-anchor="middle">las tablas tal cual, sin cambios</text>
+<line x1="99" y1="220" x2="474" y2="220" class="ln s-tra" style="stroke-width:1.8" marker-end="url(#c4d2-t)"/>
+<text x="287" y="213" class="t t-s" text-anchor="middle"><tspan class="t-b">③</tspan> BEGIN · DELETE el día · INSERT … SELECT · COMMIT</text>
+<text x="287" y="235" class="t t-s t-m" text-anchor="middle">reemplaza las ventas del día, todo o nada</text>
+<line x1="476" y1="282" x2="101" y2="282" class="ln ln-d" style="stroke-width:1.6" marker-end="url(#c4d2-m)"/>
+<text x="287" y="275" class="t t-s" text-anchor="middle"><tspan class="t-b">④</tspan> prueba: ventas = pagos aprobados − reembolsos</text>
+<text x="287" y="297" class="t t-s k-warm" text-anchor="middle">si no cuadra, el pipeline falla y avisa</text>
+<line x1="666" y1="350" x2="486" y2="350" class="ln s-apl" style="stroke-width:1.8" marker-end="url(#c4d2-a)"/>
+<text x="576" y="343" class="t t-s" text-anchor="middle"><tspan class="t-b">⑤</tspan> SELECT … FROM</text>
+<text x="576" y="365" class="t t-s t-mono" text-anchor="middle">ventas_categoria_dia</text>
+<line x1="484" y1="410" x2="664" y2="410" class="ln s-apl" style="stroke-width:1.8" marker-end="url(#c4d2-a)"/>
+<text x="574" y="403" class="t t-s" text-anchor="middle"><tspan class="t-b">⑥</tspan> octubre:</text>
+<text x="574" y="425" class="t t-s t-mono" text-anchor="middle">US$ 782.785,77</text>
+
+<rect x="760" y="82" width="124" height="104" rx="8" class="c-enl"/>
+<text x="770" y="102" class="t t-xs t-b k-enl">EXTRAER Y CARGAR</text>
+<text x="770" y="120" class="t t-s">① y ②: copiar</text>
+<text x="770" y="135" class="t t-s">el crudo</text>
+<rect x="760" y="192" width="124" height="62" rx="8" class="c-tra"/>
+<text x="770" y="212" class="t t-xs t-b k-tra">TRANSFORMAR</text>
+<text x="770" y="230" class="t t-s">③ idempotente</text>
+<rect x="760" y="260" width="124" height="62" rx="8" class="caja" style="stroke-dasharray:5 4"/>
+<text x="770" y="280" class="t t-xs t-b t-m">VERIFICAR</text>
+<text x="770" y="298" class="t t-s">④ antes de servir</text>
+<rect x="760" y="328" width="124" height="112" rx="8" class="c-apl"/>
+<text x="770" y="348" class="t t-xs t-b k-apl">SERVIR</text>
+<text x="770" y="366" class="t t-s">⑤ y ⑥: el tablero</text>
+<text x="770" y="381" class="t t-s">no toca el origen</text>
+</svg></div><figcaption><b>El primer pipeline de la tienda, paso a paso.</b> Los participantes están arriba y el tiempo corre hacia abajo. ① El pipeline programado se conecta a la base de la tienda en modo de solo lectura. ② Copia las tablas tal cual al esquema <code>crudo</code> del almacén (flechas verdes: ingesta). ③ Dentro de una transacción, borra y reescribe las ventas del día (flecha morada: transformación idempotente). ④ Comprueba que las ventas cuadren con los pagos aprobados menos los reembolsos; si no cuadran, el pipeline falla y no publica. ⑤ y ⑥ El tablero consulta solo la tabla final (flechas rosas) y nunca toca la base de Diego. A la derecha, las fases.</figcaption></figure><div class="prose"><p>Los pasos, leídos como un contrato que el pipeline cumple en cada corrida:</p><ol class="steps"><li><span><b>Extrae sin molestar.</b> Lee la base con una conexión de solo lectura, en horario de poco uso. Diego no se entera de que corrió.</span></li><li><span><b>Guarda el crudo como llegó.</b> Las tablas <code>crudo.*</code> son una copia fiel del origen: sin filtros, sin limpiezas. Si mañana cambia una regla, se recalcula desde aquí.</span></li><li><span><b>Transforma de forma idempotente.</b> Cada tabla final se reconstruye entera o se reemplaza por partición dentro de una transacción. Correr el pipeline dos veces da el mismo resultado.</span></li><li><span><b>Verifica antes de servir.</b> La regla de negocio de la tienda da una prueba gratuita: las ventas netas de un período deben ser iguales a los pagos <code>aprobado</code> menos los <code>reembolsado</code> de esos pedidos. Si no cuadran, algo se rompió en el camino.</span></li><li><span><b>Sirve solo tablas finales.</b> El tablero y Martín leen <code>ventas_diarias</code> y <code>ventas_categoria_dia</code>, nunca <code>crudo</code>.</span></li></ol><p>La definición de la cifra vive ahora en un solo lugar, en el SQL de la transformación, y no en la memoria de Martín: suma de <code>cantidad × precio_unitario</code> de los pedidos creados en el período con estado <code>pagado</code>, <code>enviado</code> o <code>entregado</code>. Las trampas del capítulo 01, como sumar los pagos rechazados o los reembolsos, quedan escritas en el código y no se repiten cada lunes.</p></div><div class="ml"><b>En la práctica</b><p><b>Lo primero que cambió para Martín.</b> El primer lunes con el pipeline, Martín no abrió la hoja de cálculo: consultó <code>ventas_categoria_dia</code> y tuvo la tabla en un minuto. El segundo lunes encontró algo mejor que hacer con sus tres horas: preguntarse por qué Electrónica creció tanto en octubre. Natalia, por su parte, dejó escrita en el repositorio la regla que no se negocia: «ninguna tabla final se carga con un <code>INSERT</code> suelto; se reemplaza la partición o se fusiona por clave». La regla salió de la práctica de este capítulo, el día que vio duplicarse las ventas del 14 de octubre en su propia computadora.</p></div></section>
+<section><h2>La idea clave</h2><div class="prose"><p>ETL transforma antes de cargar, en un servidor propio, y guarda solo el resultado; ELT carga el crudo en el almacén y transforma ahí, con SQL, para poder recalcular sin volver al origen. Por lotes es barato y fácil de corregir, el streaming da segundos de latencia a cambio de costo y complejidad, y la frecuencia se elige por la decisión que se toma con el dato. Y cualquiera sea el patrón, cada paso debe ser idempotente: correrlo dos veces no puede cambiar el resultado.</p></div></section>
+<section><h2>Pruébate</h2><div class="quiz"><h3>Pruébate</h3><details><summary>¿Qué cambia entre ETL y ELT, si las letras son las mismas?</summary><p>Dónde se hace la transformación y qué se guarda. En ETL se transforma fuera del almacén y solo se carga el resultado; en ELT se carga el crudo en el almacén y se transforma ahí, de modo que el crudo queda disponible para recalcular.</p></details><details><summary>Elena cambia la definición de venta y pide recalcular todo el año. ¿Por qué con ELT no hace falta volver a leer la base de Diego?</summary><p>Porque el crudo ya está en el esquema <code>crudo</code> del almacén; basta volver a correr la transformación sobre él.</p></details><details><summary>Un pipeline carga las ventas del día con <code>INSERT INTO ventas SELECT ...</code> y el orquestador lo reintenta tras un fallo. ¿Qué puede pasar y cómo se arregla?</summary><p>Puede duplicar las ventas del día. Se arregla reemplazando la partición (borrar el día e insertarlo dentro de una transacción) o fusionando por clave con <code>MERGE</code>.</p></details><details><summary>¿Por qué un pipeline debe recibir la fecha que procesa como parámetro en lugar de usar «las últimas 24 horas»?</summary><p>Porque «las últimas 24 horas» depende del momento en que corre: un reintento o un reproceso al día siguiente procesaría otro intervalo. Con la fecha como parámetro, cada corrida sobre el mismo día da el mismo resultado.</p></details><details><summary>El equipo de marketing quiere ver las ventas de la semana de descuentos «en tiempo real». ¿Qué le preguntarías antes de construir un pipeline en streaming?</summary><p>Qué decisión van a tomar con el dato y cada cuánto la toman. Si ajustan la publicidad cada hora, micro-lotes de quince minutos bastan y cuestan mucho menos que un proceso siempre encendido.</p></details></div></section>
+<section><h2>Para investigar</h2><div class="investiga"><h3>Para investigar</h3><p class="hint">Estas preguntas no se responden en el capítulo: búscalas por tu cuenta.</p><ol><li>¿Por qué insertar fila por fila con <code>executemany</code> suele ser mucho más lento que una carga masiva, aunque se escriban menos filas?<small>Pista: busca «bulk load» y compara cuántas idas y vueltas y cuántas transacciones hace cada forma.</small></li><li>¿Qué es el <i>reverse ETL</i> y por qué algunas empresas llevan datos del almacén de vuelta al CRM o a la herramienta de correo?</li><li>¿Qué prometen las integraciones «Zero-ETL» que anuncian algunas nubes, y qué parte del trabajo de un pipeline siguen dejando sin hacer?</li><li>¿En qué se diferencian <code>MERGE</code> del estándar SQL e <code>INSERT ... ON CONFLICT</code> de PostgreSQL, y qué problema de concurrencia tuvo <code>MERGE</code> en algunos motores?<small>Pista: busca «MERGE race condition» en la documentación de tu motor.</small></li><li>¿Qué es el modelo <i>Data Vault</i> de Dan Linstedt (<i>hubs</i>, <i>links</i> y <i>satellites</i>) y en qué capa de un pipeline ELT lo ponen quienes lo usan?</li></ol></div></section>
+<section><h2>Para saber más</h2><div class="vids"><span>Para saber más</span><a class="vid" href="https://www.kimballgroup.com/2007/10/subsystems-of-etl-revisited/" target="_blank" rel="noopener">The Subsystems of ETL Revisited <small>Kimball Group, los 34 subsistemas de un ETL completo, en inglés</small></a><a class="vid" href="https://duckdb.org/docs/stable/core_extensions/sqlite" target="_blank" rel="noopener">SQLite Extension de DuckDB <small>documentación oficial de cómo leer una base SQLite desde DuckDB, en inglés</small></a><a class="vid" href="https://duckdb.org/docs/stable/sql/statements/insert" target="_blank" rel="noopener">INSERT en DuckDB <small>incluye <code>INSERT OR REPLACE</code> y <code>ON CONFLICT</code>, en inglés</small></a><a class="vid" href="https://docs.airbyte.com/" target="_blank" rel="noopener">Documentación de Airbyte <small>conectores de código abierto para la E y la L, en inglés</small></a></div></section>
+<label class="got"><input type="checkbox" id="got"> Lo tengo claro</label>
+<nav class="pager" id="pager" aria-label="Capítulo anterior y siguiente"></nav>
+</main>
+</div>
+<footer><span>Curso abierto de aaramirez.github.io.</span><span>Sitio publicado: <a href="https://github.com/aaramirez/ingenieria-de-datos" target="_blank" rel="noopener">github.com/aaramirez/ingenieria-de-datos</a></span></footer>
+</div>
+<script src="assets/lab.js"></script>
+<script>
+(function(){
+  const {$}=window.Lab;
+  const raiz=document.querySelector('[id="04-lab-1"]');
+  const nf=(n,d=0)=>{const s=Math.abs(n).toFixed(d).split('.');s[0]=s[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.');return (n<0?'−':'')+s.join(',');};
+  const usd=n=>'US$ '+nf(n,2);
+  // Muestra real de la base de la tienda (semilla 42): pedidos del 14 de octubre de 2026
+  const PEDIDOS=[
+    [59521,1042,'19:32','entregado','web'],[59522,5376,'00:57','entregado','web'],
+    [59523,1802,'01:38','entregado','web'],[59524,5586,'03:52','entregado','web'],
+    [59526,2573,'04:20','entregado','web'],[59528,3406,'05:57','entregado','app'],
+    [59536,5718,'06:42','cancelado','app'],[59550,5645,'08:17','creado','web']];
+  const DETALLE=[ // pedido, linea, producto, cantidad, precio_unitario
+    [59521,1,17,1,13.9],[59521,2,88,2,79.9],[59522,1,178,2,17.9],[59523,1,132,1,1.9],[59523,2,50,1,12.9],
+    [59523,3,37,2,44.9],[59524,1,10,1,8.9],[59524,2,181,1,39.9],[59526,1,20,2,7.9],[59526,2,69,1,41.9],
+    [59528,1,5,3,47.9],[59536,1,100,1,252.9],[59536,2,78,1,67.9],[59536,3,86,1,30.9],[59550,1,30,1,33.9],[59550,2,185,1,16.9]];
+  const CAT={17:'Hogar',88:'Electrónica',178:'Juguetes',132:'Papelería',50:'Cocina',37:'Cocina',10:'Hogar',181:'Juguetes',20:'Hogar',69:'Electrónica',5:'Hogar',100:'Electrónica',78:'Electrónica',86:'Electrónica',30:'Hogar',185:'Juguetes'};
+  const CORRECTO=564.30;
+  const B={
+    ext:{n:'Extraer pedidos del 14-oct',req:[],f:()=>PEDIDOS.map(p=>({pedido_id:p[0],cliente_id:p[1],creado_en:'2026-10-14 '+p[2],estado:p[3],canal:p[4]}))},
+    det:{n:'Unir con detalle_pedido',req:['pedido_id'],f:r=>{const o=[];r.forEach(x=>DETALLE.filter(d=>d[0]===x.pedido_id).forEach(d=>o.push(Object.assign({},x,{linea:d[1],producto_id:d[2],cantidad:d[3],precio_unitario:d[4]}))));return o;}},
+    fil:{n:'Filtrar estados de venta',req:['estado'],f:r=>r.filter(x=>['pagado','enviado','entregado'].includes(x.estado))},
+    mon:{n:'Calcular monto',req:['cantidad','precio_unitario'],f:r=>r.map(x=>Object.assign({},x,{monto:Math.round(x.cantidad*x.precio_unitario*100)/100}))},
+    pro:{n:'Unir con productos',req:['producto_id'],f:r=>r.map(x=>Object.assign({},x,{categoria:CAT[x.producto_id]}))},
+    agr:{n:'Agrupar por día y categoría',req:['monto','categoria','creado_en'],f:r=>{const g={};r.forEach(x=>{const k=x.creado_en.slice(0,10)+'|'+x.categoria;g[k]=g[k]||{dia:x.creado_en.slice(0,10),categoria:x.categoria,ventas_netas:0,_p:new Set()};g[k].ventas_netas+=x.monto;g[k]._p.add(x.pedido_id);});return Object.values(g).sort((a,b)=>b.ventas_netas-a.ventas_netas).map(x=>({dia:x.dia,categoria:x.categoria,ventas_netas:Math.round(x.ventas_netas*100)/100,pedidos:x._p.size}));}},
+    car:{n:'Cargar en el almacén',req:['dia','categoria','ventas_netas'],f:r=>r}
+  };
+  const INICIAL=['ext','det','mon','pro','agr','car'];
+  let pipe=INICIAL.slice(),sel=null,destino=[],corridas=0;
+  function ejecutar(){
+    // Devuelve la salida de cada paso, o el error donde se detiene
+    let datos=null;const pasos=[];
+    for(let i=0;i<pipe.length;i++){
+      const id=pipe[i],b=B[id];
+      if(i===0&&id!=='ext'){pasos.push({id,err:'el pipeline no empieza por una extracción: no hay datos de dónde partir'});break;}
+      if(id==='ext'&&i>0){pasos.push({id,err:'solo se extrae una vez, al principio'});break;}
+      if(id==='car'&&i!==pipe.length-1){pasos.push({id,err:'la carga va al final: después de cargar no se transforma nada'});break;}
+      const cols=datos&&datos.length?Object.keys(datos[0]):(datos?[]:[]);
+      const falta=i>0?b.req.filter(c=>!cols.includes(c)):[];
+      if(falta.length){pasos.push({id,err:'le falta la columna '+falta.join(' y ')+(id==='fil'&&pipe.indexOf('agr')>-1&&pipe.indexOf('agr')<i?': al agrupar se perdió el estado de cada pedido. Filtra antes de agrupar.':': agrega antes el bloque que la produce.')});break;}
+      datos=b.f(datos);pasos.push({id,datos});
+    }
+    return pasos;
+  }
+  function tabla(el,filas,marcar){
+    if(!filas||!filas.length){el.innerHTML='<tr><td style="color:var(--muted)">(sin filas)</td></tr>';return;}
+    const cols=Object.keys(filas[0]).filter(c=>c[0]!=='_');
+    el.innerHTML='<thead><tr>'+cols.map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody>'+filas.map(f=>'<tr class="'+(marcar?marcar(f):'')+'">'+cols.map(c=>{const v=f[c];const num=typeof v==='number'&&!/_id$|linea/.test(c);return '<td class="'+(num?'n':'')+'">'+(c==='monto'||c==='ventas_netas'||c==='precio_unitario'?nf(v,2):v)+'</td>';}).join('')+'</tr>').join('')+'</tbody>';
+  }
+  function pintar(){
+    $('#c4l1-pal').innerHTML=Object.keys(B).map(k=>'<button type="button" data-k="'+k+'"'+(pipe.includes(k)?' disabled':'')+'>+ '+B[k].n+'</button>').join('');
+    raiz.querySelectorAll('#c4l1-pal button').forEach(b=>b.addEventListener('click',()=>{const k=b.dataset.k;const ic=pipe.indexOf('car');if(k!=='car'&&ic>-1)pipe.splice(ic,0,k);else pipe.push(k);sel=k;pintar();}));
+    const pasos=ejecutar();
+    const errEn=pasos.find(p=>p.err);
+    $('#c4l1-pipe').innerHTML=pipe.map((k,i)=>{const p=pasos[i];const cls=(k==='ext'?'ext ':k==='car'?'car ':'')+(p&&p.err?'err ':'')+(k===sel?'sel':'');return (i?'<span class="c4l1-flecha" aria-hidden="true">→</span>':'')+'<li class="'+cls+'"><button type="button" data-v="'+k+'">'+(i+1)+'. '+B[k].n+'</button><button type="button" class="mini" data-u="'+i+'" aria-label="Subir '+B[k].n+'">↑</button><button type="button" class="mini" data-d="'+i+'" aria-label="Bajar '+B[k].n+'">↓</button><button type="button" class="mini" data-x="'+i+'" aria-label="Quitar '+B[k].n+'">×</button></li>';}).join('');
+    raiz.querySelectorAll('#c4l1-pipe [data-v]').forEach(b=>b.addEventListener('click',()=>{sel=b.dataset.v;pintar();}));
+    raiz.querySelectorAll('#c4l1-pipe [data-u]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.u;if(i>0){[pipe[i-1],pipe[i]]=[pipe[i],pipe[i-1]];}pintar();}));
+    raiz.querySelectorAll('#c4l1-pipe [data-d]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.d;if(i<pipe.length-1){[pipe[i+1],pipe[i]]=[pipe[i],pipe[i+1]];}pintar();}));
+    raiz.querySelectorAll('#c4l1-pipe [data-x]').forEach(b=>b.addEventListener('click',()=>{pipe.splice(+b.dataset.x,1);if(!pipe.includes(sel))sel=null;pintar();}));
+    // Paso que se muestra
+    let ver=pasos.find(p=>p.id===sel)||pasos.filter(p=>!p.err).slice(-1)[0];
+    if(ver&&ver.err){$('#c4l1-paso').innerHTML='<span style="color:var(--warm)">El bloque «'+B[ver.id].n+'» se detiene: '+ver.err+'</span>';$('#c4l1-tab').innerHTML='';}
+    else if(ver){$('#c4l1-paso').textContent='Salida de «'+B[ver.id].n+'»: '+ver.datos.length+' fila'+(ver.datos.length===1?'':'s');tabla($('#c4l1-tab'),ver.datos,f=>f.estado&&!['pagado','enviado','entregado'].includes(f.estado)?'mal':'');}
+    else{$('#c4l1-paso').textContent='El pipeline está vacío: agrega un bloque.';$('#c4l1-tab').innerHTML='';}
+    $('#c4l1-run').disabled=!!errEn||pipe[pipe.length-1]!=='car';
+    tabla($('#c4l1-dest'),destino,f=>f._nueva?'nueva':'');
+    return {pasos,errEn};
+  }
+  function correr(){
+    const {pasos}=pintar();const fin=pasos[pasos.length-1];
+    if(!fin||fin.err||fin.id!=='car')return;
+    corridas++;
+    const lote=fin.datos.map(f=>Object.assign({},f,{_nueva:true}));
+    destino.forEach(f=>f._nueva=false);
+    const modo=$('#c4l1-modo').value;
+    if(modo==='reemplazar')destino=destino.filter(f=>f.dia!=='2026-10-14');
+    destino=destino.concat(lote);
+    const total=destino.filter(f=>f.dia==='2026-10-14').reduce((s,f)=>s+f.ventas_netas,0);
+    const filasDia=destino.filter(f=>f.dia==='2026-10-14').length;
+    pintar();
+    let o='<span class="big">Ventas del 14 de octubre en el almacén: '+usd(total)+'</span>';
+    o+='<span>Corrida n.º '+corridas+', modo «'+(modo==='agregar'?'agregar':'reemplazar el día')+'»: la tabla tiene '+filasDia+' filas de ese día.</span>';
+    const ok=Math.abs(total-CORRECTO)<0.005;
+    if(ok)o+='<span class="ok">Coincide con la cifra correcta de esta muestra ('+usd(CORRECTO)+'). Córrelo otra vez: si el modo es «reemplazar», la cifra no se mueve.</span>';
+    else if(!pipe.includes('fil'))o+='<span class="warn">Falta filtrar estados: se sumaron el pedido cancelado 59536 y el carrito abandonado 59550, que nunca se cobraron. Lo correcto en esta muestra es '+usd(CORRECTO)+'.</span>';
+    else if(total>CORRECTO)o+='<span class="warn">El día quedó contado '+nf(total/CORRECTO,0)+' veces: el modo «agregar» no es idempotente y cada corrida suma otra copia. Cambia a «reemplazar el día», vacía la tabla o vuelve a correr.</span>';
+    $('#c4l1-out').innerHTML=o;
+  }
+  $('#c4l1-run').addEventListener('click',correr);
+  $('#c4l1-vaciar').addEventListener('click',()=>{destino=[];corridas=0;pintar();$('#c4l1-out').innerHTML='<span>Tabla destino vacía.</span>';});
+  $('#c4l1-ini').addEventListener('click',()=>{pipe=INICIAL.slice();sel=null;pintar();});
+  $('#c4l1-modo').addEventListener('change',pintar);
+  pintar();
+  $('#c4l1-out').innerHTML='<span>El pipeline inicial tiene un error de negocio, no de código: córrelo y mira la cifra. Después agrega el bloque que falta, prueba a ponerlo en otro lugar y corre dos veces con cada modo de carga.</span>';
+})();
+</script>
+<script>
+(function(){
+  const {$}=window.Lab;
+  const raiz=document.querySelector('[id="04-lab-2"]');
+  // Filas en millones (escala casi logarítmica) y nodos del almacén
+  const FILAS=[0.05,0.1,0.25,0.5,1,2,5,10,20,50,100,200,500];
+  const NODOS=[1,2,4,8,16,32];
+  // Ritmos de ejemplo, en millones de filas por minuto
+  const R_EXT=4;        // lo que aguanta leer del origen
+  const R_ETL=1.2;      // un servidor ETL, por cada transformación
+  const R_CAR_ETL=6;    // cargar filas ya transformadas
+  const R_CAR_ELT=10;   // carga masiva de datos crudos a un almacén columnar
+  const R_NODO=0.9;     // un nodo del almacén, por cada transformación
+  const ARRANQUE=1;     // minutos fijos: encender el almacén y el mínimo que cobra
+  const POR_CONSULTA=0.1; // minutos fijos por cada transformación lanzada como consulta
+  const DIAS_AÑO=365;
+  let modo='dia';
+  const miles=x=>Math.round(x).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  function fmtFilas(m){return m>=1?miles(m)+' millones de filas':miles(m*1e6)+' filas';}
+  function fmtMin(x){
+    if(x<1)return Math.max(1,Math.round(x*60))+' s';
+    if(x<90)return (x<10?x.toFixed(1).replace('.',','):Math.round(x))+' min';
+    const h=x/60;return (h<10?h.toFixed(1).replace('.',','):miles(h))+' h';
+  }
+  function barra(el,seg,total){
+    el.innerHTML=seg.map(s=>'<i class="'+s[0]+'" style="width:'+(100*s[1]/total)+'%">'+(s[1]/total>.14?s[2]:'')+'</i>').join('');
+  }
+  function calc(){
+    const n=FILAS[+$('#c4l2-n').value],t=+$('#c4l2-t').value,w=NODOS[+$('#c4l2-w').value];
+    $('#c4l2-no').textContent=fmtFilas(n).replace(' de filas','').replace(' filas','');$('#c4l2-to').textContent=t;$('#c4l2-wo').textContent=w;
+    const regla=modo==='regla';
+    // En el modo «regla» hay que recalcular un año de historia (365 cargas como la de hoy)
+    const h=regla?n*DIAS_AÑO:n;
+    // ETL: sin datos crudos guardados, recalcular exige volver a extraer del origen
+    const eExt=h/R_EXT, eTrs=h*t/R_ETL, eCar=h*0.3/R_CAR_ETL;
+    // ELT: el crudo ya está en el almacén; recalcular no toca el origen
+    const lExt=regla?0:h/R_EXT, lCar=regla?0:h/R_CAR_ELT, lTra=ARRANQUE+t*POR_CONSULTA+h*t/(R_NODO*w);
+    const eTot=eExt+eTrs+eCar, lTot=lExt+lCar+lTra, mx=Math.max(eTot,lTot);
+    barra($('#c4l2-etl'),[['c4l2-ext',eExt,'extraer'],['c4l2-trs',eTrs,'transformar'],['c4l2-car',eCar,'cargar']],mx);
+    barra($('#c4l2-elt'),[['c4l2-ext',lExt,'extraer'],['c4l2-car',lCar,'cargar'],['c4l2-tra',lTra,'transformar']],mx);
+    $('#c4l2-etl').style.width=(100*eTot/mx)+'%';$('#c4l2-elt').style.width=(100*lTot/mx)+'%';
+    $('#c4l2-etlt').textContent=fmtMin(eTot);$('#c4l2-eltt').textContent=fmtMin(lTot);
+    $('#c4l2-etld').textContent='Trabaja: un servidor ETL (una máquina). Al almacén llega solo la tabla final: el dato crudo no se guarda.';
+    $('#c4l2-eltd').textContent='Trabaja: el almacén, con '+w+' nodo'+(w>1?'s':'')+' ('+fmtMin(lTra*w)+' de cómputo pagado). El dato crudo queda guardado en el almacén.';
+    let o='<span class="big">ETL '+fmtMin(eTot)+' · ELT '+fmtMin(lTot)+'</span>';
+    if(regla){
+      o+='<span>Recalcular un año son '+fmtFilas(h)+'. ';
+      o+='El ETL tiene que <b>volver a leer todo del origen</b> ('+fmtMin(eExt)+' cargando la base de la tienda), porque nunca guardó el crudo. ';
+      o+='El ELT lo recalcula con el crudo que ya tiene en el almacén y no molesta al origen.</span>';
+    }else{
+      o+='<span>Una carga nocturna de '+fmtFilas(n)+' con '+t+' transformacion'+(t>1?'es':'')+'. ';
+      o+=(eTot<lTot?'Gana el ETL: con pocos datos, el servidor propio termina antes de que el almacén arranque, y no se paga cómputo del almacén.':'Gana el ELT: el almacén reparte las transformaciones entre sus nodos, y el servidor ETL de una sola máquina se vuelve el cuello de botella.')+'</span>';
+    }
+    o+='<span style="color:var(--muted)">Los ritmos son de ejemplo (un origen que entrega 4 millones de filas por minuto, un nodo que transforma 0,9 millones por minuto, un minuto para que el almacén arranque); lo que importa es la forma, no los minutos exactos.</span>';
+    $('#c4l2-out').innerHTML=o;
+  }
+  function setModo(m){modo=m;$('#c4l2-dia').setAttribute('aria-pressed',m==='dia');$('#c4l2-regla').setAttribute('aria-pressed',m==='regla');calc();}
+  ['#c4l2-n','#c4l2-t','#c4l2-w'].forEach(s=>$(s).addEventListener('input',calc));
+  $('#c4l2-dia').addEventListener('click',()=>setModo('dia'));
+  $('#c4l2-regla').addEventListener('click',()=>setModo('regla'));
+  calc();
+})();
+</script>
+</body>
+</html>

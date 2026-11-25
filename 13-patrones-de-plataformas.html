@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="es">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-KX76XF8R');</script>
+<!-- End Google Tag Manager -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Patrones de plataformas · Ingeniería de datos · Ingeniería de datos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Cómo viaja un dato desde la base de una aplicación hasta el tablero que lee la gerencia: ingesta, formatos, ETL y ELT, data warehouse, lakehouse, Spark, Kafka, orquestación, dbt, calidad y linaje, con laboratorios donde se ve cada pipeline funcionar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400;1,8..60,600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KX76XF8R"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<div class="wrap" data-page="patrones-de-plataformas">
+<header class="topbar"><a class="brand" href="index.html">Ingeniería de <b>datos</b></a><span class="eyebrow">Curso visual e interactivo · Datos e inteligencia artificial</span><a class="al-sitio" href="https://aaramirez.github.io/">← Todos los cursos</a></header>
+<div class="layout">
+<nav class="toc" id="toc" aria-label="Ruta de aprendizaje"></nav>
+<main>
+<header class="page-head"><span class="num">CAPÍTULO 13 DE 14</span><h1>Patrones de plataformas de datos</h1><p class="lede">Doce capítulos dejaron una plataforma armada pieza por pieza. Este capítulo la mira entera: los seis patrones del curso con el problema que resuelve cada uno, lo que cuesta y cuándo no hace falta, un árbol para elegirlos y el recorrido de un pedido por la plataforma terminada de Tienda Ejemplo.</p></header>
+<section><div class="prose"><p>Un proveedor visitó Tienda Ejemplo con una presentación impecable. Proponía una «plataforma moderna»: todo en streaming, un clúster de Spark, un lago con cinco capas y data mesh desde el primer día. Elena Vargas salió de la reunión entusiasmada y con una pregunta para Natalia Herrera: «¿Por qué no tenemos esto?».</p><p>Natalia no defendió lo que había construido. Puso sobre la mesa las preguntas que la plataforma responde: cada cuánto se decide con el dato, cuánto pesa lo que se lee, cómo cambia la base de Diego, qué preguntan Martín e Irene y cuántos equipos producen datos. Con esas respuestas, la propuesta del proveedor resolvía problemas que la tienda no tenía y cobraba por todos. Lo que sí tenía la tienda era un <b>patrón</b> (<i>pattern</i>) para cada problema real: una solución probada, con nombre, que otros ya usaron y cuyos costos se conocen.</p><p>Este capítulo junta esos patrones en un solo lugar. Cada sección es un resumen con un enlace al capítulo donde se enseñó a fondo: aquí importa cuándo conviene cada uno, cuándo no, y cómo se combinan.</p></div><div class="analogia"><b>Imagínalo así</b><p>Un arquitecto no elige el techo por la revista del mes. Pregunta cuánto llueve, si nieva, cuánto viento hay y cuánto se puede gastar en mantenimiento. El techo de teja, el de losa y el de chapa son todos buenos patrones; cada uno resuelve un clima. Una casa con los tres techos a la vez no es moderna: es cara.</p></div><figure class="fig fig-comparacion" id="13-diagrama-1"><div class="lienzo"><svg viewBox="0 0 940 470" style="min-width:760px" role="img" aria-label="Catálogo de los seis patrones del curso: ETL y ELT, medallón, Lambda y Kappa, modelado dimensional con SCD, CDC y data mesh, cada uno con el problema que resuelve, lo que cuesta, cuándo no usarlo y su capítulo">
+<g>
+<rect x="20" y="20" width="290" height="205" rx="10" class="c-tra"/>
+<text x="36" y="46" class="t t-b k-tra">ETL y ELT</text><text x="294" y="46" class="t t-s t-m" text-anchor="end">capítulo 4</text>
+<text x="36" y="72" class="t t-xs t-b t-m">RESUELVE</text>
+<text x="36" y="90" class="t t-s">dónde se transforma: antes de cargar</text>
+<text x="36" y="106" class="t t-s">o dentro del almacén, con SQL</text>
+<text x="36" y="132" class="t t-xs t-b t-m">CUESTA</text>
+<text x="36" y="150" class="t t-s">ELT: guardar el crudo y pagar el</text>
+<text x="36" y="166" class="t t-s">cómputo del almacén</text>
+<text x="36" y="192" class="t t-xs t-b t-m">NO LO USES SI</text>
+<text x="36" y="210" class="t t-s">un dato no puede entrar sin limpiar: ETL</text>
+</g>
+<g>
+<rect x="325" y="20" width="290" height="205" rx="10" class="c-red"/>
+<text x="341" y="46" class="t t-b k-red">Medallón</text><text x="599" y="46" class="t t-s t-m" text-anchor="end">capítulo 6</text>
+<text x="341" y="72" class="t t-xs t-b t-m">RESUELVE</text>
+<text x="341" y="90" class="t t-s">un lago ordenado: bronce (llegó),</text>
+<text x="341" y="106" class="t t-s">plata (limpio), oro (para el negocio)</text>
+<text x="341" y="132" class="t t-xs t-b t-m">CUESTA</text>
+<text x="341" y="150" class="t t-s">tres copias de los datos y</text>
+<text x="341" y="166" class="t t-s">disciplina para no saltar capas</text>
+<text x="341" y="192" class="t t-xs t-b t-m">NO LO USES SI</text>
+<text x="341" y="210" class="t t-s">solo hay reportes fijos: capas en el almacén</text>
+</g>
+<g>
+<rect x="630" y="20" width="290" height="205" rx="10" class="c-tra"/>
+<text x="646" y="46" class="t t-b k-tra">Lambda y Kappa</text><text x="904" y="46" class="t t-s t-m" text-anchor="end">capítulo 8</text>
+<text x="646" y="72" class="t t-xs t-b t-m">RESUELVE</text>
+<text x="646" y="90" class="t t-s">cifras en segundos y exactas a la vez</text>
+<text x="646" y="106" class="t t-s">(dos caminos, o uno que se relee)</text>
+<text x="646" y="132" class="t t-xs t-b t-m">CUESTA</text>
+<text x="646" y="150" class="t t-s">un registro de eventos y un motor de</text>
+<text x="646" y="166" class="t t-s">streaming que operar día y noche</text>
+<text x="646" y="192" class="t t-xs t-b t-m">NO LO USES SI</text>
+<text x="646" y="210" class="t t-s">nadie decide en segundos</text>
+</g>
+<g>
+<rect x="20" y="245" width="290" height="205" rx="10" class="c-red"/>
+<text x="36" y="271" class="t t-b k-red">Dimensional y SCD</text><text x="294" y="271" class="t t-s t-m" text-anchor="end">capítulo 5</text>
+<text x="36" y="297" class="t t-xs t-b t-m">RESUELVE</text>
+<text x="36" y="315" class="t t-s">preguntas que cruzan áreas, con</text>
+<text x="36" y="331" class="t t-s">la historia de lo que cambia</text>
+<text x="36" y="357" class="t t-xs t-b t-m">CUESTA</text>
+<text x="36" y="375" class="t t-s">diseñar el grano y mantener</text>
+<text x="36" y="391" class="t t-s">claves sustitutas</text>
+<text x="36" y="417" class="t t-xs t-b t-m">NO LO USES SI</text>
+<text x="36" y="435" class="t t-s">solo se explora el crudo</text>
+</g>
+<g>
+<rect x="325" y="245" width="290" height="205" rx="10" class="c-enl"/>
+<text x="341" y="271" class="t t-b k-enl">CDC</text><text x="599" y="271" class="t t-s t-m" text-anchor="end">capítulo 2</text>
+<text x="341" y="297" class="t t-xs t-b t-m">RESUELVE</text>
+<text x="341" y="315" class="t t-s">traer cada cambio, también los</text>
+<text x="341" y="331" class="t t-s">borrados, sin consultar el origen</text>
+<text x="341" y="357" class="t t-xs t-b t-m">CUESTA</text>
+<text x="341" y="375" class="t t-s">permisos sobre el registro de la base</text>
+<text x="341" y="391" class="t t-s">y un conector que vigilar</text>
+<text x="341" y="417" class="t t-xs t-b t-m">NO LO USES SI</text>
+<text x="341" y="435" class="t t-s">el origen solo agrega: marca de agua</text>
+</g>
+<g>
+<rect x="630" y="245" width="290" height="205" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="646" y="271" class="t t-b">Data mesh</text><text x="904" y="271" class="t t-s t-m" text-anchor="end">capítulo 12</text>
+<text x="646" y="297" class="t t-xs t-b t-m">RESUELVE</text>
+<text x="646" y="315" class="t t-s">un equipo central que no da abasto:</text>
+<text x="646" y="331" class="t t-s">cada área es dueña de sus datos</text>
+<text x="646" y="357" class="t t-xs t-b t-m">CUESTA</text>
+<text x="646" y="375" class="t t-s">ingenieros en cada área y una</text>
+<text x="646" y="391" class="t t-s">plataforma de autoservicio</text>
+<text x="646" y="417" class="t t-xs t-b t-m">NO LO USES SI</text>
+<text x="646" y="435" class="t t-s">hay un solo equipo de datos</text>
+</g>
+</svg></div><figcaption><b>El catálogo de patrones del curso.</b> Seis fichas con el color de la pieza de la plataforma a la que pertenece cada patrón (verde, ingesta; azul, almacenamiento; morado, transformación; punteado, operación y organización) y el capítulo donde se enseñó. Cada ficha se lee de arriba abajo: qué problema resuelve, qué cuesta y cuándo no usarlo. La última línea es la más útil al decidir.</figcaption></figure></section>
+<section><h2>ETL y ELT</h2><div class="prose"><p><b>ETL</b> (<i>Extract, Transform, Load</i>, extraer, transformar y cargar) transforma los datos en un servidor propio antes de cargarlos, y guarda solo el resultado. <b>ELT</b> (<i>Extract, Load, Transform</i>) carga primero el crudo en el almacén y transforma ahí, con SQL. El capítulo 4 los comparó con la misma tabla de ventas de la tienda.</p><ul><li><b>Resuelve:</b> dónde se hace el trabajo de transformar y qué se puede recalcular después.</li><li><b>ELT conviene</b> casi siempre hoy: el almacén tiene cómputo de sobra, el crudo queda guardado y una regla nueva se recalcula sin volver a molestar al origen. Es la base de dbt (capítulo 10).</li><li><b>ETL sigue teniendo lugar</b> cuando un dato no puede entrar al almacén sin transformarse antes: datos personales que se enmascaran en el camino, un volumen enorme que se reduce antes de guardarlo, un destino que solo acepta el resultado.</li><li><b>Lo que no se negocia en ninguno de los dos:</b> cada paso es idempotente. La regla de Natalia del capítulo 4 vale para todo el curso: ninguna tabla final se carga con un <code>INSERT</code> suelto; se reemplaza la partición o se fusiona por clave.</li></ul><p><b>En la tienda:</b> ELT. La ingesta deja el crudo en bronce y dbt construye plata y oro dentro de la plataforma.</p></div></section>
+<section><h2>Arquitectura medallón: bronce, plata y oro</h2><div class="prose"><p>La <b>arquitectura medallón</b> (<i>medallion architecture</i>) ordena un lago o un almacén en capas según cuánto trabajo tienen los datos encima: <b>bronce</b> (<i>bronze</i>), lo que llegó, sin tocar; <b>plata</b> (<i>silver</i>), limpio, tipado y sin duplicados; <b>oro</b> (<i>gold</i>), lo que consume el negocio. El capítulo 6 la armó sobre el lago de la tienda.</p><ul><li><b>Resuelve:</b> el pantano. Separa lo que llegó de lo que se puede creer, y permite reconstruir todo desde bronce cuando cambia una regla o aparece un error.</li><li><b>Cuesta:</b> guardar los datos tres veces y la disciplina de que nadie lea de bronce para un reporte «porque era más rápido».</li><li><b>No hace falta un lago aparte</b> si solo hay reportes fijos: las mismas tres capas viven dentro del almacén como esquemas (<code>crudo</code>, <code>staging</code>, <code>marts</code>), que es exactamente lo que hace dbt.</li></ul><p><b>En la tienda:</b> un lakehouse con formato de tabla (Delta o Iceberg) y las tres capas, porque Irene necesita el detalle de plata para sus modelos y Elena el oro para el tablero.</p></div></section>
+<section><h2>Lambda y Kappa</h2><div class="analogia"><b>Imagínalo así</b><p>Un noticiero da los resultados de una elección en vivo, mesa por mesa, con una cifra que cambia a cada rato. Al día siguiente, el escrutinio oficial publica la cifra definitiva. Los dos son necesarios, y nadie confunde uno con otro: el conteo en vivo sirve para seguir la noche; el oficial, para declarar al ganador.</p></div><div class="prose"><p>Cuando hace falta una cifra en segundos y también una exacta, el capítulo 8 mostró dos arquitecturas. <b>Lambda</b> tiene dos caminos: una capa por lotes que recalcula todo con exactitud y una capa de velocidad en streaming que cubre lo que pasó desde el último lote. <b>Kappa</b> tiene uno solo: un registro de eventos que se puede releer, y para corregir se lanza una versión nueva del trabajo que vuelve a procesar desde el principio.</p><ul><li><b>Resuelven:</b> decisiones que no pueden esperar a mañana sin renunciar a una cifra oficial.</li><li><b>Cuestan:</b> un registro de eventos (Kafka), un motor de streaming y alguien que los opere de día y de noche. Lambda, además, tiene la regla de negocio escrita dos veces, y tarde o temprano dan cifras distintas.</li><li><b>No hacen falta</b> si nadie decide en segundos. Para un reporte del lunes, un lote nocturno es más barato, más simple y más fácil de corregir.</li></ul><p><b>En la tienda:</b> una mezcla prudente. Durante las ofertas relámpago, Flink cuenta pedidos por minuto para el tablero en vivo; la cifra oficial de ventas netas sale del lote nocturno, con la regla en un solo lugar. Es la idea de Lambda sin duplicar la definición que se presenta en el comité.</p></div></section>
+<section><h2>Modelado dimensional y <i>slowly changing dimensions</i></h2><div class="prose"><p>El <b>modelado dimensional</b> (<i>dimensional modeling</i>), el método de Kimball del capítulo 5, organiza el almacén en <b>hechos</b> (lo que pasó y se mide: cada línea vendida) y <b>dimensiones</b> (el contexto por el que se pregunta: cliente, producto, fecha), en un <b>esquema en estrella</b> (<i>star schema</i>) con un grano escrito en una frase. Las <b>dimensiones que cambian lentamente</b> (<i>slowly changing dimensions</i>, SCD) deciden qué pasa cuando un atributo cambia: el tipo 1 sobrescribe, el tipo 2 agrega una versión con una clave sustituta nueva, el tipo 3 guarda el valor anterior en otra columna.</p><ul><li><b>Resuelve:</b> preguntas que cruzan áreas («ventas por categoría y ciudad del cliente, por mes») con uniones simples, y la historia de lo que cambia.</li><li><b>Cuesta:</b> diseñar el grano antes de cargar, mantener claves sustitutas y decidir el tipo de SCD de cada atributo.</li><li><b>No hace falta</b> si nadie hace esas preguntas: para explorar el crudo o entrenar un modelo, alcanza con tablas limpias en plata.</li></ul><p><b>En la tienda:</b> una estrella con <code>fct_ventas</code> al grano de línea de pedido y la ciudad del cliente en SCD tipo 2. La compra de Renata del 14 de octubre sigue en Quito (clave 42) aunque ella se haya mudado a Lima el 1 de noviembre (clave 5001).</p></div></section>
+<section><h2>Cambio de datos capturado (CDC)</h2><div class="prose"><p>El <b>cambio de datos capturado</b> (<i>Change Data Capture</i>, CDC) del capítulo 2 lee el registro de transacciones de la base, en lugar de consultarla, y convierte cada inserción, actualización y borrado en un evento. Debezium es el ejemplo abierto más conocido.</p><ul><li><b>Resuelve:</b> traer cada cambio, también los borrados, con segundos de atraso y sin cargar el origen con consultas.</li><li><b>Cuesta:</b> permisos sobre el registro de la base (en PostgreSQL, la decodificación lógica), un conector que vigilar y un lugar donde dejar los eventos, casi siempre un registro como Kafka.</li><li><b>No hace falta</b> si el origen solo agrega filas, o si un día de atraso está bien: una consulta incremental con marca de agua, más una conciliación de claves para los borrados, resuelve lo mismo con menos piezas.</li></ul><p><b>En la tienda:</b> CDC sobre <code>pedidos</code> y <code>pagos</code>, que cambian de estado y se borran; carga incremental para <code>clientes</code> y completa para <code>productos</code>, que es chica.</p></div></section>
+<section><h2>Data mesh</h2><div class="prose"><p><b>Data mesh</b> (malla de datos), del capítulo 12, reparte la propiedad de los datos entre los dominios del negocio, que los publican como productos con dueño y contrato, sobre una plataforma de autoservicio y con reglas comunes acordadas entre todos.</p><ul><li><b>Resuelve:</b> un equipo central que no da abasto y traduce datos de áreas que no conoce.</li><li><b>Cuesta:</b> ingenieros de datos en cada área, una plataforma de autoservicio madura y un gobierno que se cumpla de forma automática.</li><li><b>No hace falta</b> con un solo equipo de datos: repartir la propiedad sería repartir trabajo que nadie más sabe hacer.</li></ul><p><b>En la tienda:</b> todavía no. Natalia tomó de data mesh lo que sirve a cualquier escala: dueños con nombre, contratos entre Diego y la plataforma, un glosario y reglas comunes que se verifican solas.</p></div></section>
+<section><h2>Elegir por el problema</h2><div class="prose"><p>Los seis patrones no compiten: responden a preguntas distintas, y una plataforma real combina varios. El orden de las preguntas importa, porque cada una descarta piezas antes de la siguiente.</p></div><figure class="fig fig-esquema" id="13-diagrama-2"><div class="lienzo"><svg viewBox="0 0 940 430" style="min-width:760px" role="img" aria-label="Árbol de decisión de patrones: cinco preguntas en orden sobre cómo cambia el origen, cada cuánto se decide, qué se pregunta, cuánto se lee y cuántos equipos hay, cada una con la respuesta que lleva a un patrón">
+<defs>
+<marker id="c13d2-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+</defs>
+<text x="20" y="26" class="t t-xs t-b t-m">LA PREGUNTA, EN ORDEN</text>
+<text x="420" y="26" class="t t-xs t-b t-m">SI LA RESPUESTA ES…</text>
+<text x="690" y="26" class="t t-xs t-b t-m">ENTONCES</text>
+
+<rect x="20" y="40" width="360" height="62" rx="10" class="caja"/>
+<text x="36" y="66" class="t t-b">1. ¿El origen actualiza y borra?</text>
+<text x="36" y="86" class="t t-s t-m">pedidos que cambian de estado, carritos borrados</text>
+<line x1="380" y1="71" x2="416" y2="71" class="ln" marker-end="url(#c13d2-m)"/>
+<text x="420" y="66" class="t t-s">sí, y hay que verlo</text>
+<text x="420" y="84" class="t t-s t-m">no: solo agrega</text>
+<line x1="600" y1="71" x2="684" y2="71" class="ln" marker-end="url(#c13d2-m)"/>
+<rect x="690" y="44" width="230" height="54" rx="8" class="c-enl"/>
+<text x="702" y="66" class="t t-s t-b k-enl">CDC</text>
+<text x="702" y="84" class="t t-s">si no: marca de agua</text>
+
+<rect x="20" y="118" width="360" height="62" rx="10" class="caja"/>
+<text x="36" y="144" class="t t-b">2. ¿Alguien decide en segundos?</text>
+<text x="36" y="164" class="t t-s t-m">una oferta que se corta en vivo, un fraude</text>
+<line x1="380" y1="149" x2="416" y2="149" class="ln" marker-end="url(#c13d2-m)"/>
+<text x="420" y="144" class="t t-s">sí</text>
+<text x="420" y="162" class="t t-s t-m">no: al día siguiente</text>
+<line x1="600" y1="149" x2="684" y2="149" class="ln" marker-end="url(#c13d2-m)"/>
+<rect x="690" y="122" width="230" height="54" rx="8" class="c-tra"/>
+<text x="702" y="144" class="t t-s t-b k-tra">Streaming: Lambda o Kappa</text>
+<text x="702" y="162" class="t t-s">si no: lotes, más simple</text>
+
+<rect x="20" y="196" width="360" height="62" rx="10" class="caja"/>
+<text x="36" y="222" class="t t-b">3. ¿Qué se pregunta?</text>
+<text x="36" y="242" class="t t-s t-m">reportes que cruzan áreas o exploración</text>
+<line x1="380" y1="227" x2="416" y2="227" class="ln" marker-end="url(#c13d2-m)"/>
+<text x="420" y="222" class="t t-s">reportes: estrella y SCD</text>
+<text x="420" y="240" class="t t-s t-m">exploración: lago con capas</text>
+<line x1="600" y1="227" x2="684" y2="227" class="ln" marker-end="url(#c13d2-m)"/>
+<rect x="690" y="200" width="230" height="54" rx="8" class="c-red"/>
+<text x="702" y="222" class="t t-s t-b k-red">Dimensional, medallón</text>
+<text x="702" y="240" class="t t-s">o los dos: lakehouse</text>
+
+<rect x="20" y="274" width="360" height="62" rx="10" class="caja"/>
+<text x="36" y="300" class="t t-b">4. ¿Lo que se lee cabe en una máquina?</text>
+<text x="36" y="320" class="t t-s t-m">medido, no supuesto (capítulo 7)</text>
+<line x1="380" y1="305" x2="416" y2="305" class="ln" marker-end="url(#c13d2-m)"/>
+<text x="420" y="300" class="t t-s">no cabe</text>
+<text x="420" y="318" class="t t-s t-m">cabe: DuckDB o Polars</text>
+<line x1="600" y1="305" x2="684" y2="305" class="ln" marker-end="url(#c13d2-m)"/>
+<rect x="690" y="278" width="230" height="54" rx="8" class="c-tra"/>
+<text x="702" y="300" class="t t-s t-b k-tra">Spark distribuido</text>
+<text x="702" y="318" class="t t-s">cuidando el shuffle</text>
+
+<rect x="20" y="352" width="360" height="62" rx="10" class="caja"/>
+<text x="36" y="378" class="t t-b">5. ¿Varias áreas producen datos?</text>
+<text x="36" y="398" class="t t-s t-m">con ingenieros propios</text>
+<line x1="380" y1="383" x2="416" y2="383" class="ln" marker-end="url(#c13d2-m)"/>
+<text x="420" y="378" class="t t-s">sí, y el centro no da abasto</text>
+<text x="420" y="396" class="t t-s t-m">no: dueños y contratos</text>
+<line x1="600" y1="383" x2="684" y2="383" class="ln" marker-end="url(#c13d2-m)"/>
+<rect x="690" y="356" width="230" height="54" rx="8" class="caja" style="stroke-dasharray:5 4"/>
+<text x="702" y="378" class="t t-s t-b">Data mesh</text>
+<text x="702" y="396" class="t t-s">si no: equipo central</text>
+</svg></div><figcaption><b>Cinco preguntas para elegir patrones.</b> Se leen de arriba abajo, en orden. A la izquierda, la pregunta con un ejemplo de la tienda; al centro, las respuestas posibles; a la derecha, el patrón al que lleva la respuesta afirmativa y la alternativa más simple si la respuesta es no. Fíjate en que en cada fila la alternativa simple viene primero en costo: el patrón caro solo entra si la respuesta lo exige.</figcaption></figure><div class="prose"><p>Una regla del capítulo 7 sirve para todas las preguntas: <b>se mide antes de decidir</b>. «Mucho volumen» no es una respuesta; «la consulta más grande lee 40 GB y tarda tres segundos en una máquina» sí lo es. Lo mismo para la latencia: «en tiempo real» suele significar «antes de la reunión de las 9:00», y eso lo resuelve un lote.</p></div><div class="lab" id="13-lab-1"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Elige un problema y mira qué patrones se recomiendan</h3></div><p class="hint">Empieza con Tienda Ejemplo como está hoy y lee qué patrones entran, cuáles no hacen falta y por qué. Después prueba los otros dos casos (una oferta relámpago en vivo y un comercio con ocho áreas) y cambia una respuesta a la vez: mira qué patrón aparece o desaparece con cada una.</p><style>
+[id="13-lab-1"] .c13l1-rot{font:700 .72rem var(--f-display);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+[id="13-lab-1"] .c13l1-res{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:8px}
+[id="13-lab-1"] .c13l1-c{border:1.5px solid var(--line);border-left-width:6px;border-radius:8px;padding:8px 10px;background:var(--card);display:grid;gap:3px;font:500 .78rem/1.35 var(--f-display)}
+[id="13-lab-1"] .c13l1-c b{font-size:.86rem}
+[id="13-lab-1"] .c13l1-c .cap{font:600 .68rem var(--f-mono);color:var(--muted)}
+[id="13-lab-1"] .c13l1-c.no{opacity:.6;border-style:dashed}
+[id="13-lab-1"] .c13l1-c .por{color:var(--muted)}
+</style>
+<div class="c13l1-rot">Casos de partida</div>
+<div class="btns" role="group" aria-label="Casos de partida">
+  <button type="button" data-pre="tienda" aria-pressed="true">Tienda Ejemplo hoy</button>
+  <button type="button" data-pre="oferta" aria-pressed="false">Oferta relámpago en vivo</button>
+  <button type="button" data-pre="grande" aria-pressed="false">Un comercio con ocho áreas</button>
+</div>
+<div class="opciones">
+  <label>Cada cuánto se decide con el dato<select id="c13l1-lat"><option value="dia">al día siguiente</option><option value="hora">cada hora</option><option value="seg">en segundos</option></select></label>
+  <label>Lo que lee una consulta típica<select id="c13l1-vol"><option value="chico">cabe en una máquina</option><option value="grande">no cabe en una máquina</option></select></label>
+  <label>Cómo cambia el origen<select id="c13l1-cam"><option value="agrega">solo agrega filas</option><option value="borra">actualiza y borra filas</option></select></label>
+  <label>Qué se pregunta<select id="c13l1-pre"><option value="fijo">reportes que cruzan áreas</option><option value="explora">exploración y modelos sobre crudo</option><option value="ambos">las dos cosas</option></select></label>
+  <label>Historia de los atributos<select id="c13l1-his"><option value="hoy">basta el valor de hoy</option><option value="dia">el del día de la compra</option></select></label>
+  <label>Equipos que producen datos<select id="c13l1-eq"><option value="central">un equipo central</option><option value="dominios">varias áreas con ingenieros propios</option></select></label>
+</div>
+<div class="readout texto" id="c13l1-out" aria-live="polite"></div>
+<div class="c13l1-res" id="c13l1-res"></div></div><div class="caso"><b>Un caso real</b><p><b>La plataforma que se encogió.</b> Un equipo de datos de una empresa de comercio en línea de la región heredó una plataforma diseñada en su mejor año: streaming para todas las tablas, un clúster de Spark siempre encendido y un lago con más capas que usuarios. Al medir, encontraron que solo dos tableros se miraban más de una vez al día y que la consulta más pesada cabía de sobra en una máquina. Mantuvieron el CDC y el streaming para el inventario, que sí se decidía en minutos; pasaron todo lo demás a lotes nocturnos con un motor de una sola máquina, y apagaron el clúster. La factura mensual bajó a menos de la mitad y las alertas de madrugada casi desaparecieron. Ninguna herramienta era mala: estaban resolviendo problemas que el negocio no tenía.</p></div></section>
+<section><h2>La plataforma de la tienda, de punta a punta</h2><div class="prose"><p>Con los patrones elegidos por sus problemas, esta es la plataforma de Tienda Ejemplo al terminar el curso:</p></div><figure class="fig fig-arquitectura" id="13-diagrama-3"><div class="lienzo"><svg viewBox="0 0 980 470" style="min-width:780px" role="img" aria-label="La plataforma de Tienda Ejemplo de punta a punta: fuentes, ingesta con CDC e incremental, almacenamiento en un lakehouse con bronce, plata y oro, transformación con dbt y un camino rápido con Flink, consumo en el tablero, y abajo la franja de operación con orquestación, pruebas, retención, calidad, linaje y gobierno">
+<defs>
+<marker id="c13d3-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+</defs>
+<text x="20" y="24" class="t t-xs t-b t-m">FUENTES · 1</text>
+<text x="204" y="24" class="t t-xs t-b t-m">INGESTA · 2, 8</text>
+<text x="388" y="24" class="t t-xs t-b t-m">ALMACENAMIENTO · 3, 5, 6</text>
+<text x="612" y="24" class="t t-xs t-b t-m">TRANSFORMACIÓN · 4, 7, 10</text>
+<text x="812" y="24" class="t t-xs t-b t-m">CONSUMO · 5, 10</text>
+
+<rect x="20" y="40" width="160" height="58" rx="8" class="c-fis"/>
+<text x="32" y="62" class="t t-s t-b k-fis">Base de la tienda</text>
+<text x="32" y="80" class="t t-xs t-m">pedidos, pagos, clientes</text>
+<rect x="20" y="108" width="160" height="50" rx="8" class="c-fis"/>
+<text x="32" y="130" class="t t-s t-b k-fis">API de pagos</text>
+<text x="32" y="146" class="t t-xs t-m">paginada por cursor</text>
+<rect x="20" y="168" width="160" height="50" rx="8" class="c-fis"/>
+<text x="32" y="190" class="t t-s t-b k-fis">Archivos</text>
+<text x="32" y="206" class="t t-xs t-m">del transportista</text>
+<rect x="20" y="228" width="160" height="50" rx="8" class="c-fis"/>
+<text x="32" y="250" class="t t-s t-b k-fis">Eventos de la app</text>
+<text x="32" y="266" class="t t-xs t-m">Avro con registro</text>
+
+<rect x="204" y="40" width="160" height="58" rx="8" class="c-enl"/>
+<text x="216" y="62" class="t t-s t-b k-enl">CDC (Debezium)</text>
+<text x="216" y="80" class="t t-xs t-m">pedidos y pagos</text>
+<rect x="204" y="108" width="160" height="50" rx="8" class="c-enl"/>
+<text x="216" y="130" class="t t-s t-b k-enl">Incremental</text>
+<text x="216" y="146" class="t t-xs t-m">marca de agua + claves</text>
+<rect x="204" y="168" width="160" height="110" rx="8" class="c-enl"/>
+<text x="216" y="190" class="t t-s t-b k-enl">Kafka</text>
+<text x="216" y="208" class="t t-xs t-m">temas con clave pedido_id</text>
+<text x="216" y="226" class="t t-xs t-m">registro que se relee</text>
+
+<rect x="388" y="40" width="200" height="238" rx="10" class="c-red" style="fill-opacity:.5"/>
+<text x="400" y="60" class="t t-s t-b k-red">Lakehouse (Delta o Iceberg)</text>
+<rect x="400" y="72" width="176" height="46" rx="6" class="caja"/>
+<text x="410" y="92" class="t t-s t-b">Bronce</text>
+<text x="410" y="108" class="t t-xs t-m">JSON tal como llegó</text>
+<rect x="400" y="128" width="176" height="46" rx="6" class="caja"/>
+<text x="410" y="148" class="t t-s t-b">Plata</text>
+<text x="410" y="164" class="t t-xs t-m">Parquet por mes, limpio</text>
+<rect x="400" y="184" width="176" height="82" rx="6" class="caja"/>
+<text x="410" y="204" class="t t-s t-b">Oro</text>
+<text x="410" y="220" class="t t-xs t-m">estrella: fct_ventas,</text>
+<text x="410" y="236" class="t t-xs t-m">dim_clientes (SCD 2)</text>
+<text x="410" y="252" class="t t-xs t-m">ventas_mensuales</text>
+
+<rect x="612" y="40" width="176" height="130" rx="8" class="c-tra"/>
+<text x="624" y="62" class="t t-s t-b k-tra">dbt (ELT, por lotes)</text>
+<text x="624" y="82" class="t t-xs t-m">bronce → plata → oro</text>
+<text x="624" y="100" class="t t-xs t-m">pruebas y contratos</text>
+<text x="624" y="118" class="t t-xs t-m">DuckDB en una máquina;</text>
+<text x="624" y="134" class="t t-xs t-m">Spark si un día no alcanza</text>
+<text x="624" y="156" class="t t-xs t-b">cifra oficial</text>
+<rect x="612" y="188" width="176" height="90" rx="8" class="c-tra" style="stroke-dasharray:5 4"/>
+<text x="624" y="210" class="t t-s t-b k-tra">Flink (camino rápido)</text>
+<text x="624" y="230" class="t t-xs t-m">ventanas de 1 minuto</text>
+<text x="624" y="246" class="t t-xs t-m">sobre el tiempo del evento</text>
+<text x="624" y="264" class="t t-xs t-b">cifra en vivo</text>
+
+<rect x="812" y="40" width="150" height="80" rx="8" class="c-apl"/>
+<text x="824" y="62" class="t t-s t-b k-apl">Tablero de Elena</text>
+<text x="824" y="82" class="t t-xs t-m">ventas netas de octubre</text>
+<text x="824" y="100" class="t t-xs t-b">US$ 782.785,77</text>
+<rect x="812" y="130" width="150" height="50" rx="8" class="c-apl"/>
+<text x="824" y="152" class="t t-s t-b k-apl">SQL de Martín</text>
+<text x="824" y="168" class="t t-xs t-m">sobre oro</text>
+<rect x="812" y="190" width="150" height="50" rx="8" class="c-apl"/>
+<text x="824" y="212" class="t t-s t-b k-apl">Modelos de Irene</text>
+<text x="824" y="228" class="t t-xs t-m">sobre plata</text>
+<rect x="812" y="250" width="150" height="28" rx="8" class="c-apl" style="stroke-dasharray:5 4"/>
+<text x="824" y="268" class="t t-xs k-apl">tablero en vivo (oferta)</text>
+
+<line x1="180" y1="69" x2="202" y2="69" class="ln s-enl" marker-end="url(#c13d3-m)"/>
+<line x1="180" y1="133" x2="202" y2="133" class="ln s-enl" marker-end="url(#c13d3-m)"/>
+<line x1="180" y1="193" x2="202" y2="133" class="ln s-enl" marker-end="url(#c13d3-m)"/>
+<line x1="180" y1="253" x2="202" y2="253" class="ln s-enl" marker-end="url(#c13d3-m)"/>
+<line x1="354" y1="98" x2="354" y2="166" class="ln s-enl" marker-end="url(#c13d3-m)"/>
+<line x1="364" y1="133" x2="398" y2="95" class="ln s-enl" marker-end="url(#c13d3-m)"/>
+<line x1="364" y1="200" x2="398" y2="100" class="ln s-enl" marker-end="url(#c13d3-m)"/>
+<path d="M364 262 C480 300 560 290 610 240" class="ln s-tra" style="stroke-dasharray:5 4" marker-end="url(#c13d3-m)"/>
+<line x1="588" y1="120" x2="610" y2="110" class="ln s-tra" marker-end="url(#c13d3-m)"/>
+<line x1="610" y1="140" x2="590" y2="220" class="ln s-tra" marker-end="url(#c13d3-m)"/>
+<line x1="788" y1="90" x2="810" y2="80" class="ln s-apl" marker-end="url(#c13d3-m)"/>
+<line x1="788" y1="150" x2="810" y2="155" class="ln s-apl" marker-end="url(#c13d3-m)"/>
+<line x1="788" y1="264" x2="810" y2="264" class="ln s-apl" marker-end="url(#c13d3-m)"/>
+
+<rect x="20" y="316" width="942" height="134" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="36" y="340" class="t t-xs t-b t-m">OPERAR LA PLATAFORMA</text>
+<rect x="36" y="352" width="170" height="80" rx="8" class="caja"/>
+<text x="48" y="374" class="t t-s t-b">Orquestación · 9</text>
+<text x="48" y="392" class="t t-xs t-m">Airflow, 2:00, 2 reintentos,</text>
+<text x="48" y="408" class="t t-xs t-m">30 min por tarea, backfill</text>
+<rect x="220" y="352" width="170" height="80" rx="8" class="caja"/>
+<text x="232" y="374" class="t t-s t-b">Pruebas · 10</text>
+<text x="232" y="392" class="t t-xs t-m">únicos, no nulos, valores,</text>
+<text x="232" y="408" class="t t-xs t-m">conciliación con pagos</text>
+<rect x="404" y="352" width="170" height="80" rx="8" class="caja"/>
+<text x="416" y="374" class="t t-s t-b">Retención · 11</text>
+<text x="416" y="392" class="t t-xs t-m">retencion.yml, niveles,</text>
+<text x="416" y="408" class="t t-xs t-m">borrado con evidencia</text>
+<rect x="588" y="352" width="170" height="80" rx="8" class="caja"/>
+<text x="600" y="374" class="t t-s t-b">Calidad y linaje · 12</text>
+<text x="600" y="392" class="t t-xs t-m">observabilidad, linaje</text>
+<text x="600" y="408" class="t t-xs t-m">por columna, catálogo</text>
+<rect x="772" y="352" width="174" height="80" rx="8" class="caja"/>
+<text x="784" y="374" class="t t-s t-b">Gobierno · 12, 14</text>
+<text x="784" y="392" class="t t-xs t-m">dueños, glosario, acceso;</text>
+<text x="784" y="408" class="t t-xs t-m">prompts con criterios</text>
+</svg></div><figcaption><b>La plataforma de Tienda Ejemplo.</b> Cinco columnas de izquierda a derecha con los colores de sus piezas y los capítulos de cada una: fuentes (ámbar), ingesta (verde), almacenamiento en un lakehouse con bronce, plata y oro (azul), transformación (morado) y consumo (rosa). El camino de arriba es el lote: dbt construye las capas y produce la cifra oficial. El de abajo, punteado, es el camino rápido: Kafka y Flink alimentan el tablero en vivo de las ofertas. La franja punteada inferior es la operación que hace confiable todo lo de arriba: orquestación, pruebas, retención, calidad, linaje y gobierno.</figcaption></figure><div class="prose"><p>Lee la figura como una lista de decisiones, cada una con su porqué:</p><ul><li><b>CDC para pedidos y pagos</b>, porque cambian de estado y se borran; <b>incremental</b> para lo demás.</li><li><b>ELT con dbt</b>, porque el crudo queda en bronce y cualquier regla se recalcula.</li><li><b>Medallón sobre un lakehouse</b>, porque Irene usa plata y Elena usa oro.</li><li><b>Estrella con SCD tipo 2</b> en la ciudad, porque «ventas por ciudad» debe usar la ciudad del día de la compra.</li><li><b>DuckDB en una máquina</b>, porque lo que se lee cabe; Spark queda anotado para el día en que no.</li><li><b>Streaming solo para las ofertas</b>, con la cifra oficial en el lote.</li><li><b>Un equipo central con dueños y contratos</b>, no data mesh.</li><li><b>Orquestación, pruebas, retención, linaje y gobierno</b> alrededor de todo, porque una cifra que nadie puede defender no sirve, por rápida que sea.</li></ul></div><div class="lab" id="13-lab-2"><div class="lab-title"><span class="tag">Laboratorio</span><h3>El recorrido completo de un pedido por la plataforma terminada</h3></div><p class="hint">Sigue el pedido 59521 de Renata desde el clic de compra hasta el tablero de Elena y el final de su ciclo de vida. En cada paso mira la forma que tiene el pedido, la pieza de la plataforma, el patrón que se usa y el capítulo donde se enseñó. Avanza con «Siguiente», elige un paso o pulsa «Recorrer solo».</p><style>
+[id="13-lab-2"] .c13l2-camino{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+[id="13-lab-2"] .c13l2-camino button{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);background:var(--card);font:700 .8rem var(--f-mono);color:var(--ink);cursor:pointer;padding:0}
+[id="13-lab-2"] .c13l2-camino button[aria-current="step"]{color:var(--card)}
+[id="13-lab-2"] .c13l2-camino i{width:10px;height:2px;background:var(--line);display:inline-block}
+[id="13-lab-2"] .c13l2-card{border:1.5px solid var(--line);border-left-width:8px;border-radius:10px;padding:10px 12px;background:var(--card);display:grid;gap:6px}
+[id="13-lab-2"] .c13l2-card h4{margin:0;font:700 1rem var(--f-display)}
+[id="13-lab-2"] .c13l2-card .meta{font:600 .7rem var(--f-display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+[id="13-lab-2"] .c13l2-card pre{margin:0;font:.74rem/1.45 var(--f-mono);background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:8px 10px;overflow-x:auto;white-space:pre}
+[id="13-lab-2"] .c13l2-card p{margin:0;font-size:.9rem}
+[id="13-lab-2"] .c13l2-card .op{font:500 .78rem/1.4 var(--f-display);color:var(--muted);border-top:1px dashed var(--line);padding-top:6px}
+</style>
+<div class="c13l2-camino" id="c13l2-camino" role="group" aria-label="Pasos del recorrido del pedido 59521"></div>
+<div class="btns"><button type="button" id="c13l2-ant">Anterior</button><button type="button" id="c13l2-sig" class="primary">Siguiente</button><button type="button" id="c13l2-auto" aria-pressed="false">Recorrer solo</button></div>
+<div class="legend"><span><i style="background:var(--c-fis)"></i>Fuentes</span><span><i style="background:var(--c-enl)"></i>Ingesta</span><span><i style="background:var(--c-red)"></i>Almacenamiento</span><span><i style="background:var(--c-tra)"></i>Transformación</span><span><i style="background:var(--c-apl)"></i>Consumo</span><span><i style="background:var(--muted)"></i>Operación</span></div>
+<div class="c13l2-card" id="c13l2-card" aria-live="polite"></div>
+<div class="readout texto" id="c13l2-out" aria-live="polite"></div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Sigue el pedido 59521 por las capas de la plataforma</h3></div><p>Vas a armar una versión mínima de la plataforma con DuckDB (bronce en JSON, plata en Parquet particionado, oro al grano de línea de pedido y el agregado del tablero) y a imprimir el pedido de Renata en cada capa. Trabaja en <code>~/datos-tienda</code> con la base recién creada del capítulo 1 y el entorno del capítulo 2. Guarda este programa como <code>recorrido.py</code>:</p><div class="code-copia"><pre><code>"""Sigue el pedido 59521 por la plataforma: origen, bronce, plata, oro y la cifra del tablero."""
+import shutil
+from pathlib import Path
+
+import duckdb
+
+PEDIDO = 59521
+LAGO = Path("lago_recorrido")
+shutil.rmtree(LAGO, ignore_errors=True)
+LAGO.mkdir()
+con = duckdb.connect()
+con.sql("INSTALL sqlite; LOAD sqlite; ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")
+
+print("1. ORIGEN (base de la tienda)")
+print(con.sql(f"SELECT pedido_id, cliente_id, creado_en, estado, canal FROM tienda.pedidos WHERE pedido_id = {PEDIDO}"))
+
+# Bronce: copia fiel en JSON, todo como texto, con la fecha de carga
+(LAGO / "bronce").mkdir()
+for tabla in ["pedidos", "detalle_pedido", "pagos", "clientes"]:
+    con.sql(f"COPY (SELECT *, current_date AS _cargado_el FROM tienda.{tabla}) "
+            f"TO '{LAGO}/bronce/{tabla}.json' (FORMAT json)")
+print("2. BRONCE (JSON tal como llegó)")
+with open(LAGO / "bronce" / "pedidos.json", encoding="utf-8") as f:
+    print(next(linea.strip() for linea in f if f'"pedido_id":{PEDIDO},' in linea))
+
+# Plata: tipos correctos, Parquet particionado por mes
+con.sql(f"""CREATE TABLE stg_pedidos AS
+    SELECT pedido_id, cliente_id, CAST(creado_en AS TIMESTAMP) AS creado_en, estado, canal,
+           strftime(CAST(creado_en AS TIMESTAMP), '%Y-%m') AS mes
+    FROM read_json('{LAGO}/bronce/pedidos.json')""")
+(LAGO / "plata").mkdir()
+con.sql(f"COPY stg_pedidos TO '{LAGO}/plata/pedidos' (FORMAT parquet, PARTITION_BY (mes))")
+print("3. PLATA (Parquet en plata/pedidos/mes=2026-10)")
+print(con.sql(f"SELECT pedido_id, creado_en, estado, mes FROM read_parquet('{LAGO}/plata/pedidos/*/*.parquet', "
+              f"hive_partitioning = true) WHERE pedido_id = {PEDIDO}"))
+
+# Oro: la tabla de hechos al grano de línea vendida, y el agregado del tablero
+con.sql(f"""CREATE TABLE fct_ventas AS
+    SELECT p.pedido_id, d.linea, p.cliente_id, d.producto_id, p.creado_en,
+           d.cantidad, CAST(d.precio_unitario AS DECIMAL(10,2)) AS precio_unitario,
+           CAST(d.cantidad * d.precio_unitario AS DECIMAL(12,2)) AS venta
+    FROM stg_pedidos p JOIN read_json('{LAGO}/bronce/detalle_pedido.json') d USING (pedido_id)
+    WHERE p.estado IN ('pagado', 'enviado', 'entregado')""")
+print("4. ORO (fct_ventas, una fila por línea)")
+print(con.sql(f"SELECT pedido_id, linea, producto_id, cantidad, precio_unitario, venta FROM fct_ventas WHERE pedido_id = {PEDIDO}"))
+
+print("5. TABLERO (ventas_mensuales de octubre)")
+print(con.sql("""SELECT strftime(creado_en, '%Y-%m') AS mes, SUM(venta) AS ventas_netas, COUNT(DISTINCT pedido_id) AS pedidos
+                 FROM fct_ventas WHERE creado_en &gt;= '2026-10-01' AND creado_en &lt; '2026-11-01'
+                 GROUP BY 1"""))</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>cd $HOME\datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>.venv\Scripts\activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python recorrido.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>cd ~/datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>source .venv/bin/activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 recorrido.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>Compara la fila del pedido en el origen, en bronce y en plata: ¿qué cambió en cada paso?</span></li><li><span>Cuenta las filas del pedido en oro y suma sus ventas.</span></li><li><span>Abre la carpeta <code>lago_recorrido/plata/pedidos</code> y mira sus subcarpetas.</span></li></ol><p><b>Qué observar:</b> el mismo pedido cambia de forma en cada capa. En bronce es texto JSON con todo tal como llegó, más la fecha de carga; en plata, <code>creado_en</code> ya es un <code>TIMESTAMP</code> y el pedido vive en la carpeta <code>mes=2026-10</code>; en oro se abre en dos filas, una por línea (13,90 y 159,80), que suman los US$ 173,70 del pago. El tablero da US$ 782.785,77 en 8.376 pedidos, la cifra que el curso rastreó desde el capítulo 1. Cada <code>print</code> es una pieza de la plataforma, en cinco líneas de SQL cada una: lo que la hace de producción es todo lo que esta práctica no tiene (incremental, pruebas, orquestación, retención, linaje), y que el capítulo 14 enseña a pedir.</p></div><div class="ml"><b>En la práctica</b><p><b>La respuesta al proveedor.</b> Natalia le devolvió a Elena una página: las cinco preguntas, las respuestas de Tienda Ejemplo con sus mediciones (la consulta más grande lee unos pocos megabytes de Parquet; las decisiones en segundos, solo durante las ofertas; un equipo de datos) y los patrones que salen de ellas. Al final, tres señales que harían cambiar la plataforma y qué se agregaría en cada caso: si los eventos de la app superan lo que lee una máquina, Spark; si se decide en minutos fuera de las ofertas, más streaming; si Pagos contrata a su propio ingeniero de datos, su primer producto de datos con contrato. Elena llevó la página al comité en lugar de la presentación del proveedor.</p></div></section>
+<section><h2>La idea clave</h2><div class="prose"><p>Cada patrón del curso resuelve un problema concreto y tiene un costo concreto: ELT, para recalcular sin volver al origen; medallón, para no convertir el lago en un pantano; Lambda y Kappa, para decidir en segundos sin perder la cifra exacta; la estrella con SCD, para cruzar áreas con historia; CDC, para ver cada cambio sin cargar el origen; data mesh, para cuando un equipo central ya no alcanza. La arquitectura se elige por las respuestas del negocio, medidas, y no por la herramienta de moda: la plataforma más simple que resuelve el problema es la mejor.</p></div></section>
+<section><h2>Pruébate</h2><div class="quiz"><h3>Pruébate</h3><details><summary>¿Cuándo conviene todavía ETL en lugar de ELT?</summary><p>Cuando un dato no puede entrar al almacén sin transformarse antes (por ejemplo, datos personales que se enmascaran en el camino) o cuando el volumen se reduce mucho antes de guardarlo.</p></details><details><summary>¿Por qué Tienda Ejemplo no usa Lambda ni Kappa para la cifra oficial de ventas netas?</summary><p>Porque nadie decide la cifra oficial en segundos: el lote nocturno es exacto, más barato y tiene la regla en un solo lugar. El streaming se usa solo para el tablero en vivo de las ofertas.</p></details><details><summary>Si el origen solo agrega filas y nadie necesita segundos, ¿hace falta CDC?</summary><p>No: una carga incremental con marca de agua y escritura por clave resuelve lo mismo con menos piezas.</p></details><details><summary>¿Qué problema resuelve la SCD tipo 2 en la plataforma de la tienda?</summary><p>Que las ventas queden unidas a la ciudad que el cliente tenía el día de la compra: la de Renata del 14 de octubre sigue en Quito aunque se mude a Lima.</p></details><details><summary>¿Por qué se mide antes de elegir un patrón?</summary><p>Porque «mucho volumen» o «tiempo real» suelen ser impresiones; el tamaño de lo que lee una consulta y el momento real de la decisión deciden si hace falta un clúster o streaming.</p></details></div></section>
+<section><h2>Para investigar</h2><div class="investiga"><h3>Para investigar</h3><p class="hint">Estas preguntas no se responden en el capítulo: búscalas por tu cuenta.</p><ol><li>¿Qué es Data Vault y en qué se diferencia del modelado dimensional de Kimball y del enfoque de Inmon?<small>Pista: busca «Data Vault 2.0 hubs links satellites».</small></li><li>¿Qué es el <i>reverse ETL</i> y por qué llevar datos del almacén de vuelta a los sistemas operativos se volvió un patrón?</li><li>¿Qué prometen las integraciones «zero-ETL» entre bases transaccionales y almacenes de la nube, y qué siguen necesitando?</li><li>¿Qué es un <i>data fabric</i> y en qué se parece y se diferencia de data mesh?</li><li>¿Qué es un <i>streaming lakehouse</i> y qué proyectos abiertos, como Apache Paimon o Apache Fluss, intentan unir streaming y formatos de tabla?<small>Pista: busca «streaming lakehouse Paimon».</small></li></ol></div></section>
+<section><h2>Para saber más</h2><div class="vids"><span>Para saber más</span><a class="vid" href="https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/" target="_blank" rel="noopener">The Data Warehouse Toolkit: técnicas de modelado dimensional <small>Kimball Group, en inglés</small></a><a class="vid" href="https://en.wikipedia.org/wiki/Lambda_architecture" target="_blank" rel="noopener">Lambda architecture <small>resumen con la crítica de Kappa y sus referencias, en inglés</small></a><a class="vid" href="https://debezium.io/documentation/reference/stable/index.html" target="_blank" rel="noopener">Debezium <small>documentación del conector de CDC, en inglés</small></a><a class="vid" href="https://martinfowler.com/articles/data-mesh-principles.html" target="_blank" rel="noopener">Data Mesh Principles and Logical Architecture <small>Zhamak Dehghani, en inglés</small></a></div></section>
+<label class="got"><input type="checkbox" id="got"> Lo tengo claro</label>
+<nav class="pager" id="pager" aria-label="Capítulo anterior y siguiente"></nav>
+</main>
+</div>
+<footer><span>Curso abierto de aaramirez.github.io.</span><span>Sitio publicado: <a href="https://github.com/aaramirez/ingenieria-de-datos" target="_blank" rel="noopener">github.com/aaramirez/ingenieria-de-datos</a></span></footer>
+</div>
+<script src="assets/lab.js"></script>
+<script>
+(function(){
+  const {$}=window.Lab;
+  const raiz=document.querySelector('[id="13-lab-1"]');
+  const PRE={tienda:{lat:'dia',vol:'chico',cam:'borra',pre:'ambos',his:'dia',eq:'central'},
+             oferta:{lat:'seg',vol:'chico',cam:'borra',pre:'ambos',his:'dia',eq:'central'},
+             grande:{lat:'hora',vol:'grande',cam:'borra',pre:'ambos',his:'dia',eq:'dominios'}};
+  const ids=['lat','vol','cam','pre','his','eq'];
+  const COL={ing:'var(--c-enl)',alm:'var(--c-red)',tra:'var(--c-tra)',con:'var(--c-apl)',op:'var(--muted)'};
+  function decidir(v){
+    const si=[],no=[];
+    // Ingesta
+    if(v.lat==='seg')si.push(['CDC a un registro de eventos','2 y 8','ing','Los segundos solo se logran leyendo el registro de la base, no consultándola.']);
+    else if(v.cam==='borra')si.push(['CDC, o incremental con conciliación de claves','2','ing','Una marca de agua no ve los borrados: o se lee el registro de la base o se comparan las claves.']);
+    else{si.push(['Incremental con marca de agua','2','ing','El origen solo agrega: basta traer lo nuevo, con un margen y escritura por clave.']);no.push(['CDC','2','Nada se actualiza ni se borra: el registro de la base no aporta lo que cuesta operarlo.']);}
+    // ETL / ELT
+    si.push(['ELT','4','tra','Cargar crudo y transformar en el almacén deja recalcular sin volver al origen.']);
+    // Medallón / lakehouse
+    if(v.pre!=='fijo')si.push(['Lakehouse con medallón','6','alm','Exploración y modelos piden el crudo y el detalle: bronce, plata y oro sobre archivos abiertos.']);
+    else{si.push(['Almacén con capas crudo, staging y marts','4 y 10','alm','Solo reportes: el medallón vive dentro del almacén, sin lago aparte.']);no.push(['Lago de datos aparte','6','Nadie lee el crudo fuera de los reportes: un lago sería otro lugar que mantener.']);}
+    // Dimensional
+    if(v.pre!=='explora'){si.push(['Modelado dimensional en estrella','5','alm','Preguntas que cruzan áreas se responden con hechos y dimensiones, y un grano escrito.']);
+      if(v.his==='dia')si.push(['SCD tipo 2 en los atributos que cambian','5','alm','Las ventas de Quito siguen en Quito aunque la clienta se mude.']);
+      else si.push(['SCD tipo 1','5','alm','Con el valor de hoy alcanza: se sobrescribe y no se guarda historia.']);}
+    else no.push(['Estrella completa','5','Sin reportes fijos, alcanza con tablas limpias en plata; la estrella llega cuando aparezcan.']);
+    // Streaming
+    if(v.lat==='seg'){
+      if(v.pre==='explora')si.push(['Kappa','8','tra','Un solo trabajo de streaming y un registro que se puede releer: una sola copia de la regla.']);
+      else si.push(['Streaming para lo vivo y lote para la cifra oficial (a la manera de Lambda)','8','tra','El tablero en vivo da segundos; la cifra que se presenta en el comité sale del lote exacto.']);
+    }else no.push(['Lambda o Kappa','8','Nadie decide en segundos: el lote es más barato, más simple y más fácil de corregir.']);
+    // Escala
+    if(v.vol==='grande')si.push(['Procesamiento distribuido (Spark)','7','tra','Lo que lee la consulta no cabe en una máquina: hay que repartirlo y cuidar el shuffle.']);
+    else no.push(['Clúster de Spark','7','Lo que se lee cabe en una máquina: DuckDB o Polars lo hacen con menos costo y menos piezas.']);
+    // Organización
+    if(v.eq==='dominios')si.push(['Data mesh','12','op','Varias áreas con ingenieros propios: cada una es dueña de su producto de datos, con reglas comunes.']);
+    else{si.push(['Equipo central con dueños y contratos','12','op','De data mesh se toman los dueños, los contratos y las reglas comunes, sin repartir la propiedad.']);no.push(['Data mesh completo','12','Un solo equipo: repartir la propiedad sería repartir trabajo que nadie más sabe hacer.']);}
+    si.push(['Orquestación, pruebas, linaje y retención','9 a 12','op','Van con cualquier combinación: son lo que hace confiable a la plataforma.']);
+    return {si,no};
+  }
+  function leer(){const v={};ids.forEach(k=>v[k]=$('#c13l1-'+k).value);return v;}
+  function pintar(){
+    const v=leer(),r=decidir(v);
+    $('#c13l1-res').innerHTML=r.si.map(([t,c,p,por])=>'<div class="c13l1-c" style="border-left-color:'+COL[p]+'"><span class="cap">capítulo '+c+'</span><b>'+t+'</b><span class="por">'+por+'</span></div>').join('')+
+      r.no.map(([t,c,por])=>'<div class="c13l1-c no"><span class="cap">no hace falta · capítulo '+c+'</span><b>'+t+'</b><span class="por">'+por+'</span></div>').join('');
+    let t='<span class="big">'+r.si.length+' patrones recomendados · '+r.no.length+' que no hacen falta</span>';
+    const piezas=(v.lat==='seg'?2:0)+(v.vol==='grande'?1:0)+(v.eq==='dominios'?1:0);
+    if(piezas===0)t+='<span class="ok">Una plataforma por lotes, en una máquina y con un equipo central: la más simple que resuelve el problema. Así es Tienda Ejemplo casi todo el año.</span>';
+    else if(piezas>=3)t+='<span class="warn">Cada respuesta difícil suma piezas que operar: registro de eventos, clúster, dominios. Vale la pena solo si el problema lo pide de verdad.</span>';
+    else t+='<span>Cambia una respuesta a la vez y mira qué patrón entra o sale: cada patrón responde a una pregunta, no a una moda.</span>';
+    $('#c13l1-out').innerHTML=t;
+  }
+  function aplicar(n){const p=PRE[n];ids.forEach(k=>$('#c13l1-'+k).value=p[k]);raiz.querySelectorAll('[data-pre]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.pre===n)));pintar();}
+  ids.forEach(k=>$('#c13l1-'+k).addEventListener('change',()=>{raiz.querySelectorAll('[data-pre]').forEach(b=>b.setAttribute('aria-pressed','false'));pintar();}));
+  raiz.querySelectorAll('[data-pre]').forEach(b=>b.addEventListener('click',()=>aplicar(b.dataset.pre)));
+  aplicar('tienda');
+})();
+</script>
+<script>
+(function(){
+  const {$}=window.Lab;
+  const raiz=document.querySelector('[id="13-lab-2"]');
+  const nf=(n,d=0)=>{const s=Math.abs(n).toFixed(d).split('.');s[0]=s[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.');return (n<0?'−':'')+s.join(',');};
+  const P={fis:'var(--c-fis)',enl:'var(--c-enl)',red:'var(--c-red)',tra:'var(--c-tra)',apl:'var(--c-apl)',op:'var(--muted)'};
+  const S=[
+    {p:'fis',t:'El clic de compra',m:'Crear · capítulo 1',pat:'OLTP: la base de la tienda atiende la venta',
+     d:'pedido_id 59521  cliente_id 1042 (Renata, Quito)\ncreado_en 2026-10-14 19:32:05  canal web  estado creado',
+     x:'Renata compra un reloj de pared y dos parlantes desde la web. La base de Diego guarda el pedido en milisegundos y no se entera de que existe un tablero.',
+     o:'Nadie de datos consulta esta base en horario de la tienda.'},
+    {p:'fis',t:'Tres tablas en la base de la tienda',m:'Crear · capítulo 1',pat:'Base transaccional normalizada',
+     d:'detalle_pedido  línea 1: producto 17 × 1  US$ 13,90\n                línea 2: producto 88 × 2  US$ 79,90\npagos           61561  tarjeta  US$ 173,70  aprobado  19:35:05',
+     x:'El mismo pedido vive en tres tablas. Una semana después, su estado pasa a entregado (2026-10-21 01:45:05): una actualización, no una fila nueva.',
+     o:'Diego es el dueño de estas tablas en el catálogo.'},
+    {p:'enl',t:'CDC: el registro de la base',m:'Capturar · capítulo 2',pat:'Cambio de datos capturado',
+     d:'{"op":"c","after":{"pedido_id":59521,"estado":"creado",...}}\n{"op":"u","after":{"pedido_id":59521,"estado":"pagado",...}}\n... y una actualización por cada cambio de estado',
+     x:'Debezium lee el registro de transacciones y publica cada inserción y cada cambio como un evento con clave pedido_id. Ve también los borrados que una marca de agua no vería.',
+     o:'Una alerta avisa si el slot de replicación se atrasa.'},
+    {p:'tra',t:'La cifra en vivo',m:'Procesar · capítulo 8',pat:'Streaming con ventanas (camino rápido)',
+     d:'ventana 19:32:00 a 19:33:00 (tiempo del evento)\n+ 1 pedido  + US$ 173,70\ntablero en vivo: «datos completos hasta las 19:34»',
+     x:'Un trabajo de Flink cuenta pedidos y ventas por minuto sobre el tiempo del evento, con dos minutos de tolerancia. Es la cifra que Elena mira durante una oferta.',
+     o:'Esta cifra es aproximada: la oficial sale del lote nocturno.'},
+    {p:'red',t:'Bronce: lo que llegó',m:'Guardar · capítulos 2 y 6',pat:'Medallón: capa bronce',
+     d:'{"pedido_id":59521,"cliente_id":1042,"creado_en":"2026-10-14 19:32:05",\n "estado":"creado","canal":"web",...,"_cargado_el":"2026-10-14"}',
+     x:'Un conector escribe los mismos eventos en bronce cada cinco minutos, tal como llegaron, en JSON. Nunca se corrigen: si algo sale mal más arriba, se reconstruye desde aquí.',
+     o:'Retención de bronce: corta. Plata y oro guardan lo que hace falta.'},
+    {p:'red',t:'Plata: limpio y tipado',m:'Guardar · capítulos 3 y 6',pat:'Medallón: capa plata, Parquet particionado',
+     d:'plata/pedidos/mes=2026-10/…parquet\npedido_id 59521  creado_en TIMESTAMP  estado entregado\n(la última versión del pedido, una sola fila)',
+     x:'Una fila por pedido con su última versión, tipos correctos y ciudades limpias, en Parquet particionado por mes: la consulta de octubre no abre los demás meses.',
+     o:'Las filas que no cumplen las reglas van a cuarentena, no se borran.'},
+    {p:'tra',t:'Oro: la estrella',m:'Procesar · capítulos 5 y 10',pat:'Modelado dimensional y SCD tipo 2',
+     d:'fct_ventas  59521 · línea 1 · producto 17 · cliente_key 42 · venta  13,90\n            59521 · línea 2 · producto 88 · cliente_key 42 · venta 159,80\ndim_clientes  key 42: Quito (hasta el 31-10) · key 5001: Lima (desde el 1-11)',
+     x:'dbt arma la tabla de hechos al grano de línea de pedido. La venta queda unida a la clave 42, la versión de Renata que vivía en Quito el día de la compra, aunque después se mude.',
+     o:'dbt prueba que (pedido_id, linea) sea único y que el estado sea un valor aceptado.'},
+    {p:'op',t:'La corrida de las 2:00',m:'Operar · capítulos 9 y 10',pat:'Orquestación con reintentos y pruebas',
+     d:'DAG diario 2:00 · 9 tareas · 2 reintentos · 30 min máximo\ningesta → dbt build (staging → marts → agregados) → publicar\npruebas: 0 fallas',
+     x:'Airflow corre todo en orden, con una sola extracción a la vez contra la base de Diego. Si una prueba falla, el tablero conserva el dato de ayer con un aviso.',
+     o:'Si a las 7:00 el tablero no está publicado, llega una alerta al canal.'},
+    {p:'apl',t:'El tablero de Elena',m:'Usar · capítulos 5 y 12',pat:'Agregado con definición del glosario',
+     d:'ventas netas de octubre de 2026\nUS$ '+nf(782785.77,2)+'  ·  '+nf(8376)+' pedidos  ·  ticket promedio US$ 93,46\n(el pedido 59521 aporta US$ 173,70)',
+     x:'La cifra que Elena presenta en el comité. Su definición está en el glosario y su linaje lleva a cantidad × precio_unitario de los pedidos pagados, enviados o entregados.',
+     o:'Dueña: Elena. Custodio del agregado: Martín.'},
+    {p:'op',t:'Gobierno hasta el final',m:'Archivar y destruir · capítulos 11 y 12',pat:'Linaje, clasificación y retención',
+     d:'clientes.email     personal      → borrado a pedido\npagos.monto        confidencial  → auditoría, 10 años\nfct_ventas         analítico     → 3 años, luego agregado mensual',
+     x:'Cuando Renata pide que la borren, las dos filas de dim_clientes se van y la venta queda con una clave que ya no apunta a nadie: la cifra de octubre no cambia. A los tres años, el detalle se agrega y el pedido se vuelve parte de un total.',
+     o:'La verificación del borrado busca en los archivos, no solo en las tablas.'}
+  ];
+  let i=0,timer=null;
+  const reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  $('#c13l2-camino').innerHTML=S.map((s,k)=>(k?'<i></i>':'')+'<button type="button" data-k="'+k+'" aria-label="Paso '+(k+1)+': '+s.t+'" style="border-color:'+P[s.p]+'">'+(k+1)+'</button>').join('');
+  function pintar(){
+    const s=S[i];
+    raiz.querySelectorAll('[data-k]').forEach((b,k)=>{const c=P[S[k].p];if(k===i){b.setAttribute('aria-current','step');b.style.background=c;}else{b.removeAttribute('aria-current');b.style.background=k<i?'var(--paper)':'var(--card)';}});
+    const card=$('#c13l2-card');card.style.borderLeftColor=P[s.p];
+    card.innerHTML='<span class="meta">Paso '+(i+1)+' de '+S.length+' · '+s.m+'</span><h4>'+s.t+'</h4><pre></pre><p>'+s.x+'</p><span class="op">Patrón: '+s.pat+'. '+s.o+'</span>';
+    card.querySelector('pre').textContent=s.d;
+    let t;
+    if(i===S.length-1)t='<span class="big">Diez pasos, una cifra que se puede defender</span><span>Cada paso usa un patrón del curso. Ninguno es obligatorio por sí mismo: cada uno está porque resuelve un problema de la tienda.</span>';
+    else if(i===3)t='<span class="big">Dos caminos desde el mismo evento</span><span>El evento del CDC va al streaming (segundos, aproximado) y a bronce (horas, exacto). Es la idea de Lambda, con la regla de negocio en un solo lugar para la cifra oficial.</span>';
+    else t='<span class="big">US$ 173,70 en el paso '+(i+1)+'</span><span>El mismo pedido, con otra forma en cada pieza. Sigue con «Siguiente» o elige un paso.</span>';
+    $('#c13l2-out').innerHTML=t;
+  }
+  function ir(k){i=Math.max(0,Math.min(S.length-1,k));pintar();}
+  function parar(){if(timer){clearInterval(timer);timer=null;}$('#c13l2-auto').setAttribute('aria-pressed','false');}
+  raiz.querySelectorAll('[data-k]').forEach(b=>b.addEventListener('click',()=>{parar();ir(+b.dataset.k);}));
+  $('#c13l2-ant').addEventListener('click',()=>{parar();ir(i-1);});
+  $('#c13l2-sig').addEventListener('click',()=>{parar();ir(i+1);});
+  $('#c13l2-auto').addEventListener('click',e=>{
+    if(timer){parar();return;}
+    if(reduce){ir(S.length-1);return;}
+    e.currentTarget.setAttribute('aria-pressed','true');if(i===S.length-1)ir(0);
+    timer=setInterval(()=>{if(i>=S.length-1){parar();return;}ir(i+1);},2600);
+  });
+  pintar();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="es">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-KX76XF8R');</script>
+<!-- End Google Tag Manager -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Retención y borrado · Ingeniería de datos · Ingeniería de datos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Cómo viaja un dato desde la base de una aplicación hasta el tablero que lee la gerencia: ingesta, formatos, ETL y ELT, data warehouse, lakehouse, Spark, Kafka, orquestación, dbt, calidad y linaje, con laboratorios donde se ve cada pipeline funcionar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400;1,8..60,600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KX76XF8R"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<div class="wrap" data-page="retencion-archivo-y-borrado">
+<header class="topbar"><a class="brand" href="index.html">Ingeniería de <b>datos</b></a><span class="eyebrow">Curso visual e interactivo · Datos e inteligencia artificial</span><a class="al-sitio" href="https://aaramirez.github.io/">← Todos los cursos</a></header>
+<div class="layout">
+<nav class="toc" id="toc" aria-label="Ruta de aprendizaje"></nav>
+<main>
+<header class="page-head"><span class="num">CAPÍTULO 11 DE 14</span><h1>Retención, archivo y borrado</h1><p class="lede">Una plataforma de datos sabe guardar; lo difícil es dejar de guardar. Este capítulo cierra el ciclo de vida del dato: cuánto vive cada tipo de dato, cómo se archiva sin perder la consulta y cómo se borra de verdad a una clienta en un lakehouse lleno de copias, versiones y respaldos, con evidencia de que se hizo.</p></header>
+<section><div class="prose"><p>El lunes por la mañana, Elena Vargas le reenvió a Natalia Herrera un correo de atención al cliente. Lo escribía Renata Ortiz, clienta 1042, la de Quito que se mudó a Lima el 1 de noviembre: «Les pido que borren mis datos personales de sus sistemas». El área legal ya había revisado el caso y respondió en una línea: corresponde, y hay un plazo para cumplirlo.</p><p>Diego Paz borró la fila de <code>clientes</code> en la base de la tienda esa misma tarde y escribió «listo» en el canal del equipo. Natalia no estaba tan segura. En los capítulos anteriores la plataforma había copiado esa fila a la zona de aterrizaje, a la tabla de plata, a la dimensión de clientes con sus dos versiones (Quito y Lima), a un extracto que Martín bajó en agosto y a un entorno de pruebas. Y el lakehouse guarda versiones viejas a propósito, para el viaje en el tiempo del capítulo 6. «¿Dónde está Renata?», se preguntó. La respuesta honesta era: en muchos lugares, y no todos anotados.</p><p>Este capítulo trata del final del ciclo de vida del dato que abrió el curso: <b>archivar</b> y <b>destruir</b>. No es la parte vistosa de una plataforma, pero es la que decide cuánto cuesta y si la empresa puede cumplir lo que promete.</p></div></section>
+<section><h2>Políticas de retención por tipo de dato</h2><div class="analogia"><b>Imagínalo así</b><p>En una cocina bien llevada, cada recipiente de la nevera tiene una etiqueta con la fecha. La leche dura una semana; las conservas, años; las sobras de ayer, dos días. Nadie decide en el momento si algo se tira: la etiqueta ya lo dijo cuando entró. Y hay cosas que no se tiran aunque estén viejas, como la factura de la nevera, que se guarda por la garantía.</p></div><div class="prose"><p>Una <b>política de retención</b> (<i>retention policy</i>) dice cuánto tiempo se guarda cada dato, dónde vive en cada etapa y qué le pasa cuando vence: se borra, se agrega, se anonimiza o se archiva. Lo importante es la palabra «cada»: no hay un plazo para toda la plataforma, sino uno por tipo de dato. En Tienda Ejemplo, Natalia los agrupó en cuatro:</p><ul><li><b>Operativo</b> (<i>operational</i>): lo que la tienda necesita para funcionar hoy. Los pedidos en curso, los carritos. Los carritos abandonados (pedidos en estado <code>creado</code>) ya tienen su regla: la base los borra a los 30 días, y por eso el capítulo 2 vio desaparecer los pedidos 3 y 32.</li><li><b>Analítico</b> (<i>analytical</i>): el detalle de ventas que alimenta el tablero de Elena. Sirve mientras alguien lo consulta, y con los años basta con los totales.</li><li><b>De auditoría</b> (<i>audit</i>): pagos, reembolsos y el registro de quién leyó qué. Se guarda más tiempo y, sobre todo, no se modifica: su valor está en que nadie lo pudo tocar.</li><li><b>Personal</b> (<i>personal data</i>): nombre, correo y ciudad de cada cliente. Vive mientras haya una razón para tenerlo, y su titular puede pedir que se borre antes.</li></ul></div><figure class="fig fig-comparacion" id="11-diagrama-1"><div class="lienzo"><svg viewBox="0 0 940 420" style="min-width:760px" role="img" aria-label="Retención por tipo de dato en Tienda Ejemplo: datos operativos, analíticos, de auditoría y personales, cada uno con una barra sobre una escala de tiempo que va de cero a diez años y lo que pasa cuando vence su plazo">
+<text x="20" y="30" class="t t-xs t-b t-m">TIPO DE DATO</text>
+<text x="270" y="30" class="t t-xs t-b t-m">CUÁNTO VIVE Y DÓNDE (PLAZOS DE EJEMPLO)</text>
+<g class="t t-s t-m" text-anchor="middle">
+<line x1="270" y1="44" x2="910" y2="44" class="ln"/>
+<line x1="270" y1="40" x2="270" y2="48" class="ln"/><text x="270" y="62">hoy</text>
+<line x1="340" y1="40" x2="340" y2="48" class="ln"/><text x="340" y="62">30 días</text>
+<line x1="440" y1="40" x2="440" y2="48" class="ln"/><text x="440" y="62">1 año</text>
+<line x1="530" y1="40" x2="530" y2="48" class="ln"/><text x="530" y="62">2 años</text>
+<line x1="600" y1="40" x2="600" y2="48" class="ln"/><text x="600" y="62">3 años</text>
+<line x1="730" y1="40" x2="730" y2="48" class="ln"/><text x="730" y="62">5 años</text>
+<line x1="900" y1="40" x2="900" y2="48" class="ln"/><text x="900" y="62">10 años</text>
+</g>
+
+<text x="20" y="100" class="t t-b">Operativo</text>
+<text x="20" y="118" class="t t-s t-m">pedidos y carritos en la base</text>
+<text x="20" y="134" class="t t-s t-m">de la tienda (Diego)</text>
+<rect x="270" y="86" width="260" height="22" rx="4" class="c-fis"/>
+<text x="280" y="101" class="t t-s k-fis">pedidos en la base</text>
+<text x="538" y="101" class="t t-s">→ pasan al lago y se borran del origen</text>
+<rect x="270" y="116" width="70" height="16" rx="4" class="c-fis" style="opacity:.6"/>
+<text x="348" y="128" class="t t-s">carritos abandonados: 30 días y se borran</text>
+
+<line x1="20" y1="152" x2="910" y2="152" class="ln" style="stroke:var(--line)"/>
+<text x="20" y="182" class="t t-b">Analítico</text>
+<text x="20" y="200" class="t t-s t-m">detalle de ventas y</text>
+<text x="20" y="216" class="t t-s t-m">agregados del tablero</text>
+<rect x="270" y="170" width="330" height="22" rx="4" class="c-red"/>
+<text x="280" y="185" class="t t-s k-red">detalle por pedido en oro</text>
+<rect x="600" y="170" width="300" height="22" rx="4" class="c-red" style="opacity:.5"/>
+<text x="610" y="185" class="t t-s k-red">solo agregados mensuales, sin clientes</text>
+<text x="270" y="212" class="t t-s t-m">el detalle se agrega al cumplir 3 años; el agregado sirve mientras haya tablero</text>
+
+<line x1="20" y1="232" x2="910" y2="232" class="ln" style="stroke:var(--line)"/>
+<text x="20" y="262" class="t t-b">De auditoría</text>
+<text x="20" y="280" class="t t-s t-m">pagos, reembolsos y el</text>
+<text x="20" y="296" class="t t-s t-m">registro de accesos</text>
+<rect x="270" y="250" width="170" height="22" rx="4" class="c-red"/>
+<text x="280" y="265" class="t t-s k-red">caliente</text>
+<rect x="440" y="250" width="460" height="22" rx="4" class="caja" style="stroke-dasharray:5 4"/>
+<text x="450" y="265" class="t t-s t-m">archivo frío, inmutable: no se edita, solo vence</text>
+<text x="270" y="292" class="t t-s t-m">al vencer se borra entero; mientras tanto, nadie puede cambiarlo</text>
+
+<line x1="20" y1="312" x2="910" y2="312" class="ln" style="stroke:var(--line)"/>
+<text x="20" y="342" class="t t-b">Personal</text>
+<text x="20" y="360" class="t t-s t-m">nombre, correo y ciudad</text>
+<text x="20" y="376" class="t t-s t-m">de cada cliente</text>
+<rect x="270" y="330" width="460" height="22" rx="4" style="fill:var(--warm-soft);stroke:var(--warm)"/>
+<text x="350" y="345" class="t t-s k-warm">mientras sea cliente activa, más un plazo</text>
+<text x="738" y="345" class="t t-s">→ se anonimiza</text>
+<line x1="340" y1="324" x2="340" y2="388" class="ln s-warm" style="stroke-width:2;stroke-dasharray:3 3"/>
+<text x="348" y="384" class="t t-s k-warm">si la titular pide el borrado, el reloj se adelanta: días, no años</text>
+<text x="470" y="410" class="t t-s t-m" text-anchor="middle">Los plazos son de ejemplo: los reales los fijan la ley de cada país y la política de la empresa.</text>
+</svg></div><figcaption><b>Cuánto vive cada tipo de dato.</b> Cada fila es un tipo de dato con una barra sobre una escala de tiempo que no es lineal: los primeros 30 días ocupan casi lo mismo que un año, para que se vean los plazos cortos. El color dice dónde vive (ámbar, la base de la tienda; azul, la plataforma; punteado, el archivo inmutable; cálido, los datos personales). Lee el final de cada barra: lo que pasa al vencer. La línea punteada de abajo es la excepción que obliga a diseñar el borrado: si la titular lo pide, el plazo se mide en días.</figcaption></figure><div class="prose"><p>Los plazos de la figura son de ejemplo. Los reales dependen de la ley de cada país (por ejemplo, cuánto tiempo hay que guardar un comprobante de pago) y de la política de la empresa; lo legal no es tema de este curso. Lo técnico sí: que la política no sea un documento en una carpeta, sino una configuración que la plataforma ejecuta. Natalia la escribió así, junto al código de los pipelines:</p><div class="code-copia"><pre><code># retencion.yml: una entrada por tabla; el trabajo nocturno la aplica
+tienda.pedidos (carritos abandonados):
+  filtro: "estado = 'creado'"
+  vence: 30d
+  al_vencer: borrar
+oro.fct_ventas:
+  tipo: analitico
+  caliente: 90d
+  tibio: 365d
+  vence: 3y
+  al_vencer: agregar_mensual
+oro.pagos_auditoria:
+  tipo: auditoria
+  archivo: inmutable
+  vence: 10y
+  al_vencer: borrar
+plata.clientes:
+  tipo: personal
+  vence: baja + 2y
+  al_vencer: anonimizar
+  borrado_a_pedido: true</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><p>Así la política se revisa en Git como cualquier otro cambio, el trabajo que la aplica deja un registro, y una tabla nueva sin entrada en este archivo es una alerta. Escrita en un documento, la política se cumple cuando alguien se acuerda.</p></div></section>
+<section><h2>Almacenamiento caliente, tibio y frío</h2><div class="analogia"><b>Imagínalo así</b><p>En una casa, lo que se usa todos los días está en la mesa de la cocina; lo del mes, en la alacena; los adornos de Navidad, en el trastero. El trastero es barato y cabe mucho, pero sacar algo de ahí lleva una tarde. Nadie guarda la sal en el trastero ni los adornos en la mesa.</p></div><div class="prose"><p>El almacenamiento de objetos de la nube, donde vive el lago del capítulo 6, se vende en <b>niveles</b> o <b>clases de almacenamiento</b> (<i>storage tiers</i>, <i>storage classes</i>):</p><ul><li><b>Caliente</b> (<i>hot</i>): el más caro para guardar, sin costo extra para leer y con respuesta inmediata.</li><li><b>Tibio</b> (<i>warm</i>, a veces <i>infrequent access</i>): cerca de la mitad del precio de guardar, pero cobra cada gigabyte que se lee y suele exigir un tiempo mínimo de permanencia.</li><li><b>Frío</b> o <b>archivo</b> (<i>cold</i>, <i>archive</i>): centavos por gigabyte al mes, pero leer cuesta más y en los niveles más profundos hay que pedir una <b>restauración</b> (<i>restore</i>) que tarda horas antes de poder leer.</li></ul><p>La trampa está en mirar solo una de las dos cuentas. Guardar todo en caliente es simple y caro. Mandar todo al archivo parece barato hasta que alguien consulta el año pasado y el costo de leer (y las horas de espera) se come el ahorro. La regla que manda es otra: <b>casi todas las consultas piden los datos recientes</b>. El tablero de Elena mira el mes; el reporte de Martín, la semana; comparar con el mismo mes del año pasado es ocasional; una auditoría de hace cuatro años, rarísima.</p></div><figure class="fig fig-arquitectura" id="11-diagrama-2"><div class="lienzo"><svg viewBox="0 0 940 400" style="min-width:740px" role="img" aria-label="Tres niveles de almacenamiento, caliente, tibio y frío, con su costo de guardar, su costo de leer y su tiempo de respuesta; reglas de ciclo de vida mueven las particiones de uno a otro según su edad y al final se borran; una sola vista de consulta lee los tres">
+<defs>
+<marker id="c11d2-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+<marker id="c11d2-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-red"/></marker>
+</defs>
+<rect x="250" y="16" width="440" height="50" rx="10" class="c-apl"/>
+<text x="470" y="38" class="t t-b k-apl" text-anchor="middle">Una sola vista: ventas</text>
+<text x="470" y="56" class="t t-s t-m" text-anchor="middle">quien consulta no sabe en qué nivel está cada mes</text>
+<line x1="350" y1="66" x2="140" y2="110" class="ln" marker-end="url(#c11d2-m)"/>
+<line x1="470" y1="66" x2="470" y2="110" class="ln" marker-end="url(#c11d2-m)"/>
+<line x1="590" y1="66" x2="800" y2="110" class="ln" marker-end="url(#c11d2-m)"/>
+
+<rect x="20" y="114" width="250" height="186" rx="10" class="c-red"/>
+<text x="145" y="140" class="t t-b k-red" text-anchor="middle">Caliente</text>
+<text x="145" y="158" class="t t-s t-m" text-anchor="middle">últimos 3 meses · Parquet snappy</text>
+<text x="36" y="188" class="t t-s">Guardar</text><text x="254" y="188" class="t t-s t-b" text-anchor="end">el más caro</text>
+<text x="36" y="212" class="t t-s">Leer</text><text x="254" y="212" class="t t-s t-b" text-anchor="end">sin costo extra</text>
+<text x="36" y="236" class="t t-s">Responde en</text><text x="254" y="236" class="t t-s t-b" text-anchor="end">segundos</text>
+<text x="36" y="268" class="t t-s t-m">el tablero de Elena, el reporte</text>
+<text x="36" y="284" class="t t-s t-m">del lunes de Martín</text>
+
+<rect x="345" y="114" width="250" height="186" rx="10" class="c-red" style="fill-opacity:.45"/>
+<text x="470" y="140" class="t t-b k-red" text-anchor="middle">Tibio</text>
+<text x="470" y="158" class="t t-s t-m" text-anchor="middle">meses 4 a 12 · acceso poco frecuente</text>
+<text x="361" y="188" class="t t-s">Guardar</text><text x="579" y="188" class="t t-s t-b" text-anchor="end">la mitad</text>
+<text x="361" y="212" class="t t-s">Leer</text><text x="579" y="212" class="t t-s t-b" text-anchor="end">se cobra por GB</text>
+<text x="361" y="236" class="t t-s">Responde en</text><text x="579" y="236" class="t t-s t-b" text-anchor="end">segundos</text>
+<text x="361" y="268" class="t t-s t-m">comparar con el año pasado,</text>
+<text x="361" y="284" class="t t-s t-m">la temporada anterior</text>
+
+<rect x="670" y="114" width="250" height="186" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="795" y="140" class="t t-b" text-anchor="middle">Frío (archivo)</text>
+<text x="795" y="158" class="t t-s t-m" text-anchor="middle">más de un año · Parquet zstd</text>
+<text x="686" y="188" class="t t-s">Guardar</text><text x="904" y="188" class="t t-s t-b" text-anchor="end">centavos</text>
+<text x="686" y="212" class="t t-s">Leer</text><text x="904" y="212" class="t t-s t-b" text-anchor="end">caro, hay que restaurar</text>
+<text x="686" y="236" class="t t-s">Responde en</text><text x="904" y="236" class="t t-s t-b k-warm" text-anchor="end">horas</text>
+<text x="686" y="268" class="t t-s t-m">auditorías, una disputa,</text>
+<text x="686" y="284" class="t t-s t-m">un reproceso histórico</text>
+
+<text x="20" y="340" class="t t-xs t-b t-m">REGLAS DE CICLO DE VIDA</text>
+<line x1="270" y1="356" x2="343" y2="356" class="ln s-red" style="stroke-width:2" marker-end="url(#c11d2-r)"/>
+<text x="306" y="348" class="t t-s" text-anchor="middle">a los 90 días</text>
+<line x1="595" y1="356" x2="668" y2="356" class="ln s-red" style="stroke-width:2" marker-end="url(#c11d2-r)"/>
+<text x="631" y="348" class="t t-s" text-anchor="middle">a los 365 días</text>
+<line x1="920" y1="306" x2="920" y2="360" class="ln s-warm" style="stroke-width:2"/>
+<text x="912" y="356" class="t t-s k-warm" text-anchor="end">a los 5 años: se borra</text>
+<text x="470" y="390" class="t t-s t-m" text-anchor="middle">La unidad que se mueve es la partición de un mes: por eso particionar por fecha (capítulo 3) hace posible archivar.</text>
+</svg></div><figcaption><b>Tres niveles y las reglas que mueven los datos.</b> Arriba, la vista <code>ventas</code>, que lee los tres niveles: quien consulta no necesita saber dónde está cada mes. Cada recuadro es un nivel con su costo de guardar, su costo de leer, su tiempo de respuesta y quién lo consulta en la tienda. Abajo, las reglas de ciclo de vida: a los 90 días la partición pasa a tibio, al año pasa al archivo y a los cinco años se borra. La nota del pie es la condición para todo esto: la unidad que se mueve es la partición de un mes.</figcaption></figure><div class="lab" id="11-lab-2"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Calculadora de niveles de almacenamiento</h3></div><p class="hint">La plataforma de Tienda Ejemplo escribe 40 GB nuevos por mes. Mueve cuántos meses quedan en caliente, cuántos en tibio y cuántos años se guardan en total, y elige si el archivo va en CSV o en Parquet. Mira el costo de guardar, el de leer, el total frente a guardar todo en caliente y qué parte de las consultas espera horas a una restauración. La curva negra es cuántas consultas pide datos de cada edad.</p><style>
+[id="11-lab-2"] .c11l2-tar{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:8px}
+[id="11-lab-2"] .c11l2-t{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--card);display:grid;gap:2px;font:500 .74rem/1.3 var(--f-display);color:var(--muted)}
+[id="11-lab-2"] .c11l2-t b{font:700 1.05rem var(--f-mono);color:var(--ink)}
+[id="11-lab-2"] .c11l2-t.mal b{color:var(--warm)}
+[id="11-lab-2"] .c11l2-t.bien b{color:var(--good)}
+[id="11-lab-2"] canvas{width:100%;display:block}
+</style>
+<div class="btns" role="group" aria-label="Formato de los archivos archivados">
+  <button type="button" data-fmt="csv" aria-pressed="false">Archivo en CSV sin comprimir</button>
+  <button type="button" data-fmt="pq" aria-pressed="true">Archivo en Parquet comprimido</button>
+</div>
+<div class="ctls">
+  <label class="ctl">Meses en caliente <output id="c11l2-oh"></output><input type="range" id="c11l2-h" min="1" max="24" value="3"></label>
+  <label class="ctl">Meses en tibio <output id="c11l2-ow"></output><input type="range" id="c11l2-w" min="0" max="36" value="9"></label>
+  <label class="ctl">Retención total (años) <output id="c11l2-or"></output><input type="range" id="c11l2-r" min="1" max="10" value="5"></label>
+</div>
+<canvas id="c11l2-c" role="img" aria-label="Gigabytes guardados según la edad del dato, coloreados por nivel de almacenamiento, con la curva de cuántas consultas pide datos de cada edad"></canvas>
+<div class="legend"><span><i style="background:var(--c-red)"></i>Caliente</span><span><i style="background:var(--c-red);opacity:.45"></i>Tibio</span><span><i style="background:var(--muted)"></i>Frío (archivo)</span><span><i style="background:var(--ink)"></i>Consultas por edad del dato</span></div>
+<div class="c11l2-tar" id="c11l2-tar" aria-live="polite"></div>
+<div class="readout texto" id="c11l2-out" aria-live="polite"></div></div></section>
+<section><h2>Archivar sin perder la consulta</h2><div class="prose"><p>Archivar no es esconder. Un dato archivado que nadie puede consultar cuando hace falta (una disputa con un cliente, un reproceso de las ventas de hace dos años) es casi lo mismo que un dato borrado, pero cobrando. Tres piezas, todas vistas en el curso, permiten archivar sin romper las consultas:</p><ol class="steps"><li><span><b>Particiones por fecha.</b> Si la tabla de ventas está partida por mes (capítulo 3), archivar es mover carpetas enteras, sin abrir ni reescribir el resto. Una tabla sin particiones obliga a reescribirla completa para separar lo viejo.</span></li><li><span><b>Un formato comprimido por columnas.</b> Al archivar se puede pagar más tiempo de compresión a cambio de menos espacio: Parquet con <b>zstd</b> en un nivel alto ocupa bastante menos que con <b>snappy</b>, el códec rápido que conviene para lo que se lee a diario. Los datos archivados se escriben una vez y se leen casi nunca, así que la compresión lenta no molesta a nadie.</span></li><li><span><b>Reglas de ciclo de vida</b> (<i>lifecycle rules</i>). Los servicios de almacenamiento de objetos del mercado (a noviembre de 2026, S3, Google Cloud Storage y Azure Blob Storage, entre otros) permiten escribir reglas del tipo «los objetos bajo <code>ventas/</code> con más de 90 días pasan a la clase de acceso poco frecuente; con más de 365, al archivo; con más de cinco años, se eliminan». La regla la ejecuta el proveedor, sin un trabajo propio que pueda olvidarse.</span></li></ol><p>Lo que no se mueve es la forma de consultar. Una tabla externa, una vista o un formato de tabla como Iceberg o Delta (capítulo 6) apuntan a todas las particiones, estén donde estén. Martín sigue escribiendo <code>SELECT … FROM ventas WHERE mes = '2025-03'</code>, y el motor lee solo esa partición gracias a la poda del capítulo 3. Si esa partición está en el archivo profundo, la consulta tendrá que esperar la restauración; por eso los meses que todavía se consultan seguido no van ahí.</p></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Una regla de archivo sobre los pedidos de la tienda</h3></div><p>Vas a partir los pedidos por mes en dos niveles, caliente (snappy) y archivo (zstd en su nivel más alto), y a comprobar que la misma consulta devuelve las mismas ventas netas que el tablero. Trabaja en <code>~/datos-tienda</code>, con la base del capítulo 1 y el entorno virtual del capítulo 2. DuckDB baja la primera vez su extensión para leer SQLite, así que necesitas conexión.</p><p>Guarda este programa como <code>archivar.py</code>:</p><div class="code-copia"><pre><code>"""Regla de archivo: los meses viejos de pedidos pasan de caliente a archivo, y la consulta sigue igual."""
+import shutil
+from pathlib import Path
+
+import duckdb
+
+MESES_EN_CALIENTE = 3          # cambia este número y vuelve a correr
+ULTIMO_MES = 10                # octubre de 2026
+
+shutil.rmtree("lago_niveles", ignore_errors=True)
+Path("lago_niveles").mkdir()
+con = duckdb.connect()
+con.sql("INSTALL sqlite; LOAD sqlite; ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")
+con.sql("""CREATE TEMP TABLE p AS
+           SELECT p.*, d.linea, d.producto_id, d.cantidad, d.precio_unitario,
+                  CAST(substr(p.creado_en, 6, 2) AS INTEGER) AS mes
+           FROM tienda.pedidos p JOIN tienda.detalle_pedido d USING (pedido_id)""")
+corte = ULTIMO_MES - MESES_EN_CALIENTE   # meses &lt;= corte van al archivo
+con.sql(f"COPY (SELECT * FROM p WHERE mes &gt; {corte}) TO 'lago_niveles/caliente' "
+        "(FORMAT parquet, PARTITION_BY (mes), COMPRESSION snappy)")
+con.sql(f"COPY (SELECT * FROM p WHERE mes &lt;= {corte}) TO 'lago_niveles/archivo' "
+        "(FORMAT parquet, PARTITION_BY (mes), COMPRESSION zstd, COMPRESSION_LEVEL 19)")
+
+def tamano(carpeta):
+    return sum(f.stat().st_size for f in Path(carpeta).rglob("*.parquet")) / 1e6
+
+cal, arc = tamano("lago_niveles/caliente"), tamano("lago_niveles/archivo")
+print(f"caliente: meses {corte + 1} a {ULTIMO_MES}, {cal:.2f} MB, {cal / MESES_EN_CALIENTE:.2f} MB por mes (snappy)")
+print(f"archivo:  meses 1 a {corte}, {arc:.2f} MB, {arc / corte:.2f} MB por mes (zstd nivel 19)")
+
+# Una sola vista sobre los dos niveles: quien consulta no sabe dónde está cada mes
+con.sql("""CREATE VIEW ventas AS
+           SELECT * FROM read_parquet('lago_niveles/*/*/*.parquet', hive_partitioning = true)""")
+for fila in con.sql("""SELECT mes, ROUND(SUM(cantidad * precio_unitario), 2) AS ventas_netas
+                 FROM ventas WHERE estado IN ('pagado', 'enviado', 'entregado')
+                 GROUP BY mes ORDER BY mes""").fetchall():
+    print(fila)</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>cd $HOME\datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>.venv\Scripts\activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python archivar.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>cd ~/datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>source .venv/bin/activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 archivar.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>Anota los megabytes por mes de cada nivel.</span></li><li><span>Busca la fila del mes 10 y compárala con la cifra del tablero.</span></li><li><span>Cambia <code>MESES_EN_CALIENTE</code> a 6, vuelve a correr y mira qué carpetas aparecen en <code>lago_niveles</code>.</span></li></ol><p><b>Qué observar:</b> cada mes archivado ocupa unas tres veces menos que uno caliente (los meses recientes tienen más pedidos, así que la comparación exacta varía un poco), y la vista devuelve la serie completa del tablero, con octubre en 782.785,77, sin importar en qué nivel quedó cada mes. Cambiar la regla mueve carpetas <code>mes=N</code> de un nivel a otro: eso es lo que hace una regla de ciclo de vida en la nube, sin reescribir nada más.</p></div></section>
+<section><h2>Borrar a pedido del titular en un lakehouse</h2><div class="analogia"><b>Imagínalo así</b><p>En un libro de contabilidad de los de antes, un error no se borraba con goma: se tachaba con una línea y se escribía la corrección al lado, para que el auditor viera qué cambió. Si además había fotocopias de esa página en otro archivo, la línea tachada en el original no cambiaba las fotocopias.</p></div><div class="prose"><p>Así funcionan, a propósito, los formatos de tabla del capítulo 6. Cuando Natalia ejecuta <code>DELETE FROM plata.clientes WHERE cliente_id = 1042</code> sobre una tabla Delta o Iceberg, el motor no abre el archivo Parquet para quitarle una fila: los archivos Parquet no se modifican. Escribe un archivo nuevo con todas las filas menos la de Renata y anota en el <b>registro de transacciones</b> (<i>transaction log</i>) que el archivo viejo ya no forma parte de la versión actual. La consulta deja de devolverla en ese instante. Pero el archivo viejo sigue en el disco, porque es lo que permite el <b>viaje en el tiempo</b> (<i>time travel</i>): consultar la tabla «como estaba ayer».</p><p>Para que el borrado sea real hacen falta pasos que el DELETE no hace solo:</p><ul><li><b>Vectores de borrado y archivos de borrado.</b> Para no reescribir archivos grandes por una fila, Delta puede marcar la fila como borrada en un <b>vector de borrado</b> (<i>deletion vector</i>), e Iceberg, en un <b>archivo de borrado por posición</b> (<i>position delete file</i>). La fila sigue físicamente en el Parquet original hasta que se <b>compacta</b>: <code>OPTIMIZE</code> o <code>REORG TABLE … APPLY (PURGE)</code> en Delta, <code>rewrite_data_files</code> en Iceberg.</li><li><b>Limpiar las versiones viejas.</b> <code>VACUUM</code> en Delta y <code>expire_snapshots</code> más <code>remove_orphan_files</code> en Iceberg borran del disco los archivos que ya no usa ninguna versión dentro del plazo de retención. En Delta ese plazo es de siete días por omisión: después del VACUUM ya no se puede viajar a una versión más vieja que eso. Es el precio del borrado, y conviene saberlo antes de prometer un viaje en el tiempo de un año.</li><li><b>Bronce, que solo agrega.</b> La zona de aterrizaje del capítulo 2 guarda los JSONL crudos tal como llegaron, y nadie los edita. Ahí está el correo de Renata. O se reescriben los archivos afectados sin su línea, o la capa cruda tiene un plazo corto (por ejemplo, 30 días) después del cual ya no hace falta tocarla.</li><li><b>Los temas de eventos.</b> Un tema de Kafka (capítulo 8) con retención por tiempo descarta solo los eventos viejos. Si es un tema <b>compactado</b> (<i>compacted topic</i>), se publica un mensaje con la clave del cliente y valor vacío, una <b>lápida</b> (<i>tombstone</i>), y la compactación elimina los anteriores.</li></ul><p>No todo se borra. El pedido 59521 y el pago 61561 son datos de auditoría: la contabilidad de la tienda los necesita. Lo que se hace con ellos es <b>seudonimizar</b> (<i>pseudonymize</i>): quitar el nombre y el correo, y dejar <code>cliente_id</code> 1042 como una clave que, sin la fila de <code>clientes</code>, ya no apunta a una persona. Las ventas netas de octubre siguen dando 782.785,77, porque no dependen de quién compró. Si eso basta legalmente es una pregunta para el área legal; la plataforma tiene que permitir las dos cosas.</p><p>Hay una técnica más que conviene conocer, el <b>borrado criptográfico</b> (<i>crypto-shredding</i>): los datos personales de cada cliente se guardan cifrados con una clave propia de ese cliente, y borrar al cliente es borrar su clave. Las copias quedan, pero ilegibles. Es potente y exige un servicio de claves bien operado; por eso suele reservarse para las columnas más sensibles.</p></div><figure class="fig fig-flujo" id="11-diagrama-3"><div class="lienzo"><svg viewBox="0 0 1000 560" style="min-width:760px" role="img" aria-label="Diagrama de secuencia de una solicitud de borrado: Renata pide el borrado, el registro de solicitudes la anota, el trabajo de borrado pregunta al catálogo dónde hay datos personales, borra y seudonimiza en el lakehouse, compacta y limpia versiones a los ocho días, los respaldos caducan solos, la verificación busca a la clienta en los archivos y la solicitud se cierra con evidencia">
+<defs>
+<marker id="c11d3-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fl-muted"/></marker>
+<marker id="c11d3-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-red"/></marker>
+<marker id="c11d3-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-warm"/></marker>
+</defs>
+<rect x="14" y="14" width="112" height="50" rx="10" style="fill:var(--warm-soft);stroke:var(--warm)"/>
+<text x="70" y="35" class="t t-b k-warm" text-anchor="middle" style="font-size:12px">Renata</text>
+<text x="70" y="52" class="t t-s t-m" text-anchor="middle">clienta 1042</text>
+<line x1="70" y1="64" x2="70" y2="530" class="vida"/>
+<rect x="154" y="14" width="112" height="50" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="210" y="35" class="t t-b" text-anchor="middle" style="font-size:12px">Registro</text>
+<text x="210" y="52" class="t t-s t-m" text-anchor="middle">de solicitudes</text>
+<line x1="210" y1="64" x2="210" y2="530" class="vida"/>
+<rect x="304" y="14" width="112" height="50" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="360" y="35" class="t t-b" text-anchor="middle" style="font-size:12px">Trabajo</text>
+<text x="360" y="52" class="t t-s t-m" text-anchor="middle">de borrado</text>
+<line x1="360" y1="64" x2="360" y2="530" class="vida"/>
+<rect x="454" y="14" width="112" height="50" rx="10" class="caja" style="stroke-dasharray:5 4"/>
+<text x="510" y="35" class="t t-b" text-anchor="middle" style="font-size:12px">Catálogo</text>
+<text x="510" y="52" class="t t-s t-m" text-anchor="middle">columnas personales</text>
+<line x1="510" y1="64" x2="510" y2="530" class="vida"/>
+<rect x="604" y="14" width="112" height="50" rx="10" class="c-red"/>
+<text x="660" y="35" class="t t-b k-red" text-anchor="middle" style="font-size:12px">Lakehouse</text>
+<text x="660" y="52" class="t t-s t-m" text-anchor="middle">bronce, plata, oro</text>
+<line x1="660" y1="64" x2="660" y2="530" class="vida"/>
+<rect x="744" y="14" width="112" height="50" rx="10" class="c-red" style="fill-opacity:.45"/>
+<text x="800" y="35" class="t t-b k-red" text-anchor="middle" style="font-size:12px">Respaldos</text>
+<text x="800" y="52" class="t t-s t-m" text-anchor="middle">caducan a 35 días</text>
+<line x1="800" y1="64" x2="800" y2="530" class="vida"/>
+
+<line x1="70" y1="98" x2="208" y2="98" class="ln s-warm" style="stroke-width:2" marker-end="url(#c11d3-w)"/>
+<text x="78" y="90" class="t" style="font-size:12px">① «borren mis datos»</text>
+<line x1="210" y1="136" x2="358" y2="136" class="ln" style="stroke-width:2" marker-end="url(#c11d3-m)"/>
+<text x="218" y="128" class="t" style="font-size:12px">② solicitud S-0001</text>
+<line x1="360" y1="174" x2="508" y2="174" class="ln" style="stroke-width:2" marker-end="url(#c11d3-m)"/>
+<text x="368" y="166" class="t" style="font-size:12px">③ ¿dónde hay clientes?</text>
+<line x1="510" y1="212" x2="362" y2="212" class="ln ln-d" style="stroke-width:2" marker-end="url(#c11d3-m)"/>
+<text x="372" y="204" class="t" style="font-size:12px">④ tablas, columnas, dueños</text>
+<line x1="360" y1="256" x2="658" y2="256" class="ln s-red" style="stroke-width:2" marker-end="url(#c11d3-r)"/>
+<text x="368" y="248" class="t" style="font-size:12px">⑤ DELETE en plata y dim_clientes; seudonimiza pagos</text>
+<line x1="360" y1="300" x2="658" y2="300" class="ln s-red" style="stroke-width:2" marker-end="url(#c11d3-r)"/>
+<text x="368" y="292" class="t" style="font-size:12px">⑥ compactar y VACUUM (día 8)</text>
+<path d="M800 330 h40 v26 h-38" class="ln s-red" style="stroke-width:2" marker-end="url(#c11d3-r)"/>
+<text x="706" y="376" class="t" style="font-size:12px">⑦ caducan solos (día 36)</text>
+<line x1="360" y1="410" x2="658" y2="410" class="ln s-red" style="stroke-width:2" marker-end="url(#c11d3-r)"/>
+<text x="368" y="402" class="t" style="font-size:12px">⑧ buscar 1042 y su correo en los archivos</text>
+<line x1="660" y1="440" x2="362" y2="440" class="ln ln-d" style="stroke-width:2" marker-end="url(#c11d3-m)"/>
+<text x="372" y="456" class="t t-s t-m">0 coincidencias en 9 lugares</text>
+<line x1="360" y1="484" x2="212" y2="484" class="ln" style="stroke-width:2" marker-end="url(#c11d3-m)"/>
+<text x="220" y="476" class="t" style="font-size:12px">⑨ cerrar con evidencia</text>
+<line x1="210" y1="516" x2="72" y2="516" class="ln ln-d s-warm" style="stroke-width:2" marker-end="url(#c11d3-w)"/>
+<text x="80" y="508" class="t" style="font-size:12px">⑩ confirmación</text>
+
+<rect x="880" y="80" width="108" height="72" rx="6" class="caja"/>
+<text x="934" y="108" class="t t-s t-b" text-anchor="middle">Recibir</text>
+<text x="934" y="126" class="t t-s t-m" text-anchor="middle">día 0</text>
+<rect x="880" y="160" width="108" height="66" rx="6" class="caja"/>
+<text x="934" y="188" class="t t-s t-b" text-anchor="middle">Localizar</text>
+<text x="934" y="206" class="t t-s t-m" text-anchor="middle">día 0</text>
+<rect x="880" y="234" width="108" height="150" rx="6" class="c-red"/>
+<text x="934" y="292" class="t t-s t-b k-red" text-anchor="middle">Borrar</text>
+<text x="934" y="310" class="t t-s t-m" text-anchor="middle">días 1 a 36</text>
+<rect x="880" y="392" width="108" height="136" rx="6" class="caja" style="stroke:var(--good)"/>
+<text x="934" y="452" class="t t-s t-b" text-anchor="middle">Probar y</text>
+<text x="934" y="468" class="t t-s t-b" text-anchor="middle">cerrar</text>
+<text x="934" y="486" class="t t-s t-m" text-anchor="middle">día 36</text>
+</svg></div><figcaption><b>Una solicitud de borrado, del pedido a la evidencia.</b> Participantes arriba: Renata, el registro de solicitudes, el trabajo de borrado, el catálogo, el lakehouse y los respaldos; el tiempo corre hacia abajo. ① Renata pide el borrado; ② el registro abre la solicitud S-0001; ③ y ④ el trabajo pregunta al catálogo qué tablas y columnas tienen datos de clientes y quién es su dueño; ⑤ borra en plata y en la dimensión y seudonimiza los pagos; ⑥ ocho días después compacta y corre el VACUUM; ⑦ los respaldos caducan solos; ⑧ la verificación busca la clave y el correo en los archivos, no solo en las tablas; ⑨ y ⑩ la solicitud se cierra con evidencia. A la derecha, las fases y el día en que termina cada una.</figcaption></figure><div class="lab" id="11-lab-1"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Un cliente pide que lo borren</h3></div><p class="hint">Renata pidió el borrado. Empieza con lo que hizo Diego, solo el DELETE en el origen, y mira en cuántos lugares de la plataforma sigue. Activa los pasos del proceso, mueve los días desde la solicitud y observa qué copias desaparecen solas cuando vence su plazo y cuáles no se van nunca. Al final, corre la verificación con y sin el inventario de extractos.</p><style>
+[id="11-lab-1"] .c11l1-rot{font:700 .72rem var(--f-display);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+[id="11-lab-1"] .c11l1-acc{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:6px}
+[id="11-lab-1"] .c11l1-acc label{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--card);font:500 .8rem/1.3 var(--f-display);cursor:pointer}
+[id="11-lab-1"] .c11l1-acc input{margin-top:2px;accent-color:var(--accent)}
+[id="11-lab-1"] .c11l1-acc small{display:block;color:var(--muted);font-size:.7rem}
+[id="11-lab-1"] .c11l1-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr));gap:8px}
+[id="11-lab-1"] .c11l1-l{border:1.5px solid var(--line);border-left-width:6px;border-radius:8px;padding:7px 9px;background:var(--card);display:grid;gap:3px;font:500 .76rem/1.3 var(--f-display)}
+[id="11-lab-1"] .c11l1-l b{font-size:.82rem}
+[id="11-lab-1"] .c11l1-l code{font-size:.72rem;overflow-wrap:anywhere}
+[id="11-lab-1"] .c11l1-l .e{font:700 .68rem var(--f-display);letter-spacing:.06em;text-transform:uppercase}
+[id="11-lab-1"] .c11l1-l.esta{background:var(--warm-soft);border-color:var(--warm)}
+[id="11-lab-1"] .c11l1-l.esta .e{color:var(--warm)}
+[id="11-lab-1"] .c11l1-l.fuera{border-color:var(--good)}
+[id="11-lab-1"] .c11l1-l.fuera .e{color:var(--good)}
+[id="11-lab-1"] .c11l1-l.conserva{border-style:dashed;border-color:var(--muted)}
+[id="11-lab-1"] .c11l1-l.conserva .e{color:var(--muted)}
+[id="11-lab-1"] .c11l1-l .p{font-size:.7rem;color:var(--muted)}
+[id="11-lab-1"] .c11l1-l .ver{font-size:.7rem;font-weight:700}
+</style>
+<div class="c11l1-rot">Lo que la plataforma hace cuando llega la solicitud</div>
+<div class="c11l1-acc" id="c11l1-acc"></div>
+<div class="ctls"><label class="ctl">Días desde la solicitud de Renata <output id="c11l1-od"></output><input type="range" id="c11l1-d" min="0" max="60" value="0"></label></div>
+<div class="btns"><button type="button" id="c11l1-nada" aria-pressed="false">Solo el DELETE en el origen</button><button type="button" id="c11l1-todo" aria-pressed="false">El proceso completo</button><button type="button" id="c11l1-ver" aria-pressed="false">Correr la verificación</button></div>
+<div class="legend"><span><i style="background:var(--warm)"></i>Renata sigue aquí</span><span><i style="background:var(--good)"></i>Ya no está</span><span><i style="background:var(--muted)"></i>Se conserva sin sus datos personales</span></div>
+<div class="c11l1-grid" id="c11l1-grid" aria-label="Lugares de la plataforma donde puede estar la clienta 1042"></div>
+<div class="readout texto" id="c11l1-out" aria-live="polite"></div></div></section>
+<section><h2>Las copias que se olvidan</h2><div class="prose"><p>Las tablas son la parte fácil, porque el catálogo las conoce. El problema son las copias que nadie anotó. Natalia hizo la lista con el equipo y aparecieron cuatro clases:</p><ul><li><b>Respaldos</b> (<i>backups</i>). Un respaldo no se edita: abrirlo para quitar a una clienta lo invalida como respaldo. La práctica común es darles una vida corta (por ejemplo, 35 días) y mantener una <b>lista de borrados pendientes</b>: si alguna vez se restaura un respaldo, lo primero que corre después es el borrado de todas las solicitudes posteriores a su fecha. Sin esa lista, restaurar un respaldo resucita a los clientes borrados.</li><li><b>Entornos de prueba.</b> Copiar producción para probar es la costumbre más cómoda y la que más copias deja. El generador <code>generar_tienda.py</code> del capítulo 1 es la alternativa: datos con la misma forma, la misma suciedad y ningún cliente real. Cuando de verdad se necesita una muestra de producción, se <b>enmascara</b> (<i>data masking</i>) antes de copiarla.</li><li><b>Extractos.</b> El CSV que Martín bajó en agosto para un análisis, la hoja de cálculo que circuló por correo, el archivo que alguien subió a una carpeta compartida. No hay forma técnica perfecta de encontrarlos todos; lo que funciona es reducirlos (que el tablero responda lo que antes obligaba a bajar datos) y registrarlos: el catálogo anota cada extracto con datos personales, quién lo bajó y para qué.</li><li><b>Modelos entrenados y variables.</b> Una tabla de variables por cliente para recomendaciones tiene una fila de Renata, y el modelo de esta semana aprendió de ella. La tabla se recalcula sin ella y el modelo se reentrena en su ciclo normal. El pronóstico de demanda de Irene, en cambio, aprende de totales por categoría y día: nunca tuvo datos de ella. Saber cuál es cuál exige el linaje del capítulo 12; cómo se versiona y reentrena un modelo está en <a href="https://aaramirez.github.io/mlops/temario.html" target="_blank" rel="noopener">IA en producción (MLOps)</a>.</li></ul></div><div class="ml"><b>En la práctica</b><p><b>El respaldo que resucitó clientes.</b> Al armar la lista, Diego recordó algo de marzo: una migración falló y restauró la base de la tienda desde un respaldo de diez días antes. Nadie pensó en los borrados de esos diez días, y dos cuentas que se habían dado de baja volvieron a recibir correos de promociones. Desde entonces, la restauración de un respaldo en Tienda Ejemplo tiene un paso obligatorio en su procedimiento: correr <code>reaplicar_borrados.py --desde &lt;fecha del respaldo&gt;</code>, que lee el registro de solicitudes y vuelve a ejecutar cada borrado posterior a esa fecha.</p></div></section>
+<section><h2>Probar que un borrado se cumplió</h2><div class="prose"><p>Un borrado que no se puede demostrar es una promesa. Natalia armó tres piezas para que cada solicitud termine con evidencia:</p><ol class="steps"><li><span><b>Un registro de solicitudes.</b> Una tabla <code>solicitudes_borrado</code> con el número de solicitud, la fecha, la clave del cliente, el estado por cada lugar del catálogo (pendiente, borrado, seudonimizado, caduca el día tal) y la fecha de cierre. No guarda el correo de Renata en claro: guardarlo para probar que se borró sería volver a tenerlo. Guarda la clave y, si hace falta comparar, una huella del correo (que sigue siendo un dato seudónimo, no anónimo).</span></li><li><span><b>Una verificación automática.</b> Un trabajo que, para cada tabla del catálogo marcada con datos personales, busca la clave y la huella del correo <b>en los archivos del disco</b>, no solo en la versión actual de la tabla. Ese detalle es todo: como ya viste, una tabla Delta puede no devolver a Renata mientras sus archivos viejos siguen ahí. La verificación corre cuando vence el último plazo (el VACUUM del día 8, los respaldos del día 36).</span></li><li><span><b>La auditoría.</b> El resultado de la verificación queda en el registro, con conteos por lugar, y alguien que no hizo el borrado lo revisa por muestreo. La verificación solo revisa lo que el catálogo conoce: un extracto que nadie registró no aparece, y el informe dirá «cero coincidencias» con la misma seguridad.</span></li></ol></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Borra a Renata de una tabla Delta y búscala en los archivos</h3></div><p>Vas a crear la tabla de plata de clientes en formato Delta con la biblioteca <code>deltalake</code> (delta-rs, sin Spark ni Java), borrar a la clienta 1042 y comprobar, paso a paso, dónde sigue: en la tabla, en los archivos del disco y en el viaje en el tiempo. Trabaja en <code>~/datos-tienda</code> con el entorno del capítulo 2; esta práctica agrega <code>deltalake</code>.</p><p>Guarda este programa como <code>borrar_cliente.py</code>:</p><div class="code-copia"><pre><code>"""Borra a una clienta de una tabla Delta y comprueba en qué archivos sigue apareciendo."""
+import shutil
+import sqlite3
+import sys
+from pathlib import Path
+
+import duckdb
+import pyarrow as pa
+from deltalake import DeltaTable, QueryBuilder, write_deltalake
+
+CLIENTE = 1042
+TABLA = Path("lakehouse/plata_clientes")
+paso = sys.argv[1] if len(sys.argv) &gt; 1 else "todo"
+
+
+def en_la_tabla(dt):
+    q = QueryBuilder().register("t", dt)
+    return q.execute(f"SELECT count(*) AS n FROM t WHERE cliente_id = {CLIENTE}").read_all()["n"][0].as_py()
+
+
+def en_los_archivos():
+    archivos = sorted(TABLA.glob("*.parquet"))
+    lista = [a.as_posix() for a in archivos]
+    n = duckdb.sql(f"SELECT count(*) FROM read_parquet({lista}) WHERE cliente_id = {CLIENTE}").fetchall()[0][0]
+    return n, len(archivos)
+
+
+if paso in ("crear", "todo"):
+    shutil.rmtree(TABLA, ignore_errors=True)
+    con = sqlite3.connect("tienda.db")
+    filas = con.execute("SELECT cliente_id, nombre, email, ciudad FROM clientes").fetchall()
+    tabla = pa.table({c: [f[i] for f in filas] for i, c in enumerate(["cliente_id", "nombre", "email", "ciudad"])})
+    write_deltalake(TABLA, tabla)
+    dt = DeltaTable(TABLA)
+    print(f"1. Tabla creada (versión {dt.version()}): {tabla.num_rows} clientes")
+
+if paso in ("borrar", "todo"):
+    dt = DeltaTable(TABLA)
+    dt.delete(f"cliente_id = {CLIENTE}")
+    dt = DeltaTable(TABLA)
+    n, archivos = en_los_archivos()
+    print(f"2. DELETE hecho (versión {dt.version()})")
+    print(f"   en la tabla: {en_la_tabla(dt)} filas de la clienta {CLIENTE}")
+    print(f"   en los archivos del disco: {n} filas en {archivos} archivos .parquet")
+    print(f"   viaje en el tiempo a la versión 0: {en_la_tabla(DeltaTable(TABLA, version=0))} filas")
+
+if paso in ("vacuum", "todo"):
+    dt = DeltaTable(TABLA)
+    # En producción se respeta el plazo de retención (7 días por omisión); aquí se fuerza a 0
+    borrados = dt.vacuum(retention_hours=0, enforce_retention_duration=False, dry_run=False)
+    n, archivos = en_los_archivos()
+    print(f"3. VACUUM: {len(borrados)} archivo(s) eliminados del disco")
+    print(f"   en los archivos del disco: {n} filas en {archivos} archivos .parquet")
+    try:
+        n0 = en_la_tabla(DeltaTable(TABLA, version=0))
+        print(f"   viaje en el tiempo a la versión 0: {n0} filas")
+    except Exception as e:
+        print("   viaje en el tiempo a la versión 0: falla, su archivo ya no existe")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>cd $HOME\datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>.venv\Scripts\activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>pip install duckdb pyarrow deltalake</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python borrar_cliente.py crear</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python borrar_cliente.py borrar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python borrar_cliente.py vacuum</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>cd ~/datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>source .venv/bin/activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>pip install duckdb pyarrow deltalake</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 borrar_cliente.py crear</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 borrar_cliente.py borrar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 borrar_cliente.py vacuum</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>Después de <code>crear</code>, mira la carpeta <code>lakehouse/plata_clientes</code>: un archivo <code>.parquet</code> y la carpeta <code>_delta_log</code>.</span></li><li><span>Después de <code>borrar</code>, compara las tres líneas: la tabla, los archivos del disco y la versión 0.</span></li><li><span>Abre <code>_delta_log</code> y mira los archivos JSON: el segundo anota un <code>remove</code> del archivo viejo y un <code>add</code> del nuevo.</span></li><li><span>Después de <code>vacuum</code>, repite la comparación.</span></li></ol><p><b>Qué observar:</b> tras el DELETE, la tabla devuelve 0 filas de la clienta 1042, pero los archivos del disco todavía tienen 1 (hay dos <code>.parquet</code>, el viejo y el nuevo) y el viaje en el tiempo a la versión 0 la muestra entera, con su correo. Solo después del VACUUM los archivos dan 0 y la versión 0 deja de poder leerse. Una verificación que solo consultara la tabla habría dado «borrado» un paso antes de que fuera cierto. En producción el VACUUM respeta un plazo (siete días por omisión en Delta); forzarlo a cero, como aquí, rompe a quien esté leyendo una versión vieja en ese momento.</p></div></section>
+<section><h2>Lo legal está en otro curso</h2><div class="prose"><p>Qué datos son personales, cuánto tiempo se pueden guardar, qué derechos tiene el titular y qué dice la ley de cada país está en <a href="https://aaramirez.github.io/proteccion-de-datos/temario.html" target="_blank" rel="noopener">Protección de datos</a>. Este capítulo da la parte técnica: que cuando el área legal diga «corresponde borrar», la plataforma sepa dónde está cada copia y pueda probar que la borró.</p></div></section>
+<section><h2>La idea clave</h2><div class="prose"><p>Cada dato entra a la plataforma con su fecha de vencimiento escrita en una política que el sistema ejecuta, vive en el nivel de almacenamiento que corresponde a cuánto se consulta, y se archiva por particiones sin cambiar la forma de consultarlo. Borrar en un lakehouse es más que un DELETE: hay que compactar, limpiar versiones, esperar que caduquen los respaldos y perseguir las copias que el catálogo no conoce. Y un borrado está terminado cuando una verificación sobre los archivos, no sobre las tablas, lo demuestra.</p></div></section>
+<section><h2>Pruébate</h2><div class="quiz"><h3>Pruébate</h3><details><summary>¿Por qué una política de retención tiene plazos por tipo de dato y no uno para toda la plataforma?</summary><p>Porque cada tipo cumple una función distinta: lo operativo sirve mientras el proceso está vivo, lo analítico mientras se consulta (y luego bastan los agregados), lo de auditoría debe guardarse más tiempo sin cambios y lo personal solo mientras haya razón para tenerlo.</p></details><details><summary>Si el tablero consulta casi siempre el último trimestre, ¿por qué no conviene mandar al archivo frío todo lo que tenga más de un mes?</summary><p>Porque los meses que todavía se consultan con frecuencia pagarían el costo de leer del archivo y esperarían horas la restauración; el ahorro de guardar se pierde en lecturas y en tiempo.</p></details><details><summary>¿Qué condición de diseño hace posible archivar moviendo carpetas en lugar de reescribir tablas?</summary><p>Que los datos estén particionados por fecha: cada mes es una carpeta que se mueve entera.</p></details><details><summary>Después de un DELETE en una tabla Delta, ¿por qué los datos de Renata siguen en el disco y qué los elimina?</summary><p>Porque el DELETE escribe archivos nuevos y deja los viejos para el viaje en el tiempo (o marca la fila en un vector de borrado). Los eliminan la compactación y el VACUUM al vencer el plazo de retención.</p></details><details><summary>¿Por qué restaurar un respaldo puede deshacer borrados, y cómo se evita?</summary><p>Porque el respaldo se tomó antes de las solicitudes; se evita con una lista de borrados pendientes que se reaplica justo después de restaurar.</p></details><details><summary>¿Por qué la verificación debe buscar en los archivos y no solo consultar las tablas?</summary><p>Porque una tabla puede no devolver a la clienta mientras sus archivos viejos, versiones o copias siguen guardando sus datos.</p></details></div></section>
+<section><h2>Para investigar</h2><div class="investiga"><h3>Para investigar</h3><p class="hint">Estas preguntas no se responden en el capítulo: búscalas por tu cuenta.</p><ol><li>¿Qué es el bloqueo de objetos en modo WORM (<i>write once, read many</i>) del almacenamiento de objetos y por qué se usa para los datos de auditoría?<small>Pista: busca «object lock compliance mode».</small></li><li>¿Cuál es la duración mínima de almacenamiento que cobran los niveles tibio y de archivo de los proveedores de nube, y qué pasa si borras un objeto antes?<small>Pista: busca «minimum storage duration charge».</small></li><li>¿Cómo se configura la retención de un tema de Kafka por tiempo y por tamaño, y qué parámetro decide cuánto tiempo sobreviven las lápidas de un tema compactado?<small>Pista: busca «retention.ms delete.retention.ms».</small></li><li>¿Cómo funciona un servicio de gestión de claves (KMS) y por qué el borrado criptográfico depende de él?<small>Pista: busca «envelope encryption».</small></li><li>¿Qué técnicas existen para que un modelo de aprendizaje automático «olvide» datos sin reentrenarse desde cero?<small>Pista: busca «machine unlearning».</small></li></ol></div></section>
+<section><h2>Para saber más</h2><div class="vids"><span>Para saber más</span><a class="vid" href="https://docs.delta.io/latest/delta-utility.html" target="_blank" rel="noopener">Delta Lake: eliminar archivos con VACUUM <small>documentación de Delta Lake, en inglés</small></a><a class="vid" href="https://iceberg.apache.org/docs/latest/maintenance/" target="_blank" rel="noopener">Apache Iceberg: mantenimiento de tablas <small>expirar snapshots y quitar archivos huérfanos, en inglés</small></a><a class="vid" href="https://delta-io.github.io/delta-rs/" target="_blank" rel="noopener">delta-rs: la biblioteca deltalake para Python <small>la que usa la práctica, en inglés</small></a><a class="vid" href="https://aaramirez.github.io/proteccion-de-datos/temario.html" target="_blank" rel="noopener">Protección de datos <small>lo legal: plazos, derechos del titular y leyes, curso del sitio</small></a></div></section>
+<label class="got"><input type="checkbox" id="got"> Lo tengo claro</label>
+<nav class="pager" id="pager" aria-label="Capítulo anterior y siguiente"></nav>
+</main>
+</div>
+<footer><span>Curso abierto de aaramirez.github.io.</span><span>Sitio publicado: <a href="https://github.com/aaramirez/ingenieria-de-datos" target="_blank" rel="noopener">github.com/aaramirez/ingenieria-de-datos</a></span></footer>
+</div>
+<script src="assets/lab.js"></script>
+<script>
+(function(){
+  const {$,tok,canvasWidget}=window.Lab;
+  const root=document.querySelector('[id="11-lab-2"]');
+  // Supuestos de ejemplo (ilustrativos, no son la tarifa de ningún proveedor)
+  const GB_MES=40;                  // datos nuevos por mes en Parquet
+  const FACTOR_CSV=5;               // el mismo dato en CSV ocupa unas 5 veces más
+  const PRECIO={h:0.023,w:0.0125,c:0.002};   // US$ por GB al mes
+  const LECTURA={h:0,w:0.01,c:0.03};          // US$ por GB leído
+  const TIEMPO={h:'2 s',w:'5 s',c:'12 h'};    // espera típica de una consulta
+  const CONSULTAS=3000, GB_POR_CONSULTA=0.5;    // consultas al mes, GB leídos por consulta (con particiones)
+  let fmt='pq';
+  const num=id=>parseInt($(id).value,10);
+  function nivel(a,h,w){return a<h?'h':(a<h+w?'w':'c');}
+  function pesos(M){const p=[];let s=0;for(let a=0;a<M;a++){const v=Math.exp(-a/2.5)+0.0008;p.push(v);s+=v;}return p.map(v=>v/s);}
+  function calcular(){
+    const h=num('#c11l2-h'),w=num('#c11l2-w'),R=num('#c11l2-r'),M=R*12;
+    const f=fmt==='csv'?FACTOR_CSV:1;
+    const p=pesos(M);
+    let alm=0,lec=0,soloCal=0,qc=0,gb={h:0,w:0,c:0};
+    for(let a=0;a<M;a++){
+      const nv=nivel(a,h,w);
+      const g=nv==='h'?GB_MES:GB_MES*f;       // en caliente ya está en Parquet; lo archivado usa el formato elegido
+      gb[nv]+=g;alm+=g*PRECIO[nv];soloCal+=GB_MES*PRECIO.h;
+      const q=CONSULTAS*p[a];
+      lec+=q*GB_POR_CONSULTA*(nv==='h'?1:f)*LECTURA[nv];
+      if(nv==='c')qc+=q;
+    }
+    return {h,w,R,M,f,p,alm,lec,soloCal,qc,gb};
+  }
+  const dibujar=canvasWidget($('#c11l2-c'),w=>w<520?0.75:0.38,(ctx,W,H)=>{
+    const d=calcular();
+    ctx.clearRect(0,0,W,H);
+    const L=44,R=22,T=14,B=30,pw=W-L-R,ph=H-T-B;
+    const maxG=GB_MES*FACTOR_CSV;
+    const bw=pw/120;
+    ctx.font='11px '+tok('--f-mono');
+    ctx.strokeStyle=tok('--grid');ctx.fillStyle=tok('--muted');ctx.textAlign='right';ctx.textBaseline='middle';
+    for(let g=0;g<=maxG;g+=50){const y=T+ph-g/maxG*ph;ctx.beginPath();ctx.moveTo(L,y);ctx.lineTo(W-R,y);ctx.stroke();ctx.fillText(g+' GB',L-4,y);}
+    ctx.textAlign='center';ctx.textBaseline='top';
+    const pasoX=W<520?24:12;for(let a=0;a<=120;a+=pasoX){ctx.fillText((a/12)+' a',L+a*bw,T+ph+6);}
+    const col={h:tok('--c-red'),w:tok('--c-red'),c:tok('--muted')};
+    for(let a=0;a<120;a++){
+      const x=L+a*bw;
+      if(a>=d.M){ctx.fillStyle=tok('--grid');ctx.fillRect(x,T+ph-2,Math.max(1,bw-0.5),2);continue;}
+      const nv=nivel(a,d.h,d.w),g=nv==='h'?GB_MES:GB_MES*d.f;
+      ctx.fillStyle=col[nv];ctx.globalAlpha=nv==='w'?0.45:1;const bh=g/maxG*ph;ctx.fillRect(x,T+ph-bh,Math.max(1,bw-0.5),bh);ctx.globalAlpha=1;
+    }
+    // curva de consultas (escala propia)
+    const pm=d.p[0];
+    ctx.strokeStyle=tok('--ink');ctx.lineWidth=1.6;ctx.beginPath();
+    d.p.forEach((v,a)=>{const x=L+(a+0.5)*bw,y=T+ph-v/pm*ph*0.95;a?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+    ctx.stroke();ctx.lineWidth=1;
+    if(d.M<120){ctx.fillStyle=tok('--muted');ctx.textAlign='left';ctx.textBaseline='bottom';ctx.fillText('borrado',L+d.M*bw+4,T+ph-6);}
+  });
+  const nf=(n,d=0)=>{const s=Math.abs(n).toFixed(d).split('.');s[0]=s[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.');return (n<0?'−':'')+s.join(',');};
+  const m=n=>'US$ '+nf(n,2);
+  function pintar(){
+    const d=calcular();
+    $('#c11l2-oh').textContent=d.h;$('#c11l2-ow').textContent=d.w;$('#c11l2-or').textContent=d.R;
+    const total=d.alm+d.lec;
+    const pctFrio=d.qc/CONSULTAS*100;
+    const totGB=d.gb.h+d.gb.w+d.gb.c;
+    $('#c11l2-tar').innerHTML=
+      '<div class="c11l2-t"><span>Guardado en total</span><b>'+nf(totGB)+' GB</b></div>'+
+      '<div class="c11l2-t"><span>Costo de guardar al mes</span><b>'+m(d.alm)+'</b></div>'+
+      '<div class="c11l2-t"><span>Costo de leer al mes</span><b>'+m(d.lec)+'</b></div>'+
+      '<div class="c11l2-t '+(total<d.soloCal?'bien':'mal')+'"><span>Total frente a todo en caliente ('+m(d.soloCal)+')</span><b>'+m(total)+'</b></div>'+
+      '<div class="c11l2-t '+(pctFrio>3?'mal':'')+'"><span>Consultas que esperan '+TIEMPO.c+'</span><b>'+nf(pctFrio,1)+' %</b></div>';
+    let t=['<span class="big">'+m(total)+' al mes, frente a '+m(d.soloCal)+' con todo en caliente</span>'];
+    if(d.h+d.w>=d.M)t.push('<span>Con '+d.h+' meses en caliente y '+d.w+' en tibio, nada llega al archivo: los datos se borran antes. Guardas '+d.R+' años y pagas casi como si todo fuera caliente.</span>');
+    if(pctFrio>3)t.push('<span class="warn">Un '+nf(pctFrio,1)+' % de las consultas toca datos archivados y espera horas a que se restauren. Esos meses se consultan demasiado para estar en frío: alarga el tibio.</span>');
+    if(fmt==='csv')t.push('<span class="warn">Archivar en CSV multiplica por '+FACTOR_CSV+' lo que se guarda y lo que se lee: el ahorro del nivel frío se va en volumen.</span>');
+    if(d.lec>d.alm*0.5)t.push('<span>Leer cuesta más de la mitad de lo que cuesta guardar: el nivel barato para guardar es caro para consultar.</span>');
+    if(t.length===1)t.push('<span class="ok">Equilibrio razonable: casi ninguna consulta espera la restauración y pagas una fracción de guardar todo en caliente.</span>');
+    t.push('<span>La curva negra es la regla de la casa: casi todas las consultas piden el último trimestre. Los precios son de ejemplo; la forma del resultado se repite con cualquier proveedor.</span>');
+    $('#c11l2-out').innerHTML=t.join('');
+    dibujar();
+  }
+  ['#c11l2-h','#c11l2-w','#c11l2-r'].forEach(id=>$(id).addEventListener('input',pintar));
+  root.querySelectorAll('[data-fmt]').forEach(b=>b.addEventListener('click',()=>{fmt=b.dataset.fmt;root.querySelectorAll('[data-fmt]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));pintar();}));
+  pintar();
+})();
+</script>
+<script>
+(function(){
+  const {$}=window.Lab;
+  const raiz=document.querySelector('[id="11-lab-1"]');
+  const A=[
+    ['O','DELETE de la fila en la base de la tienda','Diego, el día 1'],
+    ['S','Seudonimizar pedidos y pagos','se conservan por auditoría, sin nombre ni correo'],
+    ['D','DELETE en plata y en dim_clientes','el trabajo de borrado, el día 1'],
+    ['R','Reescribir los archivos crudos de aterrizaje','sin la línea de Renata, el día 2'],
+    ['V','VACUUM y expirar versiones','cada noche, con 7 días de retención'],
+    ['K','Respaldos que caducan a los 35 días','y el borrado se reaplica si se restaura uno'],
+    ['P','Entorno de pruebas con datos sintéticos','generar_tienda.py en lugar de una copia'],
+    ['E','Extractos registrados en el catálogo','quien bajó un CSV recibe el aviso'],
+    ['M','Recalcular variables y reentrenar','en el ciclo semanal, día 7']
+  ];
+  // c: si la verificación automática lo revisa (está en el catálogo); f(dia,on) -> [estado, por qué]
+  const LUG=[
+    {n:'Base de la tienda',d:'clientes · fila 1042',k:'var(--c-fis)',c:true,f:(d,o)=>o.O&&d>=1?['fuera','Diego borró la fila en el origen.']:['esta','La fila de origen con su nombre, correo y ciudad.']},
+    {n:'Pedidos y pagos de la base',d:'pedido 59521 · pago 61561',k:'var(--c-fis)',c:true,f:(d,o)=>o.S&&o.O&&d>=1?['conserva','Se guardan por auditoría contable con cliente_id 1042, que ya no apunta a nadie.']:(o.O&&d>=1?['conserva','Quedan con cliente_id 1042; sin la fila de clientes, la clave sola no la nombra. Falta escribir por qué se conservan.']:['esta','El pedido se une a la fila de clientes: se sabe que es de Renata.'])},
+    {n:'Aterrizaje (bronce)',d:'aterrizaje/clientes/*.jsonl',k:'var(--c-enl)',c:true,f:(d,o)=>o.R&&d>=2?['fuera','Los archivos crudos se reescribieron sin su línea.']:['esta','Los JSONL crudos son de solo agregar: nadie los toca, y ahí está su correo.']},
+    {n:'Plata',d:'plata.clientes (Delta)',k:'var(--c-red)',c:true,f:(d,o)=>o.D&&d>=1?['fuera','La consulta ya no la devuelve (ojo: sus archivos viejos siguen en el disco).']:['esta','La tabla limpia de clientes la tiene, con su ciudad corregida.']},
+    {n:'Dimensión de clientes',d:'oro.dim_clientes · 2 filas (SCD 2)',k:'var(--c-red)',c:true,f:(d,o)=>o.D&&d>=1?['fuera','Se borraron las dos versiones: Quito y Lima.']:['esta','Dos filas, por la mudanza de Quito a Lima del 1 de noviembre.']},
+    {n:'Versiones anteriores',d:'viaje en el tiempo · archivos sin referencia',k:'var(--c-red)',c:true,f:(d,o)=>!(o.D&&d>=1)?['esta','La versión actual todavía la tiene.']:(o.V&&d>=8?['fuera','El VACUUM borró del disco los archivos que solo usaban las versiones viejas.']:['esta','DELETE escribe archivos nuevos; los viejos siguen para el viaje en el tiempo.'+(o.V?' El VACUUM los borra al pasar los 7 días.':' Sin VACUUM, para siempre.')])},
+    {n:'Respaldos',d:'copia nocturna de la base y del lago',k:'var(--c-red)',c:false,f:(d,o)=>o.K&&d>=36?['fuera','Caducó el último respaldo anterior a la solicitud.']:['esta',o.K?'Los respaldos no se editan: caducan a los 35 días. Si se restaura uno antes, el borrado se reaplica.':'Respaldos mensuales guardados un año: si se restaura uno, Renata vuelve.']},
+    {n:'Entorno de pruebas',d:'copia de producción de septiembre',k:'var(--c-red)',c:true,f:(d,o)=>o.P&&d>=1?['fuera','Pruebas con datos sintéticos: nunca hubo clientes reales.']:['esta','Una copia completa de producción que alguien hizo para probar.']},
+    {n:'Extracto de Martín',d:'ventas_por_cliente.csv en su laptop',k:'var(--c-apl)',c:false,ce:'E',f:(d,o)=>o.E&&d>=3?['fuera','El catálogo sabía que existía; Martín lo borró y lo confirmó.']:['esta','Bajado en agosto para un análisis. Nadie lo registró.']},
+    {n:'Eventos de la app',d:'tema compras · retención 7 días',k:'var(--c-enl)',c:true,f:d=>d>=7?['fuera','El tema descarta solo los eventos de más de 7 días.']:['esta','Los eventos de compra llevan cliente_id y correo; caducan a los 7 días.']},
+    {n:'Variables para recomendaciones',d:'variables_cliente · modelo semanal',k:'var(--c-apl)',c:true,f:(d,o)=>o.M&&d>=7?['fuera','Se recalcularon las variables y el modelo se reentrenó sin ella.']:['esta','Una fila de variables por cliente; el modelo de esta semana aprendió de ella.']},
+    {n:'Pronóstico de Irene',d:'demanda por categoría',k:'var(--c-apl)',c:true,f:()=>['fuera','Nunca la tuvo: aprende de totales por categoría y día.']}
+  ];
+  const on={};
+  let ver=false;
+  $('#c11l1-acc').innerHTML=A.map(([k,t,s])=>'<label><input type="checkbox" data-k="'+k+'"><span>'+t+'<small>'+s+'</small></span></label>').join('');
+  function pintar(){
+    const d=parseInt($('#c11l1-d').value,10);
+    $('#c11l1-od').textContent=d===1?'1 día':d+' días';
+    let esta=[],vistos=[],ciegos=[];
+    $('#c11l1-grid').innerHTML=LUG.map(l=>{
+      const [e,por]=l.f(d,on);
+      const enCat=l.c||(l.ce&&on[l.ce]);
+      if(e==='esta'){esta.push(l.n);(enCat?vistos:ciegos).push(l.n);}
+      const et={esta:'Sigue aquí',fuera:'Ya no está',conserva:'Se conserva'}[e];
+      const v=ver?'<span class="ver">'+(enCat?(e==='esta'?'Verificación: la encuentra':'Verificación: no la encuentra'):'Verificación: no lo revisa')+'</span>':'';
+      return '<div class="c11l1-l '+e+'" style="border-left-color:'+l.k+'"><span class="e">'+et+'</span><b>'+l.n+'</b><code>'+l.d+'</code><span class="p">'+por+'</span>'+v+'</div>';
+    }).join('');
+    let t='<span class="big">Renata sigue en '+esta.length+' de '+LUG.length+' lugares el día '+d+'.</span>';
+    if(ver){
+      if(vistos.length===0&&ciegos.length>0)t+='<span class="warn">La verificación dice «cero coincidencias», pero Renata sigue en: '+ciegos.join(', ')+'. Lo que no está en el catálogo no se verifica.</span>';
+      else if(vistos.length===0)t+='<span class="ok">La verificación no la encuentra en ningún lugar del catálogo, y no queda ninguna copia fuera de él. Ya puedes cerrar la solicitud con evidencia.</span>';
+      else t+='<span>La verificación la encuentra en: '+vistos.join(', ')+'.'+(ciegos.length?' Y no revisa: '+ciegos.join(', ')+'.':'')+'</span>';
+    }else if(esta.length===0)t+='<span class="ok">Ningún lugar la conserva con sus datos personales. Corre la verificación para tener la evidencia.</span>';
+    else if(Object.keys(on).filter(k=>on[k]).join('')==='O')t+='<span class="warn">Borrar en el origen no borra la plataforma: cada capa guardó su propia copia.</span>';
+    else t+='<span>Mueve los días: algunas copias desaparecen solas cuando vence su plazo (eventos, respaldos, versiones). Otras no se van nunca si nadie hace nada.</span>';
+    $('#c11l1-out').innerHTML=t;
+  }
+  function sync(){raiz.querySelectorAll('[data-k]').forEach(c=>{c.checked=!!on[c.dataset.k];});pintar();}
+  raiz.querySelectorAll('[data-k]').forEach(c=>c.addEventListener('change',()=>{on[c.dataset.k]=c.checked;$('#c11l1-nada').setAttribute('aria-pressed','false');$('#c11l1-todo').setAttribute('aria-pressed','false');pintar();}));
+  $('#c11l1-d').addEventListener('input',pintar);
+  $('#c11l1-nada').addEventListener('click',e=>{A.forEach(a=>on[a[0]]=a[0]==='O');e.currentTarget.setAttribute('aria-pressed','true');$('#c11l1-todo').setAttribute('aria-pressed','false');sync();});
+  $('#c11l1-todo').addEventListener('click',e=>{A.forEach(a=>on[a[0]]=true);e.currentTarget.setAttribute('aria-pressed','true');$('#c11l1-nada').setAttribute('aria-pressed','false');sync();});
+  $('#c11l1-ver').addEventListener('click',e=>{ver=!ver;e.currentTarget.setAttribute('aria-pressed',String(ver));pintar();});
+  on.O=true;sync();
+})();
+</script>
+</body>
+</html>
