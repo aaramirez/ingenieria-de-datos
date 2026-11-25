@@ -173,87 +173,87 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <div class="c4l2-bar" id="c4l2-elt" aria-hidden="true"></div>
   <div class="c4l2-donde" id="c4l2-eltd"></div>
 </div>
-<div class="readout texto" id="c4l2-out" aria-live="polite"></div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>El mismo resultado con ETL y con ELT</h3></div><p>Vas a calcular las ventas netas por día de dos maneras: con un programa que transforma en Python y carga solo el resultado (ETL), y copiando las tablas crudas al almacén para transformarlas ahí con SQL (ELT). Usa la carpeta <code>datos-tienda</code> y el entorno virtual de los capítulos 02 y 03, que ya tiene <code>duckdb</code>; la base <code>tienda.db</code> debe estar recién creada, sin <code>--avanzar</code> (si avanzaste días en el capítulo 02, vuelve a crearla con <code>generar_tienda.py</code>).</p><div class="code-copia"><pre><code>"""ETL: extrae de la base de la tienda, transforma en Python y carga solo el resultado."""
-import sqlite3
-import time
-from collections import defaultdict
-
-import duckdb
-
-ESTADOS_VENTA = {"pagado", "enviado", "entregado"}
-
-# E: extraer del origen (una consulta de solo lectura a la base de la tienda)
-t0 = time.perf_counter()
-origen = sqlite3.connect("file:tienda.db?mode=ro", uri=True)
-filas = origen.execute("""
-    SELECT p.pedido_id, substr(p.creado_en, 1, 10), p.estado, d.cantidad, d.precio_unitario
-    FROM pedidos p JOIN detalle_pedido d ON d.pedido_id = p.pedido_id""").fetchall()
-origen.close()
-t1 = time.perf_counter()
-
-# T: transformar fuera del almacén, en la memoria de este programa
-monto = defaultdict(float)
-pedidos = defaultdict(set)
-for pedido_id, dia, estado, cantidad, precio in filas:
-    if estado in ESTADOS_VENTA:
-        monto[dia] += cantidad * precio
-        pedidos[dia].add(pedido_id)
-tabla = [(dia, round(monto[dia], 2), len(pedidos[dia])) for dia in sorted(monto)]
-t2 = time.perf_counter()
-
-# L: cargar en el almacén solo la tabla final
-alm = duckdb.connect("almacen.duckdb")
-alm.execute("CREATE OR REPLACE TABLE ventas_diarias_etl "
-            "(dia DATE, ventas_netas DECIMAL(12,2), pedidos INTEGER)")
-alm.executemany("INSERT INTO ventas_diarias_etl VALUES (?, ?, ?)", tabla)
-t3 = time.perf_counter()
-
-total, n = alm.execute("SELECT SUM(ventas_netas), SUM(pedidos) FROM ventas_diarias_etl "
-                       "WHERE dia BETWEEN '2026-10-01' AND '2026-10-31'").fetchone()
-print(f"Extraer {t1 - t0:.2f} s | transformar {t2 - t1:.2f} s | cargar {t3 - t2:.2f} s")
-print(f"{len(filas)} filas leídas, {len(tabla)} filas cargadas")
-print(f"Octubre: US$ {total} en {n} pedidos")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="code-copia"><pre><code>"""ELT: copia las tablas crudas al almacén y transforma ahí, con SQL."""
-import time
-
-import duckdb
-
-alm = duckdb.connect("almacen.duckdb")
-alm.execute("INSTALL sqlite; LOAD sqlite;")
-alm.execute("ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")
-
-# E + L: copiar las tablas tal como están en el origen, sin cambiarlas
-t0 = time.perf_counter()
-alm.execute("CREATE SCHEMA IF NOT EXISTS crudo")
-for tabla in ("pedidos", "detalle_pedido", "productos", "clientes"):
-    alm.execute(f"CREATE OR REPLACE TABLE crudo.{tabla} AS SELECT * FROM tienda.{tabla}")
-alm.execute("DETACH tienda")
-t1 = time.perf_counter()
-
-# T: transformar dentro del almacén, con su propio motor
-alm.execute("""
-    CREATE OR REPLACE TABLE ventas_diarias_elt AS
-    SELECT CAST(p.creado_en AS TIMESTAMP)::DATE AS dia,
-           CAST(SUM(d.cantidad * d.precio_unitario) AS DECIMAL(12,2)) AS ventas_netas,
-           COUNT(DISTINCT p.pedido_id) AS pedidos
-    FROM crudo.pedidos p JOIN crudo.detalle_pedido d ON d.pedido_id = p.pedido_id
-    WHERE p.estado IN ('pagado', 'enviado', 'entregado')
-    GROUP BY 1""")
-t2 = time.perf_counter()
-
-total, n = alm.execute("SELECT SUM(ventas_netas), SUM(pedidos) FROM ventas_diarias_elt "
-                       "WHERE dia BETWEEN '2026-10-01' AND '2026-10-31'").fetchone()
-filas = alm.execute("SELECT COUNT(*) FROM crudo.detalle_pedido").fetchone()[0]
-print(f"Extraer y cargar {t1 - t0:.2f} s | transformar {t2 - t1:.2f} s")
-print(f"{filas} líneas crudas guardadas en el almacén")
-print(f"Octubre: US$ {total} en {n} pedidos")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda el primer script como <code>etl.py</code> y el segundo como <code>elt.py</code> en <code>datos-tienda</code>. Activa el entorno y córrelos:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>cd $HOME\datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>.venv\Scripts\activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python etl.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python elt.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>cd ~/datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>source .venv/bin/activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 etl.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 elt.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Elena pide ahora las ventas de octubre por canal. Con ELT no hace falta volver al origen: la pregunta se responde con el crudo que ya está en el almacén. Guarda esto como <code>por_canal.py</code> y córrelo igual que los anteriores (<code>python por_canal.py</code> en Windows, <code>python3 por_canal.py</code> en macOS y Linux):</span></li></ol><div class="code-copia"><pre><code>"""Una pregunta nueva, respondida con el crudo que ya está en el almacén."""
-import duckdb
-
-duckdb.connect("almacen.duckdb").sql("""
-    SELECT p.canal, CAST(SUM(d.cantidad * d.precio_unitario) AS DECIMAL(12,2)) AS ventas
-    FROM crudo.pedidos p JOIN crudo.detalle_pedido d ON d.pedido_id = p.pedido_id
-    WHERE p.estado IN ('pagado', 'enviado', 'entregado')
-      AND p.creado_en &gt;= '2026-10-01' AND p.creado_en &lt; '2026-11-01'
-    GROUP BY p.canal ORDER BY p.canal""").show()</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps" start="3" style="counter-reset:st 2"><li><span>Piensa cómo responderías la misma pregunta con la tabla <code>ventas_diarias_etl</code>.</span></li></ol><p><b>Qué observar:</b> los dos programas dan <b>US$ 782.785,77 en 8.376 pedidos</b>, la cifra del tablero. El ETL leyó 114.112 líneas y cargó solo 304 filas, una por día: es liviano, pero ya no sabe nada del canal, y responder la nueva pregunta exige cambiar el programa y volver a leer la base de Diego. El ELT guardó las 114.112 líneas en <code>crudo</code>, y la pregunta por canal se contesta en una línea (app US$ 356.264,09, web US$ 426.521,68). Mira también los tiempos: en tu equipo la carga del ETL probablemente sea el paso más lento, aunque inserta muchas menos filas que el ELT. Los segundos exactos varían con cada computadora.</p></div></section>
+<div class="readout texto" id="c4l2-out" aria-live="polite"></div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>El mismo resultado con ETL y con ELT</h3></div><p>Vas a calcular las ventas netas por día de dos maneras: con un programa que transforma en Python y carga solo el resultado (ETL), y copiando las tablas crudas al almacén para transformarlas ahí con SQL (ELT). Usa la carpeta <code>datos-tienda</code> y el entorno virtual de los capítulos 02 y 03, que ya tiene <code>duckdb</code>; la base <code>tienda.db</code> debe estar recién creada, sin <code>--avanzar</code> (si avanzaste días en el capítulo 02, vuelve a crearla con <code>generar_tienda.py</code>).</p><div class="code-copia code-lineas"><pre><code><span class="ln">"""ETL: extrae de la base de la tienda, transforma en Python y carga solo el resultado."""</span>
+<span class="ln">import sqlite3</span>
+<span class="ln">import time</span>
+<span class="ln">from collections import defaultdict</span>
+<span class="ln"></span>
+<span class="ln">import duckdb</span>
+<span class="ln"></span>
+<span class="ln">ESTADOS_VENTA = {"pagado", "enviado", "entregado"}</span>
+<span class="ln"></span>
+<span class="ln"># E: extraer del origen (una consulta de solo lectura a la base de la tienda)</span>
+<span class="ln">t0 = time.perf_counter()</span>
+<span class="ln">origen = sqlite3.connect("file:tienda.db?mode=ro", uri=True)</span>
+<span class="ln">filas = origen.execute("""</span>
+<span class="ln">    SELECT p.pedido_id, substr(p.creado_en, 1, 10), p.estado, d.cantidad, d.precio_unitario</span>
+<span class="ln">    FROM pedidos p JOIN detalle_pedido d ON d.pedido_id = p.pedido_id""").fetchall()</span>
+<span class="ln">origen.close()</span>
+<span class="ln">t1 = time.perf_counter()</span>
+<span class="ln"></span>
+<span class="ln"># T: transformar fuera del almacén, en la memoria de este programa</span>
+<span class="ln">monto = defaultdict(float)</span>
+<span class="ln">pedidos = defaultdict(set)</span>
+<span class="ln">for pedido_id, dia, estado, cantidad, precio in filas:</span>
+<span class="ln">    if estado in ESTADOS_VENTA:</span>
+<span class="ln">        monto[dia] += cantidad * precio</span>
+<span class="ln">        pedidos[dia].add(pedido_id)</span>
+<span class="ln">tabla = [(dia, round(monto[dia], 2), len(pedidos[dia])) for dia in sorted(monto)]</span>
+<span class="ln">t2 = time.perf_counter()</span>
+<span class="ln"></span>
+<span class="ln"># L: cargar en el almacén solo la tabla final</span>
+<span class="ln">alm = duckdb.connect("almacen.duckdb")</span>
+<span class="ln">alm.execute("CREATE OR REPLACE TABLE ventas_diarias_etl "</span>
+<span class="ln">            "(dia DATE, ventas_netas DECIMAL(12,2), pedidos INTEGER)")</span>
+<span class="ln">alm.executemany("INSERT INTO ventas_diarias_etl VALUES (?, ?, ?)", tabla)</span>
+<span class="ln">t3 = time.perf_counter()</span>
+<span class="ln"></span>
+<span class="ln">total, n = alm.execute("SELECT SUM(ventas_netas), SUM(pedidos) FROM ventas_diarias_etl "</span>
+<span class="ln">                       "WHERE dia BETWEEN '2026-10-01' AND '2026-10-31'").fetchone()</span>
+<span class="ln">print(f"Extraer {t1 - t0:.2f} s | transformar {t2 - t1:.2f} s | cargar {t3 - t2:.2f} s")</span>
+<span class="ln">print(f"{len(filas)} filas leídas, {len(tabla)} filas cargadas")</span>
+<span class="ln">print(f"Octubre: US$ {total} en {n} pedidos")</span></code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="code-copia code-lineas"><pre><code><span class="ln">"""ELT: copia las tablas crudas al almacén y transforma ahí, con SQL."""</span>
+<span class="ln">import time</span>
+<span class="ln"></span>
+<span class="ln">import duckdb</span>
+<span class="ln"></span>
+<span class="ln">alm = duckdb.connect("almacen.duckdb")</span>
+<span class="ln">alm.execute("INSTALL sqlite; LOAD sqlite;")</span>
+<span class="ln">alm.execute("ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")</span>
+<span class="ln"></span>
+<span class="ln"># E + L: copiar las tablas tal como están en el origen, sin cambiarlas</span>
+<span class="ln">t0 = time.perf_counter()</span>
+<span class="ln">alm.execute("CREATE SCHEMA IF NOT EXISTS crudo")</span>
+<span class="ln">for tabla in ("pedidos", "detalle_pedido", "productos", "clientes"):</span>
+<span class="ln">    alm.execute(f"CREATE OR REPLACE TABLE crudo.{tabla} AS SELECT * FROM tienda.{tabla}")</span>
+<span class="ln">alm.execute("DETACH tienda")</span>
+<span class="ln">t1 = time.perf_counter()</span>
+<span class="ln"></span>
+<span class="ln"># T: transformar dentro del almacén, con su propio motor</span>
+<span class="ln">alm.execute("""</span>
+<span class="ln">    CREATE OR REPLACE TABLE ventas_diarias_elt AS</span>
+<span class="ln">    SELECT CAST(p.creado_en AS TIMESTAMP)::DATE AS dia,</span>
+<span class="ln">           CAST(SUM(d.cantidad * d.precio_unitario) AS DECIMAL(12,2)) AS ventas_netas,</span>
+<span class="ln">           COUNT(DISTINCT p.pedido_id) AS pedidos</span>
+<span class="ln">    FROM crudo.pedidos p JOIN crudo.detalle_pedido d ON d.pedido_id = p.pedido_id</span>
+<span class="ln">    WHERE p.estado IN ('pagado', 'enviado', 'entregado')</span>
+<span class="ln">    GROUP BY 1""")</span>
+<span class="ln">t2 = time.perf_counter()</span>
+<span class="ln"></span>
+<span class="ln">total, n = alm.execute("SELECT SUM(ventas_netas), SUM(pedidos) FROM ventas_diarias_elt "</span>
+<span class="ln">                       "WHERE dia BETWEEN '2026-10-01' AND '2026-10-31'").fetchone()</span>
+<span class="ln">filas = alm.execute("SELECT COUNT(*) FROM crudo.detalle_pedido").fetchone()[0]</span>
+<span class="ln">print(f"Extraer y cargar {t1 - t0:.2f} s | transformar {t2 - t1:.2f} s")</span>
+<span class="ln">print(f"{filas} líneas crudas guardadas en el almacén")</span>
+<span class="ln">print(f"Octubre: US$ {total} en {n} pedidos")</span></code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda el primer script como <code>etl.py</code> y el segundo como <code>elt.py</code> en <code>datos-tienda</code>. Activa el entorno y córrelos:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>cd $HOME\datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>.venv\Scripts\activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python etl.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python elt.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>cd ~/datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>source .venv/bin/activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 etl.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 elt.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Elena pide ahora las ventas de octubre por canal. Con ELT no hace falta volver al origen: la pregunta se responde con el crudo que ya está en el almacén. Guarda esto como <code>por_canal.py</code> y córrelo igual que los anteriores (<code>python por_canal.py</code> en Windows, <code>python3 por_canal.py</code> en macOS y Linux):</span></li></ol><div class="code-copia code-lineas"><pre><code><span class="ln">"""Una pregunta nueva, respondida con el crudo que ya está en el almacén."""</span>
+<span class="ln">import duckdb</span>
+<span class="ln"></span>
+<span class="ln">duckdb.connect("almacen.duckdb").sql("""</span>
+<span class="ln">    SELECT p.canal, CAST(SUM(d.cantidad * d.precio_unitario) AS DECIMAL(12,2)) AS ventas</span>
+<span class="ln">    FROM crudo.pedidos p JOIN crudo.detalle_pedido d ON d.pedido_id = p.pedido_id</span>
+<span class="ln">    WHERE p.estado IN ('pagado', 'enviado', 'entregado')</span>
+<span class="ln">      AND p.creado_en &gt;= '2026-10-01' AND p.creado_en &lt; '2026-11-01'</span>
+<span class="ln">    GROUP BY p.canal ORDER BY p.canal""").show()</span></code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps" start="3" style="counter-reset:st 2"><li><span>Piensa cómo responderías la misma pregunta con la tabla <code>ventas_diarias_etl</code>.</span></li></ol><p><b>Qué observar:</b> los dos programas dan <b>US$ 782.785,77 en 8.376 pedidos</b>, la cifra del tablero. El ETL leyó 114.112 líneas y cargó solo 304 filas, una por día: es liviano, pero ya no sabe nada del canal, y responder la nueva pregunta exige cambiar el programa y volver a leer la base de Diego. El ELT guardó las 114.112 líneas en <code>crudo</code>, y la pregunta por canal se contesta en una línea (app US$ 356.264,09, web US$ 426.521,68). Mira también los tiempos: en tu equipo la carga del ETL probablemente sea el paso más lento, aunque inserta muchas menos filas que el ELT. Los segundos exactos varían con cada computadora.</p></div></section>
 <section><h2>Por lotes frente a en streaming: latencia, costo y complejidad</h2><div class="prose"><p>La segunda decisión es cada cuánto corre el pipeline. Elena hoy ve el tablero del día anterior, y está conforme. Pero el equipo de marketing quiere saber, durante la semana de descuentos del 19 al 25 de octubre, cuánto se está vendiendo <b>ahora</b>, para subir o bajar la publicidad sobre la marcha.</p></div><div class="analogia"><b>Imagínalo así</b><p>El correo postal pasa una vez al día: junta todas las cartas y las entrega juntas. Es barato y casi nunca falla, pero una carta escrita a las ocho de la mañana llega al día siguiente. Un mensaje de chat llega en un segundo, pero necesita una red encendida todo el tiempo y un sistema que sepa qué hacer si dos mensajes llegan desordenados.</p></div><div class="prose"><ul><li><b>Por lotes</b> (<i>batch</i>): el pipeline procesa de una vez todo lo que se acumuló desde la última corrida, típicamente cada noche. Es lo que hacen los scripts de la práctica.</li><li><b>Micro-lotes</b> (<i>micro-batch</i>): lotes pequeños y frecuentes, cada cinco o quince minutos. Es el mismo código por lotes, corriendo muchas veces.</li><li><b>En streaming</b> (flujo continuo): cada evento (un pedido creado, un pago aprobado) se procesa en cuanto llega, en segundos o menos. Exige otras herramientas, como Kafka y Flink, que son el tema del capítulo 08.</li></ul><p>La medida que las separa es la <b>latencia</b> (<i>latency</i>): el tiempo entre que algo pasa en el negocio y que aparece en el tablero. Pero la latencia baja tiene precio.</p></div><figure class="fig fig-comparacion" id="04-diagrama-3"><div class="lienzo"><svg viewBox="0 0 900 470" style="min-width:760px" role="img" aria-label="Tres maneras de procesar los pedidos de un día. Por lotes: todos los pedidos esperan al proceso de las 02:00 de la noche siguiente. En micro-lotes: un proceso corto cada 15 minutos. En streaming: cada pedido se procesa segundos después de llegar. Abajo, una tabla compara latencia, costo y complejidad">
 <defs><marker id="c4d3-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-warm"/></marker></defs>
 <text x="170" y="24" class="t t-xs t-b t-m">UN DÍA DE PEDIDOS (CADA PUNTO ES UN PEDIDO)</text>
@@ -511,42 +511,42 @@ duckdb.connect("almacen.duckdb").sql("""
 <line x1="32" y1="403" x2="868" y2="403" class="ln" style="stroke-width:.6"/>
 <text x="36" y="422" class="t t-b">Streaming</text><text x="230" y="422" class="t t-s">segundos</text><text x="450" y="422" class="t t-s">alto: siempre encendido</text><text x="670" y="422" class="t t-s">alta: orden, tardíos, estado</text>
 </svg></div><figcaption><b>El mismo día de pedidos, procesado de tres maneras.</b> Cada punto ámbar es un pedido; los bloques morados son las corridas del pipeline. Por lotes, el pedido 59521 de Renata, creado a las 19:32, espera al proceso de las 02:00 y llega al tablero al día siguiente. En micro-lotes llega en el siguiente corte de quince minutos. En streaming, la línea morada no se apaga nunca y el pedido aparece segundos después. La tabla de abajo resume lo que se gana y lo que se paga en cada caso.</figcaption></figure><div class="prose"><p>Tres preguntas para decidir:</p><ol class="steps"><li><span><b>¿Qué decisión se toma con el dato, y cada cuánto?</b> Si Elena decide el presupuesto una vez por semana, un tablero al segundo no cambia nada. Si un sistema bloquea pagos sospechosos, un día de atraso es inaceptable.</span></li><li><span><b>¿Cuánto cuesta tener algo siempre encendido?</b> Un lote nocturno usa cómputo media hora; un proceso de streaming lo usa las veinticuatro horas, y alguien tiene que atenderlo de madrugada si se cae.</span></li><li><span><b>¿Qué tan difícil es corregir?</b> En un lote, si algo salió mal, se arregla y se vuelve a correr la noche. En streaming hay que pensar en eventos que llegan tarde, desordenados o repetidos, y en un estado que se mantiene en memoria.</span></li></ol><p>Una regla práctica que usan muchos equipos: empezar por lotes, bajar a micro-lotes cuando el negocio lo pida con una decisión concreta en la mano, y llegar a streaming solo cuando los minutos de atraso cuestan dinero. Para la semana de descuentos, Natalia propone micro-lotes cada quince minutos, con el mismo código del lote nocturno.</p></div></section>
-<section><h2>Pasos idempotentes y cargas que se pueden repetir</h2><div class="prose"><p>Un pipeline va a fallar. La red se corta en la mitad de una carga, el almacén rechaza una conexión, alguien lo vuelve a lanzar a mano «por las dudas». La pregunta no es si se va a correr dos veces, sino qué pasa cuando ocurra.</p></div><div class="analogia"><b>Imagínalo así</b><p>Apretar el botón del ascensor tres veces no trae tres ascensores: el ascensor ya sabe que alguien espera en ese piso, y repetir el pedido no cambia nada. En cambio, apretar tres veces «pagar» en una tienda mal hecha puede cobrarte tres veces. El primer botón es idempotente; el segundo, no.</p></div><div class="prose"><p>Un paso es <b>idempotente</b> (<i>idempotent</i>) cuando correrlo una vez o diez veces con la misma entrada deja el destino en el mismo estado. Es la propiedad más importante de un pipeline, porque permite reintentar sin miedo y reprocesar el pasado cuando se corrige un error. Ya la viste en la ingesta del capítulo 02; ahora se aplica a la transformación y a la carga.</p><p>Las formas más comunes de lograrlo:</p><ul><li><b>Reemplazar en lugar de agregar.</b> <code>CREATE OR REPLACE TABLE</code> reconstruye la tabla entera en cada corrida. Es simple y perfecto para tablas chicas, como <code>ventas_diarias</code>.</li><li><b>Reemplazar la partición.</b> Cuando la tabla es grande y cada corrida procesa un día, se borra ese día y se vuelve a escribir: <code>DELETE</code> del día más <code>INSERT</code> del día, <b>dentro de una misma transacción</b>, para que nadie vea la tabla a medias. Una <b>partición</b> (<i>partition</i>) es el trozo de la tabla que corresponde a un valor de una columna, como un día o un mes.</li><li><b>Fusionar por clave.</b> <code>MERGE</code> o <code>INSERT ... ON CONFLICT DO UPDATE</code> actualiza la fila si la clave ya existe y la inserta si no. A esta operación se le llama <b>upsert</b> (actualizar o insertar). Sirve cuando cada fila tiene una clave natural, como <code>pedido_id</code>.</li></ul><p>Lo que <b>no</b> es idempotente: un <code>INSERT</code> sin más, que agrega otra copia en cada corrida, y cualquier paso que dependa de «ahora» (<code>now()</code>, «los pedidos de las últimas 24 horas»). Si el pipeline del lunes falla y se vuelve a correr el martes, «las últimas 24 horas» ya son otras. Por eso un pipeline bien hecho recibe la fecha que procesa como parámetro (<code>--dia 2026-10-14</code>) y no la calcula.</p></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Corre dos veces la misma carga</h3></div><p>Vas a cargar las ventas por categoría del 14 de octubre, el día del pedido de Renata, primero con un <code>INSERT</code> simple y después borrando y reescribiendo el día. Necesitas el almacén con el esquema <code>crudo</code> de la práctica anterior.</p><div class="code-copia"><pre><code>"""Carga las ventas de un día por categoría. Prueba los dos modos y córrelo dos veces."""
-import argparse
-
-import duckdb
-
-p = argparse.ArgumentParser()
-p.add_argument("--dia", default="2026-10-14")
-p.add_argument("--modo", choices=["agregar", "reemplazar"], default="reemplazar")
-a = p.parse_args()
-
-alm = duckdb.connect("almacen.duckdb")
-alm.execute("CREATE TABLE IF NOT EXISTS ventas_categoria_dia "
-            "(dia DATE, categoria VARCHAR, ventas_netas DECIMAL(12,2), cargado_en TIMESTAMP)")
-lote = """
-    SELECT CAST(p.creado_en AS TIMESTAMP)::DATE, pr.categoria,
-           CAST(SUM(d.cantidad * d.precio_unitario) AS DECIMAL(12,2)), now()
-    FROM crudo.pedidos p
-    JOIN crudo.detalle_pedido d ON d.pedido_id = p.pedido_id
-    JOIN crudo.productos pr ON pr.producto_id = d.producto_id
-    WHERE p.estado IN ('pagado', 'enviado', 'entregado')
-      AND CAST(p.creado_en AS TIMESTAMP)::DATE = CAST(? AS DATE)
-    GROUP BY 1, 2"""
-
-if a.modo == "agregar":
-    # No idempotente: cada corrida suma otra copia del día
-    alm.execute(f"INSERT INTO ventas_categoria_dia {lote}", [a.dia])
-else:
-    # Idempotente: borra la partición del día y la vuelve a escribir, todo o nada
-    alm.execute("BEGIN TRANSACTION")
-    alm.execute("DELETE FROM ventas_categoria_dia WHERE dia = CAST(? AS DATE)", [a.dia])
-    alm.execute(f"INSERT INTO ventas_categoria_dia {lote}", [a.dia])
-    alm.execute("COMMIT")
-
-filas, total = alm.execute("SELECT COUNT(*), SUM(ventas_netas) FROM ventas_categoria_dia "
-                           "WHERE dia = CAST(? AS DATE)", [a.dia]).fetchone()
-print(f"Modo {a.modo}: el {a.dia} tiene {filas} filas y US$ {total}")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda el script como <code>cargar_dia.py</code> y córrelo cuatro veces, en este orden:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python cargar_dia.py --modo agregar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python cargar_dia.py --modo agregar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python cargar_dia.py --modo reemplazar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python cargar_dia.py --modo reemplazar</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 cargar_dia.py --modo agregar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 cargar_dia.py --modo agregar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 cargar_dia.py --modo reemplazar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 cargar_dia.py --modo reemplazar</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Prueba con otro día, por ejemplo <code>--dia 2026-10-21</code>, y vuelve a correr el 14: los demás días no se tocan.</span></li></ol><p><b>Qué observar:</b> con <code>agregar</code>, la primera corrida deja 6 filas (una por categoría) y US$ 18.885,50; la segunda, 12 filas y US$ 37.771,00: el día de Renata se vendió el doble sin que nadie comprara nada. La primera corrida con <code>reemplazar</code> borra las dos copias y deja otra vez 6 filas y US$ 18.885,50, y la segunda no cambia nada. Ese es el arreglo de un pipeline no idempotente: una corrida idempotente sobre el mismo día. Fíjate en que la columna <code>cargado_en</code> usa <code>now()</code>: es útil para auditar, pero por eso nunca debe usarse para decidir qué filas procesar.</p></div><div class="caso"><b>Un caso real</b><p><b>La venta que se duplicó en la madrugada.</b> Un caso que se repite en equipos de comercio electrónico: el pipeline nocturno carga las ventas del día con un <code>INSERT</code>, falla después de escribir la mitad de las filas por un corte de red, y el orquestador lo reintenta automáticamente, como debe. Por la mañana el tablero muestra una venta récord que no existió, y alguien la presenta en la reunión antes de que nadie la revise. El arreglo nunca es «no reintentar»: los reintentos son necesarios. El arreglo es que la carga sea idempotente (reemplazar la partición del día dentro de una transacción) y que una prueba compare el total con otra fuente antes de publicar.</p></div></section>
+<section><h2>Pasos idempotentes y cargas que se pueden repetir</h2><div class="prose"><p>Un pipeline va a fallar. La red se corta en la mitad de una carga, el almacén rechaza una conexión, alguien lo vuelve a lanzar a mano «por las dudas». La pregunta no es si se va a correr dos veces, sino qué pasa cuando ocurra.</p></div><div class="analogia"><b>Imagínalo así</b><p>Apretar el botón del ascensor tres veces no trae tres ascensores: el ascensor ya sabe que alguien espera en ese piso, y repetir el pedido no cambia nada. En cambio, apretar tres veces «pagar» en una tienda mal hecha puede cobrarte tres veces. El primer botón es idempotente; el segundo, no.</p></div><div class="prose"><p>Un paso es <b>idempotente</b> (<i>idempotent</i>) cuando correrlo una vez o diez veces con la misma entrada deja el destino en el mismo estado. Es la propiedad más importante de un pipeline, porque permite reintentar sin miedo y reprocesar el pasado cuando se corrige un error. Ya la viste en la ingesta del capítulo 02; ahora se aplica a la transformación y a la carga.</p><p>Las formas más comunes de lograrlo:</p><ul><li><b>Reemplazar en lugar de agregar.</b> <code>CREATE OR REPLACE TABLE</code> reconstruye la tabla entera en cada corrida. Es simple y perfecto para tablas chicas, como <code>ventas_diarias</code>.</li><li><b>Reemplazar la partición.</b> Cuando la tabla es grande y cada corrida procesa un día, se borra ese día y se vuelve a escribir: <code>DELETE</code> del día más <code>INSERT</code> del día, <b>dentro de una misma transacción</b>, para que nadie vea la tabla a medias. Una <b>partición</b> (<i>partition</i>) es el trozo de la tabla que corresponde a un valor de una columna, como un día o un mes.</li><li><b>Fusionar por clave.</b> <code>MERGE</code> o <code>INSERT ... ON CONFLICT DO UPDATE</code> actualiza la fila si la clave ya existe y la inserta si no. A esta operación se le llama <b>upsert</b> (actualizar o insertar). Sirve cuando cada fila tiene una clave natural, como <code>pedido_id</code>.</li></ul><p>Lo que <b>no</b> es idempotente: un <code>INSERT</code> sin más, que agrega otra copia en cada corrida, y cualquier paso que dependa de «ahora» (<code>now()</code>, «los pedidos de las últimas 24 horas»). Si el pipeline del lunes falla y se vuelve a correr el martes, «las últimas 24 horas» ya son otras. Por eso un pipeline bien hecho recibe la fecha que procesa como parámetro (<code>--dia 2026-10-14</code>) y no la calcula.</p></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Corre dos veces la misma carga</h3></div><p>Vas a cargar las ventas por categoría del 14 de octubre, el día del pedido de Renata, primero con un <code>INSERT</code> simple y después borrando y reescribiendo el día. Necesitas el almacén con el esquema <code>crudo</code> de la práctica anterior.</p><div class="code-copia code-lineas"><pre><code><span class="ln">"""Carga las ventas de un día por categoría. Prueba los dos modos y córrelo dos veces."""</span>
+<span class="ln">import argparse</span>
+<span class="ln"></span>
+<span class="ln">import duckdb</span>
+<span class="ln"></span>
+<span class="ln">p = argparse.ArgumentParser()</span>
+<span class="ln">p.add_argument("--dia", default="2026-10-14")</span>
+<span class="ln">p.add_argument("--modo", choices=["agregar", "reemplazar"], default="reemplazar")</span>
+<span class="ln">a = p.parse_args()</span>
+<span class="ln"></span>
+<span class="ln">alm = duckdb.connect("almacen.duckdb")</span>
+<span class="ln">alm.execute("CREATE TABLE IF NOT EXISTS ventas_categoria_dia "</span>
+<span class="ln">            "(dia DATE, categoria VARCHAR, ventas_netas DECIMAL(12,2), cargado_en TIMESTAMP)")</span>
+<span class="ln">lote = """</span>
+<span class="ln">    SELECT CAST(p.creado_en AS TIMESTAMP)::DATE, pr.categoria,</span>
+<span class="ln">           CAST(SUM(d.cantidad * d.precio_unitario) AS DECIMAL(12,2)), now()</span>
+<span class="ln">    FROM crudo.pedidos p</span>
+<span class="ln">    JOIN crudo.detalle_pedido d ON d.pedido_id = p.pedido_id</span>
+<span class="ln">    JOIN crudo.productos pr ON pr.producto_id = d.producto_id</span>
+<span class="ln">    WHERE p.estado IN ('pagado', 'enviado', 'entregado')</span>
+<span class="ln">      AND CAST(p.creado_en AS TIMESTAMP)::DATE = CAST(? AS DATE)</span>
+<span class="ln">    GROUP BY 1, 2"""</span>
+<span class="ln"></span>
+<span class="ln">if a.modo == "agregar":</span>
+<span class="ln">    # No idempotente: cada corrida suma otra copia del día</span>
+<span class="ln">    alm.execute(f"INSERT INTO ventas_categoria_dia {lote}", [a.dia])</span>
+<span class="ln">else:</span>
+<span class="ln">    # Idempotente: borra la partición del día y la vuelve a escribir, todo o nada</span>
+<span class="ln">    alm.execute("BEGIN TRANSACTION")</span>
+<span class="ln">    alm.execute("DELETE FROM ventas_categoria_dia WHERE dia = CAST(? AS DATE)", [a.dia])</span>
+<span class="ln">    alm.execute(f"INSERT INTO ventas_categoria_dia {lote}", [a.dia])</span>
+<span class="ln">    alm.execute("COMMIT")</span>
+<span class="ln"></span>
+<span class="ln">filas, total = alm.execute("SELECT COUNT(*), SUM(ventas_netas) FROM ventas_categoria_dia "</span>
+<span class="ln">                           "WHERE dia = CAST(? AS DATE)", [a.dia]).fetchone()</span>
+<span class="ln">print(f"Modo {a.modo}: el {a.dia} tiene {filas} filas y US$ {total}")</span></code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda el script como <code>cargar_dia.py</code> y córrelo cuatro veces, en este orden:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python cargar_dia.py --modo agregar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python cargar_dia.py --modo agregar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python cargar_dia.py --modo reemplazar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python cargar_dia.py --modo reemplazar</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 cargar_dia.py --modo agregar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 cargar_dia.py --modo agregar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 cargar_dia.py --modo reemplazar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 cargar_dia.py --modo reemplazar</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Prueba con otro día, por ejemplo <code>--dia 2026-10-21</code>, y vuelve a correr el 14: los demás días no se tocan.</span></li></ol><p><b>Qué observar:</b> con <code>agregar</code>, la primera corrida deja 6 filas (una por categoría) y US$ 18.885,50; la segunda, 12 filas y US$ 37.771,00: el día de Renata se vendió el doble sin que nadie comprara nada. La primera corrida con <code>reemplazar</code> borra las dos copias y deja otra vez 6 filas y US$ 18.885,50, y la segunda no cambia nada. Ese es el arreglo de un pipeline no idempotente: una corrida idempotente sobre el mismo día. Fíjate en que la columna <code>cargado_en</code> usa <code>now()</code>: es útil para auditar, pero por eso nunca debe usarse para decidir qué filas procesar.</p></div><div class="caso"><b>Un caso real</b><p><b>La venta que se duplicó en la madrugada.</b> Un caso que se repite en equipos de comercio electrónico: el pipeline nocturno carga las ventas del día con un <code>INSERT</code>, falla después de escribir la mitad de las filas por un corte de red, y el orquestador lo reintenta automáticamente, como debe. Por la mañana el tablero muestra una venta récord que no existió, y alguien la presenta en la reunión antes de que nadie la revise. El arreglo nunca es «no reintentar»: los reintentos son necesarios. El arreglo es que la carga sea idempotente (reemplazar la partición del día dentro de una transacción) y que una prueba compare el total con otra fuente antes de publicar.</p></div></section>
 <section><h2>Herramientas del mercado: de los ETL gráficos a los conectores administrados</h2><div class="prose"><p>Las herramientas para mover datos acompañaron los cambios del patrón. A noviembre de 2026, el mercado se reparte, a grandes rasgos, en cuatro familias. Se nombran como ejemplos públicos, no como recomendación.</p><div class="tbl"><table><thead><tr><th>Familia</th><th>Qué hace</th><th>Ejemplos públicos</th></tr></thead><tbody><tr><td><b>ETL gráficos</b></td><td>El pipeline se dibuja arrastrando cajas (leer, filtrar, unir, escribir) en una aplicación de escritorio o web, y corre en el servidor de la herramienta</td><td>Informatica PowerCenter, IBM DataStage, Microsoft SSIS, Pentaho Data Integration, Talend</td></tr><tr><td><b>Servicios ETL de las nubes</b></td><td>Lo mismo, como servicio administrado de una nube, con cómputo que se enciende por corrida</td><td>AWS Glue, Azure Data Factory, Google Cloud Data Fusion</td></tr><tr><td><b>Conectores administrados (la E y la L)</b></td><td>Un catálogo de cientos de <b>conectores</b> (<i>connectors</i>) ya hechos para bases, APIs de aplicaciones SaaS y archivos, que copian los datos crudos al almacén de forma incremental</td><td>Fivetran, Airbyte (de código abierto), Stitch</td></tr><tr><td><b>Transformación dentro del almacén (la T)</b></td><td>Transformaciones en SQL, versionadas, probadas y ordenadas como un grafo</td><td>dbt, SQLMesh, Dataform</td></tr></tbody></table></div><p>Un <b>conector</b> sabe hablar con un origen concreto: conoce sus tablas o sus <i>endpoints</i>, su paginación, sus límites de uso y cómo pedir solo lo nuevo. Escribir y mantener cien conectores es mucho trabajo, y por eso existen empresas que solo hacen eso. La pila moderna de ELT combina, en general, un conector administrado para la E y la L, un almacén en la nube y dbt para la T.</p><p>Detrás de cualquier herramienta están las mismas preguntas: ¿la carga es incremental?, ¿se puede repetir sin duplicar?, ¿qué pasa si el origen cambia una columna?, ¿dónde queda el registro de cada corrida? Una herramienta gráfica con un <code>INSERT</code> no idempotente tiene el mismo problema que un script. En este curso todo se hace con Python y SQL sobre DuckDB, para ver cada paso; lo aprendido se traslada a cualquiera de estas herramientas.</p></div></section>
 <section><h2>El primer pipeline de la tienda: de la base de pedidos a una tabla de ventas</h2><div class="prose"><p>Con las piezas anteriores, Natalia arma el primer pipeline de Tienda Ejemplo. Elige ELT (la tienda quiere guardar el crudo y Martín escribe SQL), por lotes (Elena decide una vez al día), con cargas idempotentes y una prueba antes de publicar. Hoy es un script; en el capítulo 09 lo tomará un orquestador y en el capítulo 10 sus transformaciones pasarán a dbt.</p></div><figure class="fig fig-flujo" id="04-diagrama-2"><div class="lienzo"><svg viewBox="0 0 900 470" style="min-width:760px" role="img" aria-label="Diagrama de secuencia del primer pipeline de la tienda: el programa programado lee en modo de solo lectura la base de la tienda, copia las tablas crudas al almacén, reemplaza dentro de una transacción las ventas del día, verifica que la suma cuadre con los pagos y solo entonces el tablero consulta la tabla de ventas">
 <defs>

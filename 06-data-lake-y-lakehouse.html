@@ -161,56 +161,56 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 </div>
 <p class="c6l2-rot" id="c6l2-atit"></p>
 <div class="c6l2-arch" id="c6l2-arch"></div>
-<div class="readout texto" id="c6l2-out" aria-live="polite"></div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Una carga mala, el viaje en el tiempo y la restauración con Delta Lake</h3></div><p>Vas a guardar las ventas netas por día como una tabla Delta en el lago, simular una recarga que duplica la semana de descuentos, leer la versión anterior y restaurarla. Trabaja en <code>datos-tienda</code> con el entorno activado; instala la biblioteca <code>deltalake</code> (ocupa unos 170 MB instalada y no necesita Spark ni Java). La base debe estar recién creada, sin <code>--avanzar</code> (si la avanzaste en el capítulo 05, vuelve a crearla con <code>generar_tienda.py</code>).</p><div class="code-copia"><pre><code>"""Una tabla Delta en el lago: una carga mala, viaje en el tiempo y restauración."""
-import shutil
-
-import duckdb
-from deltalake import DeltaTable, write_deltalake
-
-RUTA = "lago/oro/ventas_diarias"
-shutil.rmtree(RUTA, ignore_errors=True)
-
-
-def usd(x):
-    return "US$ " + f"{x:,.2f}".replace(",", " ").replace(".", ",").replace(" ", ".")
-
-
-def ventas(tabla):
-    """Ventas netas de octubre según la tabla Delta, en la versión que se le pase."""
-    datos = tabla.to_pyarrow_dataset()
-    total = duckdb.sql("""SELECT SUM(ventas_netas) FROM datos
-        WHERE dia BETWEEN DATE '2026-10-01' AND DATE '2026-10-31'""").fetchall()[0][0]
-    return usd(total)
-
-
-# Versión 0: la tabla buena, ventas netas por día calculadas desde la base de la tienda
-con = duckdb.connect()
-con.execute("INSTALL sqlite; LOAD sqlite;")
-con.execute("ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")
-buena = con.sql("""
-    SELECT CAST(CAST(p.creado_en AS TIMESTAMP) AS DATE) AS dia,
-           CAST(SUM(d.cantidad * d.precio_unitario) AS DOUBLE) AS ventas_netas
-    FROM tienda.pedidos p JOIN tienda.detalle_pedido d ON d.pedido_id = p.pedido_id
-    WHERE p.estado IN ('pagado', 'enviado', 'entregado')
-    GROUP BY 1""").to_arrow_table()
-write_deltalake(RUTA, buena)
-print(f"v0  octubre = {ventas(DeltaTable(RUTA))}")
-
-# Versión 1: alguien vuelve a cargar la semana de descuentos con modo «agregar»
-mala = duckdb.sql("""SELECT * FROM buena
-    WHERE dia BETWEEN DATE '2026-10-19' AND DATE '2026-10-25'""").to_arrow_table()
-write_deltalake(RUTA, mala, mode="append")
-print(f"v1  octubre = {ventas(DeltaTable(RUTA))}   &lt;- la carga mala")
-
-# Viaje en el tiempo: leer la tabla como estaba en la versión 0
-print(f"Viaje a v0: {ventas(DeltaTable(RUTA, version=0))}")
-for h in DeltaTable(RUTA).history():
-    print(f"  versión {h['version']}: {h['operation']} {h.get('operationParameters')}")
-
-# Restaurar: una versión nueva (v2) que vuelve al contenido de la v0
-DeltaTable(RUTA).restore(0)
-tabla = DeltaTable(RUTA)
-print(f"v{tabla.version()}  octubre = {ventas(tabla)}   &lt;- restaurada")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda el script como <code>delta.py</code>, instala la biblioteca, córrelo y mira el registro de transacciones:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>pip install deltalake</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python delta.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dir lago\oro\ventas_diarias</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dir lago\oro\ventas_diarias\_delta_log</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>type lago\oro\ventas_diarias\_delta_log\00000000000000000001.json</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>pip install deltalake</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 delta.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>ls lago/oro/ventas_diarias</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>ls lago/oro/ventas_diarias/_delta_log</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>cat lago/oro/ventas_diarias/_delta_log/00000000000000000001.json</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>En el JSON de la versión 1, busca la línea <code>add</code> y el nombre del archivo Parquet que agregó. Después abre el de la versión 2 y busca el <code>remove</code>.</span></li></ol><p><b>Qué observar:</b> la versión 0 da <b>US$ 782.785,77</b>, la cifra del tablero. La recarga de la versión 1 la sube a US$ 1.014.905,34: la semana de descuentos (US$ 232.119,57) quedó contada dos veces. Leer la versión 0 devuelve la cifra correcta sin tocar nada, y <code>restore(0)</code> escribe una versión 2 que vuelve a dar US$ 782.785,77. En la carpeta hay dos archivos Parquet: la restauración no borró el de la carga mala, solo anotó en <code>00000000000000000002.json</code> que ya no forma parte de la tabla. Por eso la versión 1 se puede seguir leyendo, hasta que una limpieza borre ese archivo.</p></div></section>
+<div class="readout texto" id="c6l2-out" aria-live="polite"></div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Una carga mala, el viaje en el tiempo y la restauración con Delta Lake</h3></div><p>Vas a guardar las ventas netas por día como una tabla Delta en el lago, simular una recarga que duplica la semana de descuentos, leer la versión anterior y restaurarla. Trabaja en <code>datos-tienda</code> con el entorno activado; instala la biblioteca <code>deltalake</code> (ocupa unos 170 MB instalada y no necesita Spark ni Java). La base debe estar recién creada, sin <code>--avanzar</code> (si la avanzaste en el capítulo 05, vuelve a crearla con <code>generar_tienda.py</code>).</p><div class="code-copia code-lineas"><pre><code><span class="ln">"""Una tabla Delta en el lago: una carga mala, viaje en el tiempo y restauración."""</span>
+<span class="ln">import shutil</span>
+<span class="ln"></span>
+<span class="ln">import duckdb</span>
+<span class="ln">from deltalake import DeltaTable, write_deltalake</span>
+<span class="ln"></span>
+<span class="ln">RUTA = "lago/oro/ventas_diarias"</span>
+<span class="ln">shutil.rmtree(RUTA, ignore_errors=True)</span>
+<span class="ln"></span>
+<span class="ln"></span>
+<span class="ln">def usd(x):</span>
+<span class="ln">    return "US$ " + f"{x:,.2f}".replace(",", " ").replace(".", ",").replace(" ", ".")</span>
+<span class="ln"></span>
+<span class="ln"></span>
+<span class="ln">def ventas(tabla):</span>
+<span class="ln">    """Ventas netas de octubre según la tabla Delta, en la versión que se le pase."""</span>
+<span class="ln">    datos = tabla.to_pyarrow_dataset()</span>
+<span class="ln">    total = duckdb.sql("""SELECT SUM(ventas_netas) FROM datos</span>
+<span class="ln">        WHERE dia BETWEEN DATE '2026-10-01' AND DATE '2026-10-31'""").fetchall()[0][0]</span>
+<span class="ln">    return usd(total)</span>
+<span class="ln"></span>
+<span class="ln"></span>
+<span class="ln"># Versión 0: la tabla buena, ventas netas por día calculadas desde la base de la tienda</span>
+<span class="ln">con = duckdb.connect()</span>
+<span class="ln">con.execute("INSTALL sqlite; LOAD sqlite;")</span>
+<span class="ln">con.execute("ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")</span>
+<span class="ln">buena = con.sql("""</span>
+<span class="ln">    SELECT CAST(CAST(p.creado_en AS TIMESTAMP) AS DATE) AS dia,</span>
+<span class="ln">           CAST(SUM(d.cantidad * d.precio_unitario) AS DOUBLE) AS ventas_netas</span>
+<span class="ln">    FROM tienda.pedidos p JOIN tienda.detalle_pedido d ON d.pedido_id = p.pedido_id</span>
+<span class="ln">    WHERE p.estado IN ('pagado', 'enviado', 'entregado')</span>
+<span class="ln">    GROUP BY 1""").to_arrow_table()</span>
+<span class="ln">write_deltalake(RUTA, buena)</span>
+<span class="ln">print(f"v0  octubre = {ventas(DeltaTable(RUTA))}")</span>
+<span class="ln"></span>
+<span class="ln"># Versión 1: alguien vuelve a cargar la semana de descuentos con modo «agregar»</span>
+<span class="ln">mala = duckdb.sql("""SELECT * FROM buena</span>
+<span class="ln">    WHERE dia BETWEEN DATE '2026-10-19' AND DATE '2026-10-25'""").to_arrow_table()</span>
+<span class="ln">write_deltalake(RUTA, mala, mode="append")</span>
+<span class="ln">print(f"v1  octubre = {ventas(DeltaTable(RUTA))}   &lt;- la carga mala")</span>
+<span class="ln"></span>
+<span class="ln"># Viaje en el tiempo: leer la tabla como estaba en la versión 0</span>
+<span class="ln">print(f"Viaje a v0: {ventas(DeltaTable(RUTA, version=0))}")</span>
+<span class="ln">for h in DeltaTable(RUTA).history():</span>
+<span class="ln">    print(f"  versión {h['version']}: {h['operation']} {h.get('operationParameters')}")</span>
+<span class="ln"></span>
+<span class="ln"># Restaurar: una versión nueva (v2) que vuelve al contenido de la v0</span>
+<span class="ln">DeltaTable(RUTA).restore(0)</span>
+<span class="ln">tabla = DeltaTable(RUTA)</span>
+<span class="ln">print(f"v{tabla.version()}  octubre = {ventas(tabla)}   &lt;- restaurada")</span></code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda el script como <code>delta.py</code>, instala la biblioteca, córrelo y mira el registro de transacciones:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>pip install deltalake</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python delta.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dir lago\oro\ventas_diarias</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dir lago\oro\ventas_diarias\_delta_log</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>type lago\oro\ventas_diarias\_delta_log\00000000000000000001.json</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>pip install deltalake</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 delta.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>ls lago/oro/ventas_diarias</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>ls lago/oro/ventas_diarias/_delta_log</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>cat lago/oro/ventas_diarias/_delta_log/00000000000000000001.json</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>En el JSON de la versión 1, busca la línea <code>add</code> y el nombre del archivo Parquet que agregó. Después abre el de la versión 2 y busca el <code>remove</code>.</span></li></ol><p><b>Qué observar:</b> la versión 0 da <b>US$ 782.785,77</b>, la cifra del tablero. La recarga de la versión 1 la sube a US$ 1.014.905,34: la semana de descuentos (US$ 232.119,57) quedó contada dos veces. Leer la versión 0 devuelve la cifra correcta sin tocar nada, y <code>restore(0)</code> escribe una versión 2 que vuelve a dar US$ 782.785,77. En la carpeta hay dos archivos Parquet: la restauración no borró el de la carga mala, solo anotó en <code>00000000000000000002.json</code> que ya no forma parte de la tabla. Por eso la versión 1 se puede seguir leyendo, hasta que una limpieza borre ese archivo.</p></div></section>
 <section><h2>La arquitectura medallón: bronce, plata y oro</h2><div class="prose"><p>Con tablas confiables sobre el lago falta un orden. La <b>arquitectura medallón</b> (<i>medallion architecture</i>), un nombre que popularizó Databricks, organiza los datos en tres capas según cuánto trabajo tienen encima y cuánto se les puede creer:</p></div><div class="analogia"><b>Imagínalo así</b><p>Una planta de tratamiento de agua recibe el agua del río tal como viene, con barro y hojas, y la guarda así en un estanque. Después la filtra y la potabiliza, y la analiza antes de dejarla pasar. Al final la embotella en el formato que pide cada cliente. Si algo sale mal en el filtrado, el agua del estanque sigue ahí: se vuelve a filtrar sin volver al río.</p></div><div class="prose"><ul><li><b>Bronce</b> (<i>bronze</i>): la copia fiel de lo que llegó de las fuentes, sin limpiar, con la fecha de carga y el archivo de origen. Solo se agrega, nunca se corrige. Si cambia una regla de negocio o aparece un error, todo lo demás se reconstruye desde aquí. Es el esquema <code>crudo</code> del ELT del capítulo 04, ahora en el lago.</li><li><b>Plata</b> (<i>silver</i>): los mismos datos limpios y confiables. Un registro por entidad (la última versión de cada pedido), tipos correctos, ciudades normalizadas, las mismas claves en todas las tablas. Las filas que no cumplen las reglas no se borran: van a una <b>cuarentena</b> para revisarlas. Todavía con el detalle de cada evento.</li><li><b>Oro</b> (<i>gold</i>): tablas pensadas para el negocio. La estrella del capítulo 05, las ventas netas ya definidas, los agregados que lee el tablero. Es lo que consume Elena sin preguntarse de dónde salió.</li></ul></div><figure class="fig fig-arquitectura" id="06-diagrama-3"><div class="lienzo"><svg viewBox="0 0 900 400" style="min-width:760px" role="img" aria-label="La arquitectura medallón de Tienda Ejemplo: las fuentes entran a bronce, la copia fiel del origen; bronce pasa a plata, donde se deduplica, se ponen tipos, se limpia y se apartan a cuarentena las filas que no cumplen; plata pasa a oro, con las tablas de negocio que leen el tablero, Martín e Irene. Debajo de cada capa, quién la usa y cuánto se le cree">
 <defs>
 <marker id="c6d3-t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-tra"/></marker>
@@ -311,82 +311,82 @@ print(f"v{tabla.version()}  octubre = {ventas(tabla)}   &lt;- restaurada")</code
 </div>
 <p class="c6l1-rot" id="c6l1-tit"></p>
 <div id="c6l1-vista" aria-live="polite"></div>
-<div class="readout texto" id="c6l1-out" aria-live="polite"></div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Bronce, plata y oro en el lago de la tienda</h3></div><p>Vas a subir los datos de la tienda por las tres capas: JSON en bronce, Parquet particionado por mes en plata y una tabla de ventas mensuales en oro, y a consultarlas directamente sobre los archivos. Sigue en <code>datos-tienda</code> con el entorno activado; solo necesitas <code>duckdb</code>.</p><div class="code-copia"><pre><code>"""Sube los datos de la tienda por las capas del lago: bronce (JSON), plata y oro (Parquet)."""
-import datetime as dt
-import shutil
-from pathlib import Path
-
-import duckdb
-
-LAGO = Path("lago")
-hoy = dt.date.today().isoformat()
-con = duckdb.connect()
-con.execute("INSTALL sqlite; LOAD sqlite;")
-con.execute("ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")
-
-# BRONCE: copia fiel del origen en JSON, sin tipos declarados, una carpeta por fecha de carga
-for tabla in ("pedidos", "detalle_pedido", "clientes", "productos"):
-    destino = LAGO / "bronce" / tabla / f"fecha_carga={hoy}"
-    destino.mkdir(parents=True, exist_ok=True)
-    con.execute(f"COPY (SELECT * FROM tienda.{tabla}) TO '{destino}/datos.json' (FORMAT json)")
-
-# PLATA: tipos correctos, sin duplicados, ciudades limpias; Parquet particionado por mes
-for carpeta in ("plata", "oro"):
-    shutil.rmtree(LAGO / carpeta, ignore_errors=True)
-    (LAGO / carpeta).mkdir(parents=True)
-bronce = lambda t: f"read_json_auto('{LAGO}/bronce/{t}/*/*.json', hive_partitioning = true)"
-con.execute(f"""
-    COPY (
-        SELECT pedido_id, cliente_id, CAST(creado_en AS TIMESTAMP) AS creado_en, estado, canal,
-               CAST(actualizado_en AS TIMESTAMP) AS actualizado_en,
-               strftime(CAST(creado_en AS TIMESTAMP), '%Y-%m') AS mes
-        FROM {bronce('pedidos')}
-        QUALIFY row_number() OVER (PARTITION BY pedido_id ORDER BY actualizado_en DESC) = 1
-    ) TO '{LAGO}/plata/pedidos' (FORMAT parquet, PARTITION_BY (mes))""")
-con.execute(f"""
-    COPY (SELECT DISTINCT pedido_id, linea, producto_id, cantidad,
-                 CAST(precio_unitario AS DECIMAL(10,2)) AS precio_unitario
-          FROM {bronce('detalle_pedido')})
-    TO '{LAGO}/plata/detalle_pedido.parquet' (FORMAT parquet)""")
-con.execute(f"""
-    COPY (
-        WITH canon(ciudad) AS (VALUES ('Lima'), ('Bogotá'), ('Ciudad de México'), ('Santiago'),
-             ('Quito'), ('Guadalajara'), ('Medellín'), ('Guayaquil'), ('Santo Domingo'), ('Panamá'))
-        SELECT b.cliente_id, b.nombre, b.email, coalesce(k.ciudad, trim(b.ciudad)) AS ciudad
-        FROM {bronce('clientes')} b
-        LEFT JOIN canon k ON strip_accents(lower(trim(b.ciudad))) = strip_accents(lower(k.ciudad))
-        QUALIFY row_number() OVER (PARTITION BY b.cliente_id ORDER BY b.fecha_carga DESC) = 1
-    ) TO '{LAGO}/plata/clientes.parquet' (FORMAT parquet)""")
-
-# ORO: la tabla que lee el tablero, ya agregada
-con.execute(f"""
-    COPY (
-        SELECT p.mes, SUM(d.cantidad * d.precio_unitario) AS ventas_netas,
-               COUNT(DISTINCT p.pedido_id) AS pedidos
-        FROM read_parquet('{LAGO}/plata/pedidos/*/*.parquet', hive_partitioning = true) p
-        JOIN '{LAGO}/plata/detalle_pedido.parquet' d USING (pedido_id)
-        WHERE p.estado IN ('pagado', 'enviado', 'entregado')
-        GROUP BY p.mes ORDER BY p.mes
-    ) TO '{LAGO}/oro/ventas_mensuales.parquet' (FORMAT parquet)""")
-
-for capa in ("bronce", "plata", "oro"):
-    archivos = [f for f in (LAGO / capa).rglob("*") if f.is_file()]
-    mb = sum(f.stat().st_size for f in archivos) / 1e6
-    print(f"{capa:&lt;7}{len(archivos):&gt;4} archivos {mb:&gt;8.1f} MB")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="code-copia"><pre><code>"""Consulta las tres capas del lago directamente sobre los archivos."""
-import duckdb
-
-print("Bronce: el esquema lo adivina quien lee")
-duckdb.sql("""DESCRIBE SELECT * FROM read_json_auto('lago/bronce/pedidos/*/*.json',
-                                                   hive_partitioning = true)""").show()
-
-print("Plata: solo se lee la carpeta del mes que pide el filtro")
-duckdb.sql("""
-    SELECT estado, COUNT(*) AS pedidos
-    FROM read_parquet('lago/plata/pedidos/*/*.parquet', hive_partitioning = true)
-    WHERE mes = '2026-10' GROUP BY estado ORDER BY pedidos DESC""").show()
-
-print("Oro: lo que lee el tablero")
-duckdb.sql("SELECT * FROM 'lago/oro/ventas_mensuales.parquet' ORDER BY mes").show()</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda los scripts como <code>medallon.py</code> y <code>consultar_lago.py</code> y córrelos:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python medallon.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python consultar_lago.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dir lago\plata\pedidos</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 medallon.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 consultar_lago.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>ls lago/plata/pedidos</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Corre <code>medallon.py</code> una segunda vez el mismo día y mira si cambia el número de archivos de bronce.</span></li></ol><p><b>Qué observar:</b> bronce ocupa unos 20 MB en 4 archivos JSON; plata, unos 2 MB en 12 archivos Parquet, con una carpeta <code>mes=2026-01</code> … <code>mes=2026-10</code> para los pedidos; el tamaño exacto puede variar un poco. Al describir bronce, DuckDB adivinó que <code>creado_en</code> es un <code>TIMESTAMP</code> y agregó la columna <code>fecha_carga</code> desde el nombre de la carpeta: ese es el esquema al leer, y otro lector podría adivinar distinto. Plata es la que fija los tipos para todos. El conteo de octubre en plata da los estados del tablero (entregado 7.122, enviado 912, pagado 342…) y el oro repite la serie mensual con <b>US$ 782.785,77 en 8.376 pedidos</b> en octubre. La segunda corrida del mismo día no agrega archivos: bronce se escribe en la carpeta de la fecha de carga y plata y oro se reconstruyen enteros, así que el script es idempotente dentro de un día.</p></div></section>
+<div class="readout texto" id="c6l1-out" aria-live="polite"></div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Bronce, plata y oro en el lago de la tienda</h3></div><p>Vas a subir los datos de la tienda por las tres capas: JSON en bronce, Parquet particionado por mes en plata y una tabla de ventas mensuales en oro, y a consultarlas directamente sobre los archivos. Sigue en <code>datos-tienda</code> con el entorno activado; solo necesitas <code>duckdb</code>.</p><div class="code-copia code-lineas"><pre><code><span class="ln">"""Sube los datos de la tienda por las capas del lago: bronce (JSON), plata y oro (Parquet)."""</span>
+<span class="ln">import datetime as dt</span>
+<span class="ln">import shutil</span>
+<span class="ln">from pathlib import Path</span>
+<span class="ln"></span>
+<span class="ln">import duckdb</span>
+<span class="ln"></span>
+<span class="ln">LAGO = Path("lago")</span>
+<span class="ln">hoy = dt.date.today().isoformat()</span>
+<span class="ln">con = duckdb.connect()</span>
+<span class="ln">con.execute("INSTALL sqlite; LOAD sqlite;")</span>
+<span class="ln">con.execute("ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")</span>
+<span class="ln"></span>
+<span class="ln"># BRONCE: copia fiel del origen en JSON, sin tipos declarados, una carpeta por fecha de carga</span>
+<span class="ln">for tabla in ("pedidos", "detalle_pedido", "clientes", "productos"):</span>
+<span class="ln">    destino = LAGO / "bronce" / tabla / f"fecha_carga={hoy}"</span>
+<span class="ln">    destino.mkdir(parents=True, exist_ok=True)</span>
+<span class="ln">    con.execute(f"COPY (SELECT * FROM tienda.{tabla}) TO '{destino}/datos.json' (FORMAT json)")</span>
+<span class="ln"></span>
+<span class="ln"># PLATA: tipos correctos, sin duplicados, ciudades limpias; Parquet particionado por mes</span>
+<span class="ln">for carpeta in ("plata", "oro"):</span>
+<span class="ln">    shutil.rmtree(LAGO / carpeta, ignore_errors=True)</span>
+<span class="ln">    (LAGO / carpeta).mkdir(parents=True)</span>
+<span class="ln">bronce = lambda t: f"read_json_auto('{LAGO}/bronce/{t}/*/*.json', hive_partitioning = true)"</span>
+<span class="ln">con.execute(f"""</span>
+<span class="ln">    COPY (</span>
+<span class="ln">        SELECT pedido_id, cliente_id, CAST(creado_en AS TIMESTAMP) AS creado_en, estado, canal,</span>
+<span class="ln">               CAST(actualizado_en AS TIMESTAMP) AS actualizado_en,</span>
+<span class="ln">               strftime(CAST(creado_en AS TIMESTAMP), '%Y-%m') AS mes</span>
+<span class="ln">        FROM {bronce('pedidos')}</span>
+<span class="ln">        QUALIFY row_number() OVER (PARTITION BY pedido_id ORDER BY actualizado_en DESC) = 1</span>
+<span class="ln">    ) TO '{LAGO}/plata/pedidos' (FORMAT parquet, PARTITION_BY (mes))""")</span>
+<span class="ln">con.execute(f"""</span>
+<span class="ln">    COPY (SELECT DISTINCT pedido_id, linea, producto_id, cantidad,</span>
+<span class="ln">                 CAST(precio_unitario AS DECIMAL(10,2)) AS precio_unitario</span>
+<span class="ln">          FROM {bronce('detalle_pedido')})</span>
+<span class="ln">    TO '{LAGO}/plata/detalle_pedido.parquet' (FORMAT parquet)""")</span>
+<span class="ln">con.execute(f"""</span>
+<span class="ln">    COPY (</span>
+<span class="ln">        WITH canon(ciudad) AS (VALUES ('Lima'), ('Bogotá'), ('Ciudad de México'), ('Santiago'),</span>
+<span class="ln">             ('Quito'), ('Guadalajara'), ('Medellín'), ('Guayaquil'), ('Santo Domingo'), ('Panamá'))</span>
+<span class="ln">        SELECT b.cliente_id, b.nombre, b.email, coalesce(k.ciudad, trim(b.ciudad)) AS ciudad</span>
+<span class="ln">        FROM {bronce('clientes')} b</span>
+<span class="ln">        LEFT JOIN canon k ON strip_accents(lower(trim(b.ciudad))) = strip_accents(lower(k.ciudad))</span>
+<span class="ln">        QUALIFY row_number() OVER (PARTITION BY b.cliente_id ORDER BY b.fecha_carga DESC) = 1</span>
+<span class="ln">    ) TO '{LAGO}/plata/clientes.parquet' (FORMAT parquet)""")</span>
+<span class="ln"></span>
+<span class="ln"># ORO: la tabla que lee el tablero, ya agregada</span>
+<span class="ln">con.execute(f"""</span>
+<span class="ln">    COPY (</span>
+<span class="ln">        SELECT p.mes, SUM(d.cantidad * d.precio_unitario) AS ventas_netas,</span>
+<span class="ln">               COUNT(DISTINCT p.pedido_id) AS pedidos</span>
+<span class="ln">        FROM read_parquet('{LAGO}/plata/pedidos/*/*.parquet', hive_partitioning = true) p</span>
+<span class="ln">        JOIN '{LAGO}/plata/detalle_pedido.parquet' d USING (pedido_id)</span>
+<span class="ln">        WHERE p.estado IN ('pagado', 'enviado', 'entregado')</span>
+<span class="ln">        GROUP BY p.mes ORDER BY p.mes</span>
+<span class="ln">    ) TO '{LAGO}/oro/ventas_mensuales.parquet' (FORMAT parquet)""")</span>
+<span class="ln"></span>
+<span class="ln">for capa in ("bronce", "plata", "oro"):</span>
+<span class="ln">    archivos = [f for f in (LAGO / capa).rglob("*") if f.is_file()]</span>
+<span class="ln">    mb = sum(f.stat().st_size for f in archivos) / 1e6</span>
+<span class="ln">    print(f"{capa:&lt;7}{len(archivos):&gt;4} archivos {mb:&gt;8.1f} MB")</span></code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="code-copia code-lineas"><pre><code><span class="ln">"""Consulta las tres capas del lago directamente sobre los archivos."""</span>
+<span class="ln">import duckdb</span>
+<span class="ln"></span>
+<span class="ln">print("Bronce: el esquema lo adivina quien lee")</span>
+<span class="ln">duckdb.sql("""DESCRIBE SELECT * FROM read_json_auto('lago/bronce/pedidos/*/*.json',</span>
+<span class="ln">                                                   hive_partitioning = true)""").show()</span>
+<span class="ln"></span>
+<span class="ln">print("Plata: solo se lee la carpeta del mes que pide el filtro")</span>
+<span class="ln">duckdb.sql("""</span>
+<span class="ln">    SELECT estado, COUNT(*) AS pedidos</span>
+<span class="ln">    FROM read_parquet('lago/plata/pedidos/*/*.parquet', hive_partitioning = true)</span>
+<span class="ln">    WHERE mes = '2026-10' GROUP BY estado ORDER BY pedidos DESC""").show()</span>
+<span class="ln"></span>
+<span class="ln">print("Oro: lo que lee el tablero")</span>
+<span class="ln">duckdb.sql("SELECT * FROM 'lago/oro/ventas_mensuales.parquet' ORDER BY mes").show()</span></code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda los scripts como <code>medallon.py</code> y <code>consultar_lago.py</code> y córrelos:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python medallon.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python consultar_lago.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>dir lago\plata\pedidos</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 medallon.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 consultar_lago.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>ls lago/plata/pedidos</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Corre <code>medallon.py</code> una segunda vez el mismo día y mira si cambia el número de archivos de bronce.</span></li></ol><p><b>Qué observar:</b> bronce ocupa unos 20 MB en 4 archivos JSON; plata, unos 2 MB en 12 archivos Parquet, con una carpeta <code>mes=2026-01</code> … <code>mes=2026-10</code> para los pedidos; el tamaño exacto puede variar un poco. Al describir bronce, DuckDB adivinó que <code>creado_en</code> es un <code>TIMESTAMP</code> y agregó la columna <code>fecha_carga</code> desde el nombre de la carpeta: ese es el esquema al leer, y otro lector podría adivinar distinto. Plata es la que fija los tipos para todos. El conteo de octubre en plata da los estados del tablero (entregado 7.122, enviado 912, pagado 342…) y el oro repite la serie mensual con <b>US$ 782.785,77 en 8.376 pedidos</b> en octubre. La segunda corrida del mismo día no agrega archivos: bronce se escribe en la carpeta de la fecha de carga y plata y oro se reconstruyen enteros, así que el script es idempotente dentro de un día.</p></div></section>
 <section><h2>El <i>lakehouse</i>: el almacén y el lago en una sola plataforma</h2><div class="prose"><p>Durante una década, muchas empresas mantuvieron las dos cosas: un lago para guardar todo y para los científicos de datos, y un almacén para los tableros, con un pipeline que copiaba del uno al otro. Dos copias, dos costos, dos versiones de cada número. En 2021, un artículo académico de investigadores de Databricks, Berkeley y Stanford propuso el nombre <b><i>lakehouse</b></i> para la alternativa: una sola plataforma sobre el lago, con las garantías del almacén.</p></div><div class="analogia"><b>Imagínalo así</b><p>Antes, una ciudad tenía la bodega del puerto, enorme y barata, donde llegaba todo, y un supermercado ordenado en el centro, adonde se llevaban en camión solo algunas cosas. El <i>lakehouse</i> es poner pasillos, etiquetas y cajas registradoras dentro de la bodega del puerto: se compra ahí mismo, sin camiones de por medio.</p></div><div class="prose"><p>Un <i>lakehouse</i> se arma con piezas que ya conoces:</p><ol class="steps"><li><span><b>Almacenamiento de objetos</b> barato, como en el lago.</span></li><li><span><b>Archivos abiertos por columnas</b>, Parquet, del capítulo 03.</span></li><li><span><b>Un formato de tabla</b> con registro de transacciones (Delta Lake, Iceberg o Hudi): esquema, ACID, versiones y viaje en el tiempo.</span></li><li><span><b>Un catálogo</b> que dice qué tablas existen, dónde están y quién puede leerlas.</span></li><li><span><b>Varios motores</b> encima de los mismos datos: SQL para los tableros, Spark para el procesamiento grande (capítulo 07), Python para Irene, y también los almacenes del capítulo 05, que a noviembre de 2026 pueden leer tablas Iceberg o Delta guardadas fuera de ellos.</span></li></ol></div><figure class="fig fig-capas" id="06-diagrama-4"><div class="lienzo"><svg viewBox="0 0 900 420" style="min-width:760px" role="img" aria-label="Tres arquitecturas por capas. El almacén: almacenamiento propio, formato propio y un solo motor, con transacciones. El lago: almacenamiento de objetos y archivos abiertos, con muchos motores pero sin transacciones. El lakehouse: almacenamiento de objetos, archivos Parquet, un formato de tabla con registro de transacciones como Delta Lake o Iceberg, y muchos motores encima, incluidos almacenes, para tableros y aprendizaje automático">
 <text x="20" y="24" class="t t-xs t-b t-m">ALMACÉN (DESDE LOS 90)</text>
 <text x="320" y="24" class="t t-xs t-b t-m">LAGO (DESDE 2010)</text>

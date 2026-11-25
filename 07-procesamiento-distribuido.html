@@ -186,81 +186,81 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 <text x="780" y="432" class="t t-s t-m" text-anchor="middle">memoria y disco locales</text>
 </g>
 <line x1="200" y1="375" x2="238" y2="375" class="ln" marker-end="url(#c7d2-m)"/>
-</svg></div><figcaption><b>Cómo Spark convierte el código en trabajo.</b> Arriba, las cuatro transformaciones solo se anotan; la acción, en rosa, dispara la ejecución. En el medio, el plan físico del optimizador, cortado en dos etapas moradas por el shuffle (flecha roja): la primera lee solo las columnas necesarias, filtra en la lectura y suma dentro de cada partición; la segunda recibe las sumas parciales y escribe el total. Abajo, el clúster: el driver, que planifica, y tres ejecutores, cada uno con dos particiones y dos tareas a la vez.</figcaption></figure><div class="prose"><p>Si un ejecutor se cae a la mitad, el driver vuelve a lanzar sus tareas en otro. Puede hacerlo porque cada partición se puede recalcular desde su origen siguiendo el plan: Spark guarda la receta, no solo el resultado.</p></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>El plan antes de correr, en una sola máquina</h3></div><p>Vas a crear una versión diez veces más grande de la tienda, pasarla a Parquet y calcular las ventas netas por mes y categoría con tres herramientas: pandas, que ejecuta cada línea en el momento, y Polars y DuckDB, que arman un plan primero. Usa la carpeta <code>datos-tienda</code> y su entorno virtual, y agrega <code>pandas</code> y <code>polars</code>:</p><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>cd $HOME\datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>.venv\Scripts\activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>pip install duckdb pyarrow pandas polars</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python generar_tienda.py --escala 10 --carpeta grande</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>cd ~/datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>source .venv/bin/activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>pip install duckdb pyarrow pandas polars</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 generar_tienda.py --escala 10 --carpeta grande</code><button type="button" class="copiar">Copiar</button></div></div></div><p>El último comando tarda cerca de un minuto y crea <code>grande/tienda.db</code> con unos 650.000 pedidos, sin tocar tu <code>tienda.db</code> de siempre. Guarda este programa como <code>una_maquina.py</code>:</p><div class="code-copia"><pre><code>"""Una máquina contra 1,1 millones de líneas.
-
-Exporta la tienda grande a Parquet y calcula las ventas netas por mes y categoría
-con pandas, Polars y DuckDB. Muestra el plan de Polars y de DuckDB antes de correr.
-"""
-import sys
-import time
-from pathlib import Path
-import duckdb
-import pandas as pd
-import polars as pl
-
-sys.stdout.reconfigure(encoding="utf-8")  # para que la consola de Windows muestre los símbolos del plan
-LAGO = Path("grande/lago")
-ESTADOS = ["pagado", "enviado", "entregado"]
-
-if not (LAGO / "detalle_pedido.parquet").exists():
-    LAGO.mkdir(parents=True, exist_ok=True)
-    con = duckdb.connect()
-    con.sql("INSTALL sqlite; LOAD sqlite; ATTACH 'grande/tienda.db' AS t (TYPE sqlite, READ_ONLY)")
-    for tabla in ["pedidos", "detalle_pedido", "productos"]:
-        con.sql(f"COPY t.{tabla} TO '{LAGO / tabla}.parquet' (FORMAT parquet)")
-    con.close()
-
-def medir(nombre, funcion):
-    inicio = time.perf_counter()
-    resultado = funcion()
-    cifra = f"{resultado:,.2f}".replace(",", " ").replace(".", ",").replace(" ", ".")
-    print(f"{nombre:8} {time.perf_counter() - inicio:6.2f} s   ventas netas de octubre: US$ {cifra}")
-
-def con_pandas():
-    p = pd.read_parquet(LAGO / "pedidos.parquet")
-    d = pd.read_parquet(LAGO / "detalle_pedido.parquet")
-    pr = pd.read_parquet(LAGO / "productos.parquet")
-    t = d.merge(p, on="pedido_id").merge(pr, on="producto_id")
-    t = t[t.estado.isin(ESTADOS)]
-    t["mes"] = t.creado_en.str[:7]
-    t["venta"] = t.cantidad * t.precio_unitario.astype(float)
-    tabla = t.groupby(["mes", "categoria"]).venta.sum()
-    return tabla.loc["2026-10"].sum()
-
-def consulta_polars():
-    p = pl.scan_parquet(LAGO / "pedidos.parquet")
-    d = pl.scan_parquet(LAGO / "detalle_pedido.parquet")
-    pr = pl.scan_parquet(LAGO / "productos.parquet")
-    return (d.join(p, on="pedido_id").join(pr, on="producto_id")
-            .filter(pl.col("estado").is_in(ESTADOS))
-            .with_columns(mes=pl.col("creado_en").str.slice(0, 7),
-                          venta=pl.col("cantidad") * pl.col("precio_unitario").cast(pl.Float64))
-            .group_by("mes", "categoria").agg(pl.col("venta").sum()))
-
-def con_polars():
-    tabla = consulta_polars().collect()
-    return tabla.filter(pl.col("mes") == "2026-10")["venta"].sum()
-
-SQL = f"""
-SELECT substr(p.creado_en, 1, 7) AS mes, pr.categoria,
-       SUM(d.cantidad * d.precio_unitario) AS venta
-FROM '{LAGO}/detalle_pedido.parquet' d
-JOIN '{LAGO}/pedidos.parquet' p USING (pedido_id)
-JOIN '{LAGO}/productos.parquet' pr USING (producto_id)
-WHERE p.estado IN ('pagado', 'enviado', 'entregado')
-GROUP BY ALL"""
-
-def con_duckdb():
-    tabla = duckdb.sql(SQL)
-    return float(duckdb.sql("SELECT SUM(venta) FROM tabla WHERE mes = '2026-10'").fetchall()[0][0])
-
-print("PLAN DE POLARS (perezoso: todavía no leyó nada)")
-print(consulta_polars().explain())
-print("\nPLAN DE DUCKDB")
-print(duckdb.sql("EXPLAIN " + SQL).fetchall()[0][1])
-print()
-for nombre, f in [("pandas", con_pandas), ("Polars", con_polars), ("DuckDB", con_duckdb)]:
-    medir(nombre, f)</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python una_maquina.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 una_maquina.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>En el plan de Polars, busca las líneas <code>PROJECT 3/6 COLUMNS</code> y <code>SELECTION</code> debajo de <code>pedidos.parquet</code>.</span></li><li><span>En el plan de DuckDB, busca el recuadro <code>Parquet Scan</code> de pedidos y su línea <code>Filters</code>.</span></li><li><span>Compara los tres tiempos y las tres cifras. Corre el programa una segunda vez: ya no exporta el Parquet.</span></li></ol><p><b>Qué observar:</b> las dos herramientas perezosas muestran su plan sin haber leído un solo dato, y los dos planes hicieron lo mismo que Catalyst en Spark: de <code>pedidos</code> leen solo 3 de sus 6 columnas y el filtro de estado bajó hasta la lectura del archivo. Las tres herramientas dan la misma cifra (unos US$ 8,1 millones para octubre en la tienda diez veces más grande) sobre 1,1 millones de líneas, y las tres tardan menos de un par de segundos en una laptop; Polars y DuckDB, varias veces menos que pandas. Tus tiempos serán otros según tu equipo; el orden suele repetirse. Esa es la respuesta a la pregunta de Natalia: para estos datos no hace falta un clúster.</p></div></section>
+</svg></div><figcaption><b>Cómo Spark convierte el código en trabajo.</b> Arriba, las cuatro transformaciones solo se anotan; la acción, en rosa, dispara la ejecución. En el medio, el plan físico del optimizador, cortado en dos etapas moradas por el shuffle (flecha roja): la primera lee solo las columnas necesarias, filtra en la lectura y suma dentro de cada partición; la segunda recibe las sumas parciales y escribe el total. Abajo, el clúster: el driver, que planifica, y tres ejecutores, cada uno con dos particiones y dos tareas a la vez.</figcaption></figure><div class="prose"><p>Si un ejecutor se cae a la mitad, el driver vuelve a lanzar sus tareas en otro. Puede hacerlo porque cada partición se puede recalcular desde su origen siguiendo el plan: Spark guarda la receta, no solo el resultado.</p></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>El plan antes de correr, en una sola máquina</h3></div><p>Vas a crear una versión diez veces más grande de la tienda, pasarla a Parquet y calcular las ventas netas por mes y categoría con tres herramientas: pandas, que ejecuta cada línea en el momento, y Polars y DuckDB, que arman un plan primero. Usa la carpeta <code>datos-tienda</code> y su entorno virtual, y agrega <code>pandas</code> y <code>polars</code>:</p><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>cd $HOME\datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>.venv\Scripts\activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>pip install duckdb pyarrow pandas polars</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python generar_tienda.py --escala 10 --carpeta grande</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>cd ~/datos-tienda</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>source .venv/bin/activate</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>pip install duckdb pyarrow pandas polars</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 generar_tienda.py --escala 10 --carpeta grande</code><button type="button" class="copiar">Copiar</button></div></div></div><p>El último comando tarda cerca de un minuto y crea <code>grande/tienda.db</code> con unos 650.000 pedidos, sin tocar tu <code>tienda.db</code> de siempre. Guarda este programa como <code>una_maquina.py</code>:</p><div class="code-copia code-lineas"><pre><code><span class="ln">"""Una máquina contra 1,1 millones de líneas.</span>
+<span class="ln"></span>
+<span class="ln">Exporta la tienda grande a Parquet y calcula las ventas netas por mes y categoría</span>
+<span class="ln">con pandas, Polars y DuckDB. Muestra el plan de Polars y de DuckDB antes de correr.</span>
+<span class="ln">"""</span>
+<span class="ln">import sys</span>
+<span class="ln">import time</span>
+<span class="ln">from pathlib import Path</span>
+<span class="ln">import duckdb</span>
+<span class="ln">import pandas as pd</span>
+<span class="ln">import polars as pl</span>
+<span class="ln"></span>
+<span class="ln">sys.stdout.reconfigure(encoding="utf-8")  # para que la consola de Windows muestre los símbolos del plan</span>
+<span class="ln">LAGO = Path("grande/lago")</span>
+<span class="ln">ESTADOS = ["pagado", "enviado", "entregado"]</span>
+<span class="ln"></span>
+<span class="ln">if not (LAGO / "detalle_pedido.parquet").exists():</span>
+<span class="ln">    LAGO.mkdir(parents=True, exist_ok=True)</span>
+<span class="ln">    con = duckdb.connect()</span>
+<span class="ln">    con.sql("INSTALL sqlite; LOAD sqlite; ATTACH 'grande/tienda.db' AS t (TYPE sqlite, READ_ONLY)")</span>
+<span class="ln">    for tabla in ["pedidos", "detalle_pedido", "productos"]:</span>
+<span class="ln">        con.sql(f"COPY t.{tabla} TO '{LAGO / tabla}.parquet' (FORMAT parquet)")</span>
+<span class="ln">    con.close()</span>
+<span class="ln"></span>
+<span class="ln">def medir(nombre, funcion):</span>
+<span class="ln">    inicio = time.perf_counter()</span>
+<span class="ln">    resultado = funcion()</span>
+<span class="ln">    cifra = f"{resultado:,.2f}".replace(",", " ").replace(".", ",").replace(" ", ".")</span>
+<span class="ln">    print(f"{nombre:8} {time.perf_counter() - inicio:6.2f} s   ventas netas de octubre: US$ {cifra}")</span>
+<span class="ln"></span>
+<span class="ln">def con_pandas():</span>
+<span class="ln">    p = pd.read_parquet(LAGO / "pedidos.parquet")</span>
+<span class="ln">    d = pd.read_parquet(LAGO / "detalle_pedido.parquet")</span>
+<span class="ln">    pr = pd.read_parquet(LAGO / "productos.parquet")</span>
+<span class="ln">    t = d.merge(p, on="pedido_id").merge(pr, on="producto_id")</span>
+<span class="ln">    t = t[t.estado.isin(ESTADOS)]</span>
+<span class="ln">    t["mes"] = t.creado_en.str[:7]</span>
+<span class="ln">    t["venta"] = t.cantidad * t.precio_unitario.astype(float)</span>
+<span class="ln">    tabla = t.groupby(["mes", "categoria"]).venta.sum()</span>
+<span class="ln">    return tabla.loc["2026-10"].sum()</span>
+<span class="ln"></span>
+<span class="ln">def consulta_polars():</span>
+<span class="ln">    p = pl.scan_parquet(LAGO / "pedidos.parquet")</span>
+<span class="ln">    d = pl.scan_parquet(LAGO / "detalle_pedido.parquet")</span>
+<span class="ln">    pr = pl.scan_parquet(LAGO / "productos.parquet")</span>
+<span class="ln">    return (d.join(p, on="pedido_id").join(pr, on="producto_id")</span>
+<span class="ln">            .filter(pl.col("estado").is_in(ESTADOS))</span>
+<span class="ln">            .with_columns(mes=pl.col("creado_en").str.slice(0, 7),</span>
+<span class="ln">                          venta=pl.col("cantidad") * pl.col("precio_unitario").cast(pl.Float64))</span>
+<span class="ln">            .group_by("mes", "categoria").agg(pl.col("venta").sum()))</span>
+<span class="ln"></span>
+<span class="ln">def con_polars():</span>
+<span class="ln">    tabla = consulta_polars().collect()</span>
+<span class="ln">    return tabla.filter(pl.col("mes") == "2026-10")["venta"].sum()</span>
+<span class="ln"></span>
+<span class="ln">SQL = f"""</span>
+<span class="ln">SELECT substr(p.creado_en, 1, 7) AS mes, pr.categoria,</span>
+<span class="ln">       SUM(d.cantidad * d.precio_unitario) AS venta</span>
+<span class="ln">FROM '{LAGO}/detalle_pedido.parquet' d</span>
+<span class="ln">JOIN '{LAGO}/pedidos.parquet' p USING (pedido_id)</span>
+<span class="ln">JOIN '{LAGO}/productos.parquet' pr USING (producto_id)</span>
+<span class="ln">WHERE p.estado IN ('pagado', 'enviado', 'entregado')</span>
+<span class="ln">GROUP BY ALL"""</span>
+<span class="ln"></span>
+<span class="ln">def con_duckdb():</span>
+<span class="ln">    tabla = duckdb.sql(SQL)</span>
+<span class="ln">    return float(duckdb.sql("SELECT SUM(venta) FROM tabla WHERE mes = '2026-10'").fetchall()[0][0])</span>
+<span class="ln"></span>
+<span class="ln">print("PLAN DE POLARS (perezoso: todavía no leyó nada)")</span>
+<span class="ln">print(consulta_polars().explain())</span>
+<span class="ln">print("\nPLAN DE DUCKDB")</span>
+<span class="ln">print(duckdb.sql("EXPLAIN " + SQL).fetchall()[0][1])</span>
+<span class="ln">print()</span>
+<span class="ln">for nombre, f in [("pandas", con_pandas), ("Polars", con_polars), ("DuckDB", con_duckdb)]:</span>
+<span class="ln">    medir(nombre, f)</span></code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python una_maquina.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 una_maquina.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>En el plan de Polars, busca las líneas <code>PROJECT 3/6 COLUMNS</code> y <code>SELECTION</code> debajo de <code>pedidos.parquet</code>.</span></li><li><span>En el plan de DuckDB, busca el recuadro <code>Parquet Scan</code> de pedidos y su línea <code>Filters</code>.</span></li><li><span>Compara los tres tiempos y las tres cifras. Corre el programa una segunda vez: ya no exporta el Parquet.</span></li></ol><p><b>Qué observar:</b> las dos herramientas perezosas muestran su plan sin haber leído un solo dato, y los dos planes hicieron lo mismo que Catalyst en Spark: de <code>pedidos</code> leen solo 3 de sus 6 columnas y el filtro de estado bajó hasta la lectura del archivo. Las tres herramientas dan la misma cifra (unos US$ 8,1 millones para octubre en la tienda diez veces más grande) sobre 1,1 millones de líneas, y las tres tardan menos de un par de segundos en una laptop; Polars y DuckDB, varias veces menos que pandas. Tus tiempos serán otros según tu equipo; el orden suele repetirse. Esa es la respuesta a la pregunta de Natalia: para estos datos no hace falta un clúster.</p></div></section>
 <section><h2>Particiones, <i>shuffle</i> y datos desbalanceados</h2><div class="prose"><p>En un trabajo distribuido, cada partición la procesa una tarea, y las tareas corren en paralelo. De ahí salen las dos reglas que explican casi todos los problemas de rendimiento de Spark: el trabajo dura lo que dura la tarea más lenta, y el shuffle es lo que más cuesta.</p></div><div class="lab" id="07-lab-1"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Un trabajo repartido entre nodos: mapa, shuffle y reducción</h3></div><p class="hint">Cada punto es una línea de <code>detalle_pedido</code>, con el color de la categoría de su producto. Elige cuántos nodos tiene el clúster y pulsa «Correr el trabajo» o avanza «Paso a paso»: mira qué filas cruzan la red en el shuffle y cuáles se quedan en su nodo. Después activa «Combinar en el mapa» y compara cuántas cosas viajan. Prueba con 6 nodos: ¿todos reciben una categoría?</p><style>
 [id="07-lab-1"] .c7l1-rot{font:700 .72rem var(--f-display);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
 [id="07-lab-1"] .c7l1-g{display:grid;gap:4px}
@@ -333,33 +333,33 @@ for nombre, f in [("pandas", con_pandas), ("Polars", con_polars), ("DuckDB", con
   <div class="c7l2-t"><span>Si estuviera parejo</span><b id="c7l2-k2">—</b></div>
   <div class="c7l2-t" id="c7l2-to"><span>Tiempo ocioso del clúster</span><b id="c7l2-k3">—</b></div>
 </div>
-<div class="readout texto" id="c7l2-out" aria-live="polite"></div></div><div class="prose"><p>Los remedios, de más simple a más trabajoso:</p><ul><li><b>Filtrar o tratar aparte la clave problemática.</b> Si los eventos sin sesión no sirven para la unión con clientes, se filtran antes; si sirven, se procesan por separado y se juntan al final.</li><li><b>Ejecución adaptativa</b> (<i>Adaptive Query Execution</i>, AQE): desde Spark 3, el motor mide el tamaño real de las particiones después de cada shuffle y, si una es mucho más grande que la mediana, la parte en trozos. Está activada por defecto desde Spark 3.2 y resuelve muchos casos sin tocar el código.</li><li><b>Salar la clave</b> (<i>salting</i>): se le agrega a la clave un número al azar del 0 al N−1 (<code>0-3</code>, <code>0-5</code>), la agregación se hace por la clave salada, repartida en N particiones, y un segundo paso pequeño suma los N resultados parciales de cada clave original.</li></ul></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>¿Cómo quedaría repartido? Particiones, desbalance y sal</h3></div><p>Vas a simular el shuffle de Spark con DuckDB: cada línea de la tienda grande va a la partición <code>hash(clave) % 8</code>, y el programa cuenta cuántas líneas recibe cada una de las 8 particiones según la clave elegida. Necesitas los archivos Parquet de la práctica anterior en <code>grande/lago</code>. Guarda esto como <code>particiones.py</code> en <code>datos-tienda</code>:</p><div class="code-copia"><pre><code>"""¿Cómo quedarían repartidas las filas en 8 particiones?
-
-Simula el shuffle de Spark: cada línea va a la partición hash(clave) % 8.
-"""
-import duckdb
-
-LINEAS = """(SELECT d.*, p.canal, p.cliente_id, pr.categoria
-  FROM 'grande/lago/detalle_pedido.parquet' d
-  JOIN 'grande/lago/pedidos.parquet' p USING (pedido_id)
-  JOIN 'grande/lago/productos.parquet' pr USING (producto_id))"""
-
-def repartir(nombre, clave):
-    filas = duckdb.sql(f"""
-        SELECT hash({clave}) % 8 AS particion, COUNT(*) AS n
-        FROM {LINEAS} GROUP BY 1 ORDER BY 1""").fetchall()
-    n = dict(filas)
-    cuentas = [n.get(i, 0) for i in range(8)]
-    vacias = cuentas.count(0)
-    print(f"{nombre:28} máx {max(cuentas):&gt;9,}  mín {min(cuentas):&gt;9,}  vacías {vacias}"
-          .replace(",", "."))
-    print("   " + " ".join(f"{c // 10_000:&gt;3}" for c in cuentas), " (decenas de miles por partición)")
-
-repartir("por pedido_id", "pedido_id")
-repartir("por cliente_id", "cliente_id")
-repartir("por categoria (6 valores)", "categoria")
-repartir("por canal (2 valores)", "canal")
-repartir("por canal con sal de 0 a 7", "canal || '-' || (pedido_id % 8)")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python particiones.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 particiones.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>Compara la línea de <code>pedido_id</code> con la de <code>categoria</code>: el máximo, el mínimo y las particiones vacías.</span></li><li><span>Mira la de <code>canal</code>: solo hay dos valores, <code>web</code> y <code>app</code>.</span></li><li><span>Mira la última, con la sal: el canal sigue siendo la clave, pero ahora con 16 sub-claves.</span></li></ol><p><b>Qué observar:</b> con claves de muchos valores (<code>pedido_id</code>, <code>cliente_id</code>) las 8 particiones quedan casi iguales, unas 143.000 líneas cada una. Con <code>categoria</code>, solo 6 valores, el hash deja varias particiones vacías y una con cientos de miles de líneas: dos o tres categorías cayeron en la misma. Con <code>canal</code>, 6 de las 8 quedan vacías: un clúster de 8 nodos trabajaría como uno de 2. La sal reparte mucho mejor, aunque no perfecto: con pocas sub-claves el hash todavía puede juntar dos en la misma partición. Los números exactos pueden cambiar con otra versión de DuckDB, porque cada motor usa su propia función hash; el patrón no cambia.</p></div></section>
+<div class="readout texto" id="c7l2-out" aria-live="polite"></div></div><div class="prose"><p>Los remedios, de más simple a más trabajoso:</p><ul><li><b>Filtrar o tratar aparte la clave problemática.</b> Si los eventos sin sesión no sirven para la unión con clientes, se filtran antes; si sirven, se procesan por separado y se juntan al final.</li><li><b>Ejecución adaptativa</b> (<i>Adaptive Query Execution</i>, AQE): desde Spark 3, el motor mide el tamaño real de las particiones después de cada shuffle y, si una es mucho más grande que la mediana, la parte en trozos. Está activada por defecto desde Spark 3.2 y resuelve muchos casos sin tocar el código.</li><li><b>Salar la clave</b> (<i>salting</i>): se le agrega a la clave un número al azar del 0 al N−1 (<code>0-3</code>, <code>0-5</code>), la agregación se hace por la clave salada, repartida en N particiones, y un segundo paso pequeño suma los N resultados parciales de cada clave original.</li></ul></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>¿Cómo quedaría repartido? Particiones, desbalance y sal</h3></div><p>Vas a simular el shuffle de Spark con DuckDB: cada línea de la tienda grande va a la partición <code>hash(clave) % 8</code>, y el programa cuenta cuántas líneas recibe cada una de las 8 particiones según la clave elegida. Necesitas los archivos Parquet de la práctica anterior en <code>grande/lago</code>. Guarda esto como <code>particiones.py</code> en <code>datos-tienda</code>:</p><div class="code-copia code-lineas"><pre><code><span class="ln">"""¿Cómo quedarían repartidas las filas en 8 particiones?</span>
+<span class="ln"></span>
+<span class="ln">Simula el shuffle de Spark: cada línea va a la partición hash(clave) % 8.</span>
+<span class="ln">"""</span>
+<span class="ln">import duckdb</span>
+<span class="ln"></span>
+<span class="ln">LINEAS = """(SELECT d.*, p.canal, p.cliente_id, pr.categoria</span>
+<span class="ln">  FROM 'grande/lago/detalle_pedido.parquet' d</span>
+<span class="ln">  JOIN 'grande/lago/pedidos.parquet' p USING (pedido_id)</span>
+<span class="ln">  JOIN 'grande/lago/productos.parquet' pr USING (producto_id))"""</span>
+<span class="ln"></span>
+<span class="ln">def repartir(nombre, clave):</span>
+<span class="ln">    filas = duckdb.sql(f"""</span>
+<span class="ln">        SELECT hash({clave}) % 8 AS particion, COUNT(*) AS n</span>
+<span class="ln">        FROM {LINEAS} GROUP BY 1 ORDER BY 1""").fetchall()</span>
+<span class="ln">    n = dict(filas)</span>
+<span class="ln">    cuentas = [n.get(i, 0) for i in range(8)]</span>
+<span class="ln">    vacias = cuentas.count(0)</span>
+<span class="ln">    print(f"{nombre:28} máx {max(cuentas):&gt;9,}  mín {min(cuentas):&gt;9,}  vacías {vacias}"</span>
+<span class="ln">          .replace(",", "."))</span>
+<span class="ln">    print("   " + " ".join(f"{c // 10_000:&gt;3}" for c in cuentas), " (decenas de miles por partición)")</span>
+<span class="ln"></span>
+<span class="ln">repartir("por pedido_id", "pedido_id")</span>
+<span class="ln">repartir("por cliente_id", "cliente_id")</span>
+<span class="ln">repartir("por categoria (6 valores)", "categoria")</span>
+<span class="ln">repartir("por canal (2 valores)", "canal")</span>
+<span class="ln">repartir("por canal con sal de 0 a 7", "canal || '-' || (pedido_id % 8)")</span></code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python particiones.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 particiones.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps"><li><span>Compara la línea de <code>pedido_id</code> con la de <code>categoria</code>: el máximo, el mínimo y las particiones vacías.</span></li><li><span>Mira la de <code>canal</code>: solo hay dos valores, <code>web</code> y <code>app</code>.</span></li><li><span>Mira la última, con la sal: el canal sigue siendo la clave, pero ahora con 16 sub-claves.</span></li></ol><p><b>Qué observar:</b> con claves de muchos valores (<code>pedido_id</code>, <code>cliente_id</code>) las 8 particiones quedan casi iguales, unas 143.000 líneas cada una. Con <code>categoria</code>, solo 6 valores, el hash deja varias particiones vacías y una con cientos de miles de líneas: dos o tres categorías cayeron en la misma. Con <code>canal</code>, 6 de las 8 quedan vacías: un clúster de 8 nodos trabajaría como uno de 2. La sal reparte mucho mejor, aunque no perfecto: con pocas sub-claves el hash todavía puede juntar dos en la misma partición. Los números exactos pueden cambiar con otra versión de DuckDB, porque cada motor usa su propia función hash; el patrón no cambia.</p></div></section>
 <section><h2>Uniones distribuidas: por difusión o por partición</h2><div class="prose"><p>Unir dos tablas en un clúster plantea un problema: la línea de un pedido y la fila de su producto pueden estar en máquinas distintas. Para unirlas, tienen que encontrarse en la misma. Hay dos maneras de lograrlo.</p></div><div class="analogia"><b>Imagínalo así</b><p>Para que cada mesero de un salón grande sepa el precio de los platos, puedes darle a cada uno una copia de la carta, que es una hoja. Pero si lo que necesitan es cruzar dos listas largas, la de reservas y la de pedidos especiales, no puedes fotocopiar ninguna para todos: hay que repartirlas por número de mesa, para que cada mesero reciba solo las de sus mesas.</p></div><div class="prose"><ul><li><b>Unión por difusión</b> (<i>broadcast join</i>): si una de las tablas es pequeña, como <code>productos</code> con sus 200 filas, se copia entera a todos los ejecutores. La tabla grande no se mueve: cada ejecutor une sus propias particiones con su copia. Por la red viaja la tabla pequeña multiplicada por el número de ejecutores, casi nada.</li><li><b>Unión por partición</b> (<i>shuffle join</i>, y en su versión más común <i>sort-merge join</i>): si las dos tablas son grandes, como <code>pedidos</code> y <code>detalle_pedido</code> con diez veces más datos, las dos se reparten por la clave de unión (<code>pedido_id</code>), de modo que las filas del mismo pedido terminen en la misma máquina; ahí se ordenan y se cruzan. Por la red viajan casi las dos tablas completas.</li></ul></div><figure class="fig fig-comparacion" id="07-diagrama-3"><div class="lienzo"><svg viewBox="0 0 900 400" style="min-width:720px" role="img" aria-label="Dos formas de unir tablas en un clúster. A la izquierda, la unión por difusión: la tabla pequeña de productos se copia a los tres nodos y las particiones grandes de detalle_pedido no se mueven. A la derecha, la unión por partición: las dos tablas se reparten por la clave a través de la red y cada nodo une un tramo de claves">
 <defs>
 <marker id="c7d3-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="k-warm"/></marker>

@@ -160,78 +160,78 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 <text x="474" y="406" class="t t-s">+ sin repeticiones; un cambio se hace en un lugar</text>
 <text x="474" y="424" class="t t-s">+ útil si una jerarquía es enorme o la comparten</text>
 <text x="474" y="442" class="t t-s t-m">− más uniones y más fácil equivocarse al consultar</text>
-</svg></div><figcaption><b>Estrella frente a copo de nieve.</b> A la izquierda, la estrella: tres dimensiones anchas, cada una a un salto de la tabla de hechos. A la derecha, el mismo modelo normalizado: el mes, la categoría, la ciudad y el país salen a tablas propias, y preguntar «ventas por país» exige tres uniones en lugar de una. Abajo, lo que gana y lo que cuesta cada forma. La recomendación general es la estrella, salvo que una jerarquía sea enorme o la compartan muchas dimensiones.</figcaption></figure><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Arma la estrella de la tienda en DuckDB</h3></div><p>Vas a construir <code>dim_fecha</code>, <code>dim_cliente</code>, <code>dim_producto</code> y <code>fact_ventas</code> en <code>almacen.duckdb</code> y responder tres preguntas de Elena. Trabaja en <code>datos-tienda</code> con el entorno virtual activado. Antes, vuelve a crear la base desde cero (<code>python generar_tienda.py</code> en Windows, <code>python3 generar_tienda.py</code> en macOS y Linux) para que la clienta Renata siga en Quito.</p><div class="code-copia"><pre><code>"""Arma el esquema en estrella de las ventas en el almacén (DuckDB)."""
-import duckdb
-
-alm = duckdb.connect("almacen.duckdb")
-alm.execute("INSTALL sqlite; LOAD sqlite;")
-alm.execute("ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")
-
-# Dimensión de fechas: una fila por día, con los atributos por los que se pregunta
-alm.execute("""
-    CREATE OR REPLACE TABLE dim_fecha AS
-    SELECT CAST(strftime(f, '%Y%m%d') AS INTEGER) AS fecha_key, f::DATE AS fecha,
-           year(f) AS anio, month(f) AS mes, strftime(f, '%Y-%m') AS anio_mes,
-           isodow(f) AS dia_semana, isodow(f) &gt;= 6 AS fin_de_semana,
-           f BETWEEN DATE '2026-10-19' AND DATE '2026-10-25' AS semana_descuentos
-    FROM range(DATE '2026-01-01', DATE '2027-01-01', INTERVAL 1 DAY) t(f)""")
-
-# Dimensión de clientes (tipo 1: se sobrescribe), con la ciudad ya limpia
-alm.execute("""
-    CREATE OR REPLACE TABLE dim_cliente AS
-    WITH canon(ciudad) AS (VALUES ('Lima'), ('Bogotá'), ('Ciudad de México'), ('Santiago'),
-         ('Quito'), ('Guadalajara'), ('Medellín'), ('Guayaquil'), ('Santo Domingo'), ('Panamá'))
-    SELECT row_number() OVER (ORDER BY c.cliente_id) AS cliente_key, c.cliente_id, c.nombre,
-           coalesce(k.ciudad, trim(c.ciudad)) AS ciudad, c.fecha_alta::DATE AS fecha_alta
-    FROM tienda.clientes c
-    LEFT JOIN canon k ON strip_accents(lower(trim(c.ciudad))) = strip_accents(lower(k.ciudad))""")
-
-alm.execute("""
-    CREATE OR REPLACE TABLE dim_producto AS
-    SELECT row_number() OVER (ORDER BY producto_id) AS producto_key, producto_id, sku, nombre,
-           categoria, CAST(precio AS DECIMAL(10,2)) AS precio_lista
-    FROM tienda.productos""")
-
-# Tabla de hechos. Grano: una línea de un pedido vendido
-alm.execute("""
-    CREATE OR REPLACE TABLE fact_ventas AS
-    SELECT CAST(strftime(CAST(p.creado_en AS TIMESTAMP), '%Y%m%d') AS INTEGER) AS fecha_key,
-           dc.cliente_key, dp.producto_key, p.pedido_id, d.linea, p.canal,
-           d.cantidad, CAST(d.precio_unitario AS DECIMAL(10,2)) AS precio_unitario,
-           CAST(d.cantidad * d.precio_unitario AS DECIMAL(12,2)) AS monto
-    FROM tienda.pedidos p
-    JOIN tienda.detalle_pedido d ON d.pedido_id = p.pedido_id
-    JOIN dim_cliente dc ON dc.cliente_id = p.cliente_id
-    JOIN dim_producto dp ON dp.producto_id = d.producto_id
-    WHERE p.estado IN ('pagado', 'enviado', 'entregado')""")
-
-for t in ("dim_fecha", "dim_cliente", "dim_producto", "fact_ventas"):
-    print(f"{t:&lt;13}{alm.execute(f'SELECT COUNT(*) FROM {t}').fetchone()[0]:&gt;8} filas")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="code-copia"><pre><code>"""Tres preguntas de Elena, respondidas con el esquema en estrella."""
-import duckdb
-
-alm = duckdb.connect("almacen.duckdb", read_only=True)
-
-print("Ventas netas por mes")
-alm.sql("""
-    SELECT f.anio_mes, SUM(v.monto) AS ventas_netas, COUNT(DISTINCT v.pedido_id) AS pedidos
-    FROM fact_ventas v JOIN dim_fecha f USING (fecha_key)
-    GROUP BY f.anio_mes ORDER BY f.anio_mes""").show()
-
-print("Octubre: las cinco combinaciones de ciudad y categoría que más venden")
-alm.sql("""
-    SELECT c.ciudad, p.categoria, SUM(v.monto) AS ventas
-    FROM fact_ventas v
-    JOIN dim_fecha f USING (fecha_key)
-    JOIN dim_cliente c USING (cliente_key)
-    JOIN dim_producto p USING (producto_key)
-    WHERE f.anio_mes = '2026-10'
-    GROUP BY ALL ORDER BY ventas DESC LIMIT 5""").show()
-
-print("Octubre: venta promedio por día, con y sin semana de descuentos")
-alm.sql("""
-    SELECT f.semana_descuentos, round(SUM(v.monto) / COUNT(DISTINCT f.fecha), 2) AS ventas_por_dia
-    FROM fact_ventas v JOIN dim_fecha f USING (fecha_key)
-    WHERE f.anio_mes = '2026-10' GROUP BY ALL""").show()</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda el primer script como <code>estrella.py</code> y el segundo como <code>preguntas.py</code>, y córrelos:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python estrella.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python preguntas.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 estrella.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 preguntas.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Cuenta las uniones de la segunda pregunta. Después escribe tú una cuarta: ventas de octubre por canal y día de la semana. No hace falta tocar <code>estrella.py</code>.</span></li></ol><p><b>Qué observar:</b> la tabla de hechos tiene 102.232 filas y las dimensiones, 365, 5.000 y 200. La serie mensual coincide con las barras del tablero y octubre da <b>US$ 782.785,77 en 8.376 pedidos</b>. Lima y Electrónica encabezan la segunda tabla con US$ 72.026,16, y sin ciudades repetidas por mayúsculas o espacios: la limpieza se hizo una vez, en la dimensión, y la heredan todas las consultas. Durante la semana de descuentos se vendió en promedio US$ 33.159,94 por día, contra US$ 22.944,42 el resto de octubre. Las tres preguntas usan la misma forma (hechos, uniones a dimensiones, filtro, agrupación), y la cuarta también.</p></div></section>
+</svg></div><figcaption><b>Estrella frente a copo de nieve.</b> A la izquierda, la estrella: tres dimensiones anchas, cada una a un salto de la tabla de hechos. A la derecha, el mismo modelo normalizado: el mes, la categoría, la ciudad y el país salen a tablas propias, y preguntar «ventas por país» exige tres uniones en lugar de una. Abajo, lo que gana y lo que cuesta cada forma. La recomendación general es la estrella, salvo que una jerarquía sea enorme o la compartan muchas dimensiones.</figcaption></figure><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Arma la estrella de la tienda en DuckDB</h3></div><p>Vas a construir <code>dim_fecha</code>, <code>dim_cliente</code>, <code>dim_producto</code> y <code>fact_ventas</code> en <code>almacen.duckdb</code> y responder tres preguntas de Elena. Trabaja en <code>datos-tienda</code> con el entorno virtual activado. Antes, vuelve a crear la base desde cero (<code>python generar_tienda.py</code> en Windows, <code>python3 generar_tienda.py</code> en macOS y Linux) para que la clienta Renata siga en Quito.</p><div class="code-copia code-lineas"><pre><code><span class="ln">"""Arma el esquema en estrella de las ventas en el almacén (DuckDB)."""</span>
+<span class="ln">import duckdb</span>
+<span class="ln"></span>
+<span class="ln">alm = duckdb.connect("almacen.duckdb")</span>
+<span class="ln">alm.execute("INSTALL sqlite; LOAD sqlite;")</span>
+<span class="ln">alm.execute("ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")</span>
+<span class="ln"></span>
+<span class="ln"># Dimensión de fechas: una fila por día, con los atributos por los que se pregunta</span>
+<span class="ln">alm.execute("""</span>
+<span class="ln">    CREATE OR REPLACE TABLE dim_fecha AS</span>
+<span class="ln">    SELECT CAST(strftime(f, '%Y%m%d') AS INTEGER) AS fecha_key, f::DATE AS fecha,</span>
+<span class="ln">           year(f) AS anio, month(f) AS mes, strftime(f, '%Y-%m') AS anio_mes,</span>
+<span class="ln">           isodow(f) AS dia_semana, isodow(f) &gt;= 6 AS fin_de_semana,</span>
+<span class="ln">           f BETWEEN DATE '2026-10-19' AND DATE '2026-10-25' AS semana_descuentos</span>
+<span class="ln">    FROM range(DATE '2026-01-01', DATE '2027-01-01', INTERVAL 1 DAY) t(f)""")</span>
+<span class="ln"></span>
+<span class="ln"># Dimensión de clientes (tipo 1: se sobrescribe), con la ciudad ya limpia</span>
+<span class="ln">alm.execute("""</span>
+<span class="ln">    CREATE OR REPLACE TABLE dim_cliente AS</span>
+<span class="ln">    WITH canon(ciudad) AS (VALUES ('Lima'), ('Bogotá'), ('Ciudad de México'), ('Santiago'),</span>
+<span class="ln">         ('Quito'), ('Guadalajara'), ('Medellín'), ('Guayaquil'), ('Santo Domingo'), ('Panamá'))</span>
+<span class="ln">    SELECT row_number() OVER (ORDER BY c.cliente_id) AS cliente_key, c.cliente_id, c.nombre,</span>
+<span class="ln">           coalesce(k.ciudad, trim(c.ciudad)) AS ciudad, c.fecha_alta::DATE AS fecha_alta</span>
+<span class="ln">    FROM tienda.clientes c</span>
+<span class="ln">    LEFT JOIN canon k ON strip_accents(lower(trim(c.ciudad))) = strip_accents(lower(k.ciudad))""")</span>
+<span class="ln"></span>
+<span class="ln">alm.execute("""</span>
+<span class="ln">    CREATE OR REPLACE TABLE dim_producto AS</span>
+<span class="ln">    SELECT row_number() OVER (ORDER BY producto_id) AS producto_key, producto_id, sku, nombre,</span>
+<span class="ln">           categoria, CAST(precio AS DECIMAL(10,2)) AS precio_lista</span>
+<span class="ln">    FROM tienda.productos""")</span>
+<span class="ln"></span>
+<span class="ln"># Tabla de hechos. Grano: una línea de un pedido vendido</span>
+<span class="ln">alm.execute("""</span>
+<span class="ln">    CREATE OR REPLACE TABLE fact_ventas AS</span>
+<span class="ln">    SELECT CAST(strftime(CAST(p.creado_en AS TIMESTAMP), '%Y%m%d') AS INTEGER) AS fecha_key,</span>
+<span class="ln">           dc.cliente_key, dp.producto_key, p.pedido_id, d.linea, p.canal,</span>
+<span class="ln">           d.cantidad, CAST(d.precio_unitario AS DECIMAL(10,2)) AS precio_unitario,</span>
+<span class="ln">           CAST(d.cantidad * d.precio_unitario AS DECIMAL(12,2)) AS monto</span>
+<span class="ln">    FROM tienda.pedidos p</span>
+<span class="ln">    JOIN tienda.detalle_pedido d ON d.pedido_id = p.pedido_id</span>
+<span class="ln">    JOIN dim_cliente dc ON dc.cliente_id = p.cliente_id</span>
+<span class="ln">    JOIN dim_producto dp ON dp.producto_id = d.producto_id</span>
+<span class="ln">    WHERE p.estado IN ('pagado', 'enviado', 'entregado')""")</span>
+<span class="ln"></span>
+<span class="ln">for t in ("dim_fecha", "dim_cliente", "dim_producto", "fact_ventas"):</span>
+<span class="ln">    print(f"{t:&lt;13}{alm.execute(f'SELECT COUNT(*) FROM {t}').fetchone()[0]:&gt;8} filas")</span></code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="code-copia code-lineas"><pre><code><span class="ln">"""Tres preguntas de Elena, respondidas con el esquema en estrella."""</span>
+<span class="ln">import duckdb</span>
+<span class="ln"></span>
+<span class="ln">alm = duckdb.connect("almacen.duckdb", read_only=True)</span>
+<span class="ln"></span>
+<span class="ln">print("Ventas netas por mes")</span>
+<span class="ln">alm.sql("""</span>
+<span class="ln">    SELECT f.anio_mes, SUM(v.monto) AS ventas_netas, COUNT(DISTINCT v.pedido_id) AS pedidos</span>
+<span class="ln">    FROM fact_ventas v JOIN dim_fecha f USING (fecha_key)</span>
+<span class="ln">    GROUP BY f.anio_mes ORDER BY f.anio_mes""").show()</span>
+<span class="ln"></span>
+<span class="ln">print("Octubre: las cinco combinaciones de ciudad y categoría que más venden")</span>
+<span class="ln">alm.sql("""</span>
+<span class="ln">    SELECT c.ciudad, p.categoria, SUM(v.monto) AS ventas</span>
+<span class="ln">    FROM fact_ventas v</span>
+<span class="ln">    JOIN dim_fecha f USING (fecha_key)</span>
+<span class="ln">    JOIN dim_cliente c USING (cliente_key)</span>
+<span class="ln">    JOIN dim_producto p USING (producto_key)</span>
+<span class="ln">    WHERE f.anio_mes = '2026-10'</span>
+<span class="ln">    GROUP BY ALL ORDER BY ventas DESC LIMIT 5""").show()</span>
+<span class="ln"></span>
+<span class="ln">print("Octubre: venta promedio por día, con y sin semana de descuentos")</span>
+<span class="ln">alm.sql("""</span>
+<span class="ln">    SELECT f.semana_descuentos, round(SUM(v.monto) / COUNT(DISTINCT f.fecha), 2) AS ventas_por_dia</span>
+<span class="ln">    FROM fact_ventas v JOIN dim_fecha f USING (fecha_key)</span>
+<span class="ln">    WHERE f.anio_mes = '2026-10' GROUP BY ALL""").show()</span></code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda el primer script como <code>estrella.py</code> y el segundo como <code>preguntas.py</code>, y córrelos:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python estrella.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python preguntas.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 estrella.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 preguntas.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Cuenta las uniones de la segunda pregunta. Después escribe tú una cuarta: ventas de octubre por canal y día de la semana. No hace falta tocar <code>estrella.py</code>.</span></li></ol><p><b>Qué observar:</b> la tabla de hechos tiene 102.232 filas y las dimensiones, 365, 5.000 y 200. La serie mensual coincide con las barras del tablero y octubre da <b>US$ 782.785,77 en 8.376 pedidos</b>. Lima y Electrónica encabezan la segunda tabla con US$ 72.026,16, y sin ciudades repetidas por mayúsculas o espacios: la limpieza se hizo una vez, en la dimensión, y la heredan todas las consultas. Durante la semana de descuentos se vendió en promedio US$ 33.159,94 por día, contra US$ 22.944,42 el resto de octubre. Las tres preguntas usan la misma forma (hechos, uniones a dimensiones, filtro, agrupación), y la cuarta también.</p></div></section>
 <section><h2>El grano de una tabla de hechos</h2><div class="prose"><p>El <b>grano</b> (<i>grain</i>) es la respuesta a «¿qué representa una fila de esta tabla?». No se deduce de las columnas: se declara antes de diseñar, por escrito, en una frase. Para <code>fact_ventas</code>: «una fila por cada línea de un pedido vendido (pagado, enviado o entregado)».</p></div><div class="analogia"><b>Imagínalo así</b><p>Una foto se puede tomar con una cámara de alta resolución y achicar después; al revés no se puede: de una foto pixelada no sale la cara de nadie. El grano fino es la foto en alta resolución: siempre puedes resumir. El grano grueso es la foto ya achicada: lo que no quedó, no vuelve.</p></div><div class="prose"><p>El grano decide qué preguntas se pueden responder. Con una fila por línea de pedido se puede sumar por producto, por pedido, por cliente o por día. Con una fila por pedido se pierde el producto, porque un pedido mezcla varios. Con una fila por día y categoría se pierde quién compró. Kimball recomienda empezar por el <b>grano atómico</b>, el más fino que entrega el proceso, porque las preguntas que el negocio todavía no hizo son las que más cuestan después.</p><p>Dos errores frecuentes:</p><ul><li><b>Mezclar granos en una misma tabla.</b> Una tabla con filas por línea y, debajo, filas de «total del pedido» suma todo dos veces.</li><li><b>Agregar medidas que no se pueden agregar.</b> En una tabla por día y categoría, la columna «pedidos» no se puede sumar entre categorías: un pedido con un Parlante y un Reloj de pared cuenta una vez en Electrónica y otra en Hogar.</li></ul></div><div class="lab" id="05-lab-1"><div class="lab-title"><span class="tag">Laboratorio</span><h3>Construye la tabla de hechos de ventas: elige el grano y mira cómo cambian las respuestas</h3></div><p class="hint">Once líneas vendidas del 14 de octubre, entre ellas las del pedido 59521 de Renata. Elige el grano de <code>fact_ventas</code> y mira cuántas filas tiene la tabla y cuáles de las seis preguntas de Elena y Martín puede responder. Fíjate en la pregunta del ticket promedio con el grano «un día por categoría»: se puede calcular, pero da mal.</p><style>
 [id="05-lab-1"] .c5l1-rot{font:600 .72rem var(--f-display);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 [id="05-lab-1"] table{width:100%;border-collapse:collapse;font:500 .76rem var(--f-mono)}
@@ -326,63 +326,63 @@ alm.sql("""
   <div><p class="c5l2-rot">Compras de Renata en fact_ventas</p><div class="tbl" style="overflow-x:auto"><table id="c5l2-fact"></table></div></div>
   <div><p class="c5l2-rot">Ventas de Renata por ciudad, según el almacén</p><div id="c5l2-rep" aria-live="polite"></div></div>
 </div>
-<div class="readout texto" id="c5l2-out" aria-live="polite"></div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Una dimensión tipo 2 que recuerda la mudanza de Renata</h3></div><p>Vas a crear <code>dim_cliente_historia</code> como SCD tipo 2, avanzar la tienda un día (el 1 de noviembre Renata se muda a Lima) y comparar el informe con la dimensión tipo 1 de la práctica anterior. Necesitas el almacén de la práctica anterior, hecho con la base recién creada.</p><div class="code-copia"><pre><code>"""Mantiene dim_cliente_historia como SCD tipo 2: cada cambio de ciudad abre una fila nueva."""
-import duckdb
-
-alm = duckdb.connect("almacen.duckdb")
-alm.execute("INSTALL sqlite; LOAD sqlite;")
-alm.execute("ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")
-alm.execute("CREATE SEQUENCE IF NOT EXISTS sec_cliente START 1")
-alm.execute("""
-    CREATE TABLE IF NOT EXISTS dim_cliente_historia (
-        cliente_key INTEGER DEFAULT nextval('sec_cliente'), cliente_id INTEGER,
-        nombre VARCHAR, ciudad VARCHAR, valido_desde TIMESTAMP, valido_hasta TIMESTAMP,
-        es_actual BOOLEAN)""")
-# Foto de hoy del origen, con la ciudad limpia como en estrella.py
-alm.execute("""
-    CREATE OR REPLACE TEMP TABLE origen AS
-    WITH canon(ciudad) AS (VALUES ('Lima'), ('Bogotá'), ('Ciudad de México'), ('Santiago'),
-         ('Quito'), ('Guadalajara'), ('Medellín'), ('Guayaquil'), ('Santo Domingo'), ('Panamá'))
-    SELECT c.cliente_id, c.nombre, coalesce(k.ciudad, trim(c.ciudad)) AS ciudad,
-           CAST(c.actualizado_en AS TIMESTAMP) AS actualizado_en
-    FROM tienda.clientes c
-    LEFT JOIN canon k ON strip_accents(lower(trim(c.ciudad))) = strip_accents(lower(k.ciudad))""")
-
-alm.execute("BEGIN TRANSACTION")
-# 1. Cerrar la versión vigente de quien cambió de ciudad
-cerradas = alm.execute("""
-    UPDATE dim_cliente_historia h SET valido_hasta = o.actualizado_en, es_actual = false
-    FROM origen o
-    WHERE h.cliente_id = o.cliente_id AND h.es_actual AND h.ciudad &lt;&gt; o.ciudad""").fetchone()[0]
-# 2. Abrir una versión nueva para los cambiados y para los clientes que no estaban
-nuevas = alm.execute("""
-    INSERT INTO dim_cliente_historia (cliente_id, nombre, ciudad, valido_desde, valido_hasta, es_actual)
-    SELECT o.cliente_id, o.nombre, o.ciudad,
-           CASE WHEN EXISTS (SELECT 1 FROM dim_cliente_historia x WHERE x.cliente_id = o.cliente_id)
-                THEN o.actualizado_en ELSE TIMESTAMP '1900-01-01' END,
-           TIMESTAMP '9999-12-31', true
-    FROM origen o
-    WHERE NOT EXISTS (SELECT 1 FROM dim_cliente_historia h
-                      WHERE h.cliente_id = o.cliente_id AND h.es_actual)
-    ORDER BY o.cliente_id""").fetchone()[0]
-alm.execute("COMMIT")
-print(f"{cerradas} versiones cerradas, {nuevas} versiones nuevas")</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="code-copia"><pre><code>"""Las ventas de Renata Ortiz por ciudad, con la dimensión tipo 1 y con la tipo 2."""
-import duckdb
-
-alm = duckdb.connect("almacen.duckdb")
-alm.sql("SELECT * FROM dim_cliente_historia WHERE cliente_id = 1042 ORDER BY valido_desde").show()
-print("Tipo 1 (dim_cliente): la ciudad de hoy para toda la historia")
-alm.sql("""
-    SELECT c.ciudad, SUM(v.monto) AS ventas FROM fact_ventas v
-    JOIN dim_cliente c USING (cliente_key) WHERE c.cliente_id = 1042 GROUP BY ALL""").show()
-print("Tipo 2 (dim_cliente_historia): la ciudad que tenía el día de cada compra")
-alm.sql("""
-    SELECT h.ciudad, SUM(v.monto) AS ventas FROM fact_ventas v
-    JOIN dim_fecha f USING (fecha_key)
-    JOIN dim_cliente c USING (cliente_key)
-    JOIN dim_cliente_historia h ON h.cliente_id = c.cliente_id
-     AND f.fecha &gt;= h.valido_desde AND f.fecha &lt; h.valido_hasta
-    WHERE c.cliente_id = 1042 GROUP BY ALL""").show()</code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda los scripts como <code>scd2.py</code> y <code>renata.py</code>. Corre la carga inicial de la dimensión, avanza la tienda un día, vuelve a cargar la dimensión, reconstruye la estrella (que sobrescribe <code>dim_cliente</code>, tipo 1) y compara:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python scd2.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python generar_tienda.py --avanzar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python scd2.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python estrella.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python renata.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 scd2.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 generar_tienda.py --avanzar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 scd2.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 estrella.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 renata.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Vuelve a correr <code>python preguntas.py</code> (o <code>python3</code>) y mira la fila de octubre.</span></li></ol><p><b>Qué observar:</b> la primera carga abre 5.000 versiones; después de avanzar, la segunda cierra 3 y abre 3: las tres mudanzas del día. Renata tiene ahora dos filas, Quito hasta el 1 de noviembre a las 06:35:32 y Lima desde entonces, con claves distintas. Con la dimensión tipo 1, sus US$ 300,71 de compras de todo el año aparecen en Lima; con la tipo 2, en Quito, donde de verdad vivía. Para ver el ejemplo con pocas líneas, <code>renata.py</code> une por fecha y <code>cliente_id</code>; en un almacén en producción, cada fila de <code>fact_ventas</code> guardaría directamente la clave vigente el día de la venta. Y mira la fila de octubre en <code>preguntas.py</code>: ahora dice US$ 782.625,71 en 8.374 pedidos, porque dos pedidos de octubre se devolvieron el 1 de noviembre. No es un error: el estado del pedido cambió y la definición lo excluye. Cómo se anuncia y se versiona un cambio así es tema del capítulo 12.</p></div><div class="caso"><b>Un caso real</b><p><b>El vendedor que cambió de zona.</b> Un caso clásico en empresas con fuerza de ventas: una vendedora pasa de la zona Norte a la zona Sur a mitad de año y la dimensión de vendedores se actualiza con tipo 1. Al día siguiente, el informe de cumplimiento muestra que la zona Norte nunca llegó a su meta del primer semestre y que la Sur la superó con creces, porque todas las ventas de la vendedora se mudaron con ella. Las comisiones del semestre, ya pagadas, dejan de cuadrar con el informe. La corrección fue la de este capítulo: el atributo «zona» pasó a tipo 2, y la regla quedó escrita en el diccionario del almacén para cada atributo de cada dimensión.</p></div></section>
+<div class="readout texto" id="c5l2-out" aria-live="polite"></div></div><div class="practica"><div class="practica-title"><span class="tag">En la terminal</span><h3>Una dimensión tipo 2 que recuerda la mudanza de Renata</h3></div><p>Vas a crear <code>dim_cliente_historia</code> como SCD tipo 2, avanzar la tienda un día (el 1 de noviembre Renata se muda a Lima) y comparar el informe con la dimensión tipo 1 de la práctica anterior. Necesitas el almacén de la práctica anterior, hecho con la base recién creada.</p><div class="code-copia code-lineas"><pre><code><span class="ln">"""Mantiene dim_cliente_historia como SCD tipo 2: cada cambio de ciudad abre una fila nueva."""</span>
+<span class="ln">import duckdb</span>
+<span class="ln"></span>
+<span class="ln">alm = duckdb.connect("almacen.duckdb")</span>
+<span class="ln">alm.execute("INSTALL sqlite; LOAD sqlite;")</span>
+<span class="ln">alm.execute("ATTACH 'tienda.db' AS tienda (TYPE sqlite, READ_ONLY)")</span>
+<span class="ln">alm.execute("CREATE SEQUENCE IF NOT EXISTS sec_cliente START 1")</span>
+<span class="ln">alm.execute("""</span>
+<span class="ln">    CREATE TABLE IF NOT EXISTS dim_cliente_historia (</span>
+<span class="ln">        cliente_key INTEGER DEFAULT nextval('sec_cliente'), cliente_id INTEGER,</span>
+<span class="ln">        nombre VARCHAR, ciudad VARCHAR, valido_desde TIMESTAMP, valido_hasta TIMESTAMP,</span>
+<span class="ln">        es_actual BOOLEAN)""")</span>
+<span class="ln"># Foto de hoy del origen, con la ciudad limpia como en estrella.py</span>
+<span class="ln">alm.execute("""</span>
+<span class="ln">    CREATE OR REPLACE TEMP TABLE origen AS</span>
+<span class="ln">    WITH canon(ciudad) AS (VALUES ('Lima'), ('Bogotá'), ('Ciudad de México'), ('Santiago'),</span>
+<span class="ln">         ('Quito'), ('Guadalajara'), ('Medellín'), ('Guayaquil'), ('Santo Domingo'), ('Panamá'))</span>
+<span class="ln">    SELECT c.cliente_id, c.nombre, coalesce(k.ciudad, trim(c.ciudad)) AS ciudad,</span>
+<span class="ln">           CAST(c.actualizado_en AS TIMESTAMP) AS actualizado_en</span>
+<span class="ln">    FROM tienda.clientes c</span>
+<span class="ln">    LEFT JOIN canon k ON strip_accents(lower(trim(c.ciudad))) = strip_accents(lower(k.ciudad))""")</span>
+<span class="ln"></span>
+<span class="ln">alm.execute("BEGIN TRANSACTION")</span>
+<span class="ln"># 1. Cerrar la versión vigente de quien cambió de ciudad</span>
+<span class="ln">cerradas = alm.execute("""</span>
+<span class="ln">    UPDATE dim_cliente_historia h SET valido_hasta = o.actualizado_en, es_actual = false</span>
+<span class="ln">    FROM origen o</span>
+<span class="ln">    WHERE h.cliente_id = o.cliente_id AND h.es_actual AND h.ciudad &lt;&gt; o.ciudad""").fetchone()[0]</span>
+<span class="ln"># 2. Abrir una versión nueva para los cambiados y para los clientes que no estaban</span>
+<span class="ln">nuevas = alm.execute("""</span>
+<span class="ln">    INSERT INTO dim_cliente_historia (cliente_id, nombre, ciudad, valido_desde, valido_hasta, es_actual)</span>
+<span class="ln">    SELECT o.cliente_id, o.nombre, o.ciudad,</span>
+<span class="ln">           CASE WHEN EXISTS (SELECT 1 FROM dim_cliente_historia x WHERE x.cliente_id = o.cliente_id)</span>
+<span class="ln">                THEN o.actualizado_en ELSE TIMESTAMP '1900-01-01' END,</span>
+<span class="ln">           TIMESTAMP '9999-12-31', true</span>
+<span class="ln">    FROM origen o</span>
+<span class="ln">    WHERE NOT EXISTS (SELECT 1 FROM dim_cliente_historia h</span>
+<span class="ln">                      WHERE h.cliente_id = o.cliente_id AND h.es_actual)</span>
+<span class="ln">    ORDER BY o.cliente_id""").fetchone()[0]</span>
+<span class="ln">alm.execute("COMMIT")</span>
+<span class="ln">print(f"{cerradas} versiones cerradas, {nuevas} versiones nuevas")</span></code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><div class="code-copia code-lineas"><pre><code><span class="ln">"""Las ventas de Renata Ortiz por ciudad, con la dimensión tipo 1 y con la tipo 2."""</span>
+<span class="ln">import duckdb</span>
+<span class="ln"></span>
+<span class="ln">alm = duckdb.connect("almacen.duckdb")</span>
+<span class="ln">alm.sql("SELECT * FROM dim_cliente_historia WHERE cliente_id = 1042 ORDER BY valido_desde").show()</span>
+<span class="ln">print("Tipo 1 (dim_cliente): la ciudad de hoy para toda la historia")</span>
+<span class="ln">alm.sql("""</span>
+<span class="ln">    SELECT c.ciudad, SUM(v.monto) AS ventas FROM fact_ventas v</span>
+<span class="ln">    JOIN dim_cliente c USING (cliente_key) WHERE c.cliente_id = 1042 GROUP BY ALL""").show()</span>
+<span class="ln">print("Tipo 2 (dim_cliente_historia): la ciudad que tenía el día de cada compra")</span>
+<span class="ln">alm.sql("""</span>
+<span class="ln">    SELECT h.ciudad, SUM(v.monto) AS ventas FROM fact_ventas v</span>
+<span class="ln">    JOIN dim_fecha f USING (fecha_key)</span>
+<span class="ln">    JOIN dim_cliente c USING (cliente_key)</span>
+<span class="ln">    JOIN dim_cliente_historia h ON h.cliente_id = c.cliente_id</span>
+<span class="ln">     AND f.fecha &gt;= h.valido_desde AND f.fecha &lt; h.valido_hasta</span>
+<span class="ln">    WHERE c.cliente_id = 1042 GROUP BY ALL""").show()</span></code></pre><button type="button" class="copiar copiar-todo">Copiar</button></div><ol class="steps"><li><span>Guarda los scripts como <code>scd2.py</code> y <code>renata.py</code>. Corre la carga inicial de la dimensión, avanza la tienda un día, vuelve a cargar la dimensión, reconstruye la estrella (que sobrescribe <code>dim_cliente</code>, tipo 1) y compara:</span></li></ol><div class="cmds"><div class="cmd-tabs" role="tablist" aria-label="Sistema operativo"><button type="button" role="tab" data-so="win">Windows</button><button type="button" role="tab" data-so="mac linux">macOS y Linux</button></div><div class="cmd-panel" role="tabpanel" data-so="win"><div class="cmd-l"><code>python scd2.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python generar_tienda.py --avanzar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python scd2.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python estrella.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python renata.py</code><button type="button" class="copiar">Copiar</button></div></div><div class="cmd-panel" role="tabpanel" data-so="mac linux"><div class="cmd-l"><code>python3 scd2.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 generar_tienda.py --avanzar</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 scd2.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 estrella.py</code><button type="button" class="copiar">Copiar</button></div><div class="cmd-l"><code>python3 renata.py</code><button type="button" class="copiar">Copiar</button></div></div></div><ol class="steps" start="2" style="counter-reset:st 1"><li><span>Vuelve a correr <code>python preguntas.py</code> (o <code>python3</code>) y mira la fila de octubre.</span></li></ol><p><b>Qué observar:</b> la primera carga abre 5.000 versiones; después de avanzar, la segunda cierra 3 y abre 3: las tres mudanzas del día. Renata tiene ahora dos filas, Quito hasta el 1 de noviembre a las 06:35:32 y Lima desde entonces, con claves distintas. Con la dimensión tipo 1, sus US$ 300,71 de compras de todo el año aparecen en Lima; con la tipo 2, en Quito, donde de verdad vivía. Para ver el ejemplo con pocas líneas, <code>renata.py</code> une por fecha y <code>cliente_id</code>; en un almacén en producción, cada fila de <code>fact_ventas</code> guardaría directamente la clave vigente el día de la venta. Y mira la fila de octubre en <code>preguntas.py</code>: ahora dice US$ 782.625,71 en 8.374 pedidos, porque dos pedidos de octubre se devolvieron el 1 de noviembre. No es un error: el estado del pedido cambió y la definición lo excluye. Cómo se anuncia y se versiona un cambio así es tema del capítulo 12.</p></div><div class="caso"><b>Un caso real</b><p><b>El vendedor que cambió de zona.</b> Un caso clásico en empresas con fuerza de ventas: una vendedora pasa de la zona Norte a la zona Sur a mitad de año y la dimensión de vendedores se actualiza con tipo 1. Al día siguiente, el informe de cumplimiento muestra que la zona Norte nunca llegó a su meta del primer semestre y que la Sur la superó con creces, porque todas las ventas de la vendedora se mudaron con ella. Las comisiones del semestre, ya pagadas, dejan de cuadrar con el informe. La corrección fue la de este capítulo: el atributo «zona» pasó a tipo 2, y la regla quedó escrita en el diccionario del almacén para cada atributo de cada dimensión.</p></div></section>
 <section><h2>Almacenes del mercado: BigQuery, Snowflake, Redshift y DuckDB para empezar</h2><div class="prose"><p>El modelado dimensional no depende del motor: una estrella es una estrella en cualquier base. Lo que cambia entre los almacenes del mercado es cómo guardan y procesan los datos y cómo se pagan. A noviembre de 2026, algunos ejemplos públicos, sin orden de preferencia:</p><div class="tbl"><table><thead><tr><th>Almacén</th><th>Qué lo caracteriza</th></tr></thead><tbody><tr><td><b>Google BigQuery</b></td><td>Sin servidores que administrar: se cargan tablas y se consulta; se paga por los datos que lee cada consulta o por capacidad reservada</td></tr><tr><td><b>Snowflake</b></td><td>Separa el almacenamiento de los «almacenes virtuales» de cómputo, que se encienden, se apagan y se agrandan por separado; corre sobre varias nubes</td></tr><tr><td><b>Amazon Redshift</b></td><td>El almacén de AWS, en clúster o en modo sin servidor, integrado con el resto de esa nube</td></tr><tr><td><b>DuckDB</b></td><td>Gratuito y de código abierto, corre dentro de tu programa o en tu computadora, sin servidor; ideal para aprender, para equipos chicos y para procesar archivos</td></tr></tbody></table></div><p>Otros nombres que aparecen en el mismo espacio son Azure Synapse y Microsoft Fabric, Databricks SQL y ClickHouse. Todos comparten lo esencial que viste en el capítulo 03: guardan por columnas, comprimen y leen solo las columnas que pide la consulta. Por eso una estrella con columnas anchas y cien millones de filas en la tabla de hechos sigue respondiendo en segundos.</p><p>Para Tienda Ejemplo, Natalia eligió empezar con DuckDB: los datos caben de sobra en una máquina, no hay cuentas que pagar y todo lo que construya (las tablas, el SQL, las pruebas) se traslada casi sin cambios a cualquiera de los otros si la tienda crece. La decisión de cambiar de motor se toma cuando lo pida el volumen o el número de personas consultando a la vez, no antes.</p></div><div class="ml"><b>En la práctica</b><p><b>El diccionario de una sola página.</b> Natalia dejó junto al almacén una tabla que se lee en un minuto: para cada tabla de hechos, su grano en una frase; para cada dimensión, sus atributos y el tipo de SCD de cada uno. <code>dim_cliente</code>: nombre tipo 1 (las correcciones no necesitan historia), ciudad tipo 2, correo tipo 1. Cuando Irene Castro, la científica de datos, preguntó si podía usar la ciudad para su modelo de demanda, la respuesta estaba escrita: sí, y con la ciudad que el cliente tenía el día de cada compra.</p></div></section>
 <section><h2>La idea clave</h2><div class="prose"><p>Un almacén ordenado se modela por procesos de negocio: una tabla de hechos con medidas y un grano escrito en una frase, y dimensiones anchas a un salto, en estrella. El grano más fino responde las preguntas que todavía nadie hizo, y las dimensiones que cambian se tratan a propósito: tipo 1 para corregir, tipo 2 para guardar historia con una clave sustituta nueva, tipo 3 para un cambio único que se quiere comparar.</p></div></section>
 <section><h2>Pruébate</h2><div class="quiz"><h3>Pruébate</h3><details><summary>En <code>fact_ventas</code>, ¿qué columnas son medidas y cuáles son claves a dimensiones?</summary><p>Medidas: <code>cantidad</code>, <code>precio_unitario</code> y <code>monto</code> (solo <code>cantidad</code> y <code>monto</code> se suman). Claves: <code>fecha_key</code>, <code>cliente_key</code> y <code>producto_key</code>; <code>pedido_id</code> y <code>linea</code> son datos del evento que no apuntan a ninguna dimensión.</p></details><details><summary>¿Por qué el precio unitario no se suma, aunque sea un número de la tabla de hechos?</summary><p>Porque no es aditivo: sumar precios de distintas líneas no significa nada. Se suman <code>monto</code> y <code>cantidad</code>, y el precio promedio se recalcula como uno dividido por el otro.</p></details><details><summary>Una tabla tiene una fila por día y categoría con la columna <code>pedidos</code>. ¿Por qué no se puede obtener el total de pedidos del día sumando esa columna?</summary><p>Porque un pedido con productos de dos categorías aparece en las dos filas; la suma lo cuenta dos veces. Con el grano de línea se cuentan los <code>pedido_id</code> distintos.</p></details><details><summary>Un cliente escribió mal su correo y lo corrige. ¿Qué tipo de SCD usarías para el correo y por qué?</summary><p>Tipo 1: es una corrección, no un cambio de la realidad, y nadie necesita conservar el correo equivocado.</p></details><details><summary>Con SCD tipo 2, ¿por qué la tabla de hechos guarda <code>cliente_key</code> y no <code>cliente_id</code>?</summary><p>Porque <code>cliente_id</code> es el mismo antes y después del cambio; la clave sustituta distingue cada versión del cliente, y así cada venta queda unida a la versión vigente el día en que ocurrió.</p></details></div></section>
